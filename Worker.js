@@ -334,7 +334,7 @@ async function analyze(){
     const data = await response.json();
 
     if(!response.ok){
-      throw new Error(data.error || "Erreur pendant l'analyse");
+      throw new Error(data.details || data.error || "Erreur pendant l'analyse");
     }
 
     let analysis = data.analysis;
