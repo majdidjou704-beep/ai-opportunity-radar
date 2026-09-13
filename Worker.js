@@ -351,13 +351,15 @@ async function analyze(){
       '</div>' +
       '</div>';
 
-  }catch(error){
+      } catch (error) {
 
-    results.innerHTML =
-      '<div class="result-card">' +
-      '<strong>⚠️ Impossible de terminer l’analyse.</strong>' +
-      '<p>Veuillez réessayer dans quelques instants.</p>' +
-      '</div>';
+  results.innerHTML =
+    '<div class="result-card">' +
+    '<strong>⚠️ Erreur technique :</strong>' +
+    '<p>' + error.message + '</p>' +
+    '</div>';
+
+
 
   }finally{
 
