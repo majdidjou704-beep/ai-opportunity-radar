@@ -1,11 +1,60 @@
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     const url = new URL(request.url);
 
     if (url.pathname === "/health") {
       return new Response("AI Opportunity Radar: OK", {
         headers: { "Content-Type": "text/plain; charset=utf-8" }
       });
+    }
+
+    if (url.pathname === "/api/analyze" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const business = String(body.business || "").trim();
+
+        if (!business) {
+          return Response.json(
+            { error: "Veuillez indiquer votre activité." },
+            { status: 400 }
+          );
+        }
+
+        const response = await env.AI.run(
+          "@cf/meta/llama-3.1-8b-instruct",
+          {
+            messages: [
+              {
+                role: "system",
+                content:
+                  "Tu es un expert en intelligence économique, stratégie commerciale et détection d'opportunités. Analyse l'activité donnée par l'utilisateur et réponds en français. Donne des opportunités concrètes, des clients cibles, des pistes de développement, les problèmes à résoudre et des actions prioritaires. Sois réaliste et évite les affirmations non vérifiées."
+              },
+              {
+                role: "user",
+                content:
+                  "Analyse cette activité ou ce secteur : " +
+                  business +
+                  ". Identifie les meilleures opportunités commerciales et de développement."
+              }
+            ]
+          }
+        );
+
+        return Response.json({
+          success: true,
+          business: business,
+          analysis: response
+        });
+
+      } catch (error) {
+        return Response.json(
+          {
+            error: "Une erreur est survenue pendant l'analyse.",
+            details: error.message
+          },
+          { status: 500 }
+        );
+      }
     }
 
     return new Response(`
@@ -108,6 +157,11 @@ button{
   cursor:pointer;
 }
 
+button:disabled{
+  opacity:.6;
+  cursor:wait;
+}
+
 #results{
   display:none;
   margin-top:25px;
@@ -125,9 +179,9 @@ button{
   margin-top:0;
 }
 
-.score{
-  font-weight:700;
-  margin-top:10px;
+.ai-result{
+  white-space:pre-wrap;
+  line-height:1.7;
 }
 
 .features{
@@ -200,7 +254,7 @@ footer{
       placeholder="Exemple : nettoyage, restaurant, immobilier..."
     >
 
-    <button onclick="analyze()">
+    <button id="analyzeButton" onclick="analyze()">
       Analyser les opportunités
     </button>
 
@@ -241,10 +295,11 @@ footer{
 
 <script>
 
-function analyze(){
+async function analyze(){
 
   const business = document.getElementById("business").value.trim();
   const results = document.getElementById("results");
+  const button = document.getElementById("analyzeButton");
 
   if(!business){
     results.style.display = "block";
@@ -255,25 +310,61 @@ function analyze(){
     return;
   }
 
-  results.style.display = "block";
+  button.disabled = true;
+  button.textContent = "Analyse en cours...";
 
+  results.style.display = "block";
   results.innerHTML =
     '<div class="result-card">' +
-      '<h3>🎯 Opportunité détectée</h3>' +
-      '<p>Développement commercial pour le secteur : <strong>' + business + '</strong></p>' +
-      '<div class="score">Potentiel : Élevé</div>' +
-    '</div>' +
-
-    '<div class="result-card">' +
-      '<h3>📈 Piste de développement</h3>' +
-      '<p>Identifier de nouveaux clients et marchés correspondant à votre activité.</p>' +
-      '<div class="score">Priorité : Haute</div>' +
-    '</div>' +
-
-    '<div class="result-card">' +
-      '<h3>🚀 Action recommandée</h3>' +
-      '<p>Analyser les besoins des entreprises de votre secteur afin de détecter les opportunités les plus rentables.</p>' +
+    '<strong>🤖 Notre intelligence artificielle analyse votre secteur...</strong>' +
     '</div>';
+
+  try{
+
+    const response = await fetch("/api/analyze", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        business: business
+      })
+    });
+
+    const data = await response.json();
+
+    if(!response.ok){
+      throw new Error(data.error || "Erreur pendant l'analyse");
+    }
+
+    let analysis = data.analysis;
+
+    if(typeof analysis === "object"){
+      analysis = JSON.stringify(analysis, null, 2);
+    }
+
+    results.innerHTML =
+      '<div class="result-card">' +
+      '<h3>🤖 Analyse IA</h3>' +
+      '<div class="ai-result">' +
+      analysis +
+      '</div>' +
+      '</div>';
+
+  }catch(error){
+
+    results.innerHTML =
+      '<div class="result-card">' +
+      '<strong>⚠️ Impossible de terminer l’analyse.</strong>' +
+      '<p>Veuillez réessayer dans quelques instants.</p>' +
+      '</div>';
+
+  }finally{
+
+    button.disabled = false;
+    button.textContent = "Analyser les opportunités";
+
+  }
 }
 
 </script>
