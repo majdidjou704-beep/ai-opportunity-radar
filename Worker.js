@@ -243,15 +243,19 @@ footer{
 
 function analyze(){
 
-  const business =
-    document.getElementById("business").value.trim();
-
-  const results =
-    document.getElementById("results");
+  const business = document.getElementById("business").value.trim();
+  const results = document.getElementById("results");
 
   if(!business){
+    results.style.display = "block";
+    results.innerHTML =
+      '<div class="result-card">' +
+      '<strong>Veuillez indiquer votre activité.</strong>' +
+      '</div>';
+    return;
+  }
 
-    results.style.display="block";
+  results.style.display = "block";
 
   results.innerHTML =
     '<div class="result-card">' +
@@ -270,45 +274,6 @@ function analyze(){
       '<h3>🚀 Action recommandée</h3>' +
       '<p>Analyser les besoins des entreprises de votre secteur afin de détecter les opportunités les plus rentables.</p>' +
     '</div>';
-
-    return;
-  }
-
-  results.style.display="block";
-
-  results.innerHTML=`
-
-    <div class="result-card">
-      <h3>🎯 Opportunité détectée</h3>
-      <p>
-        Développement commercial pour le secteur :
-        <strong>${business}</strong>
-      </p>
-      <div class="score">
-        Potentiel : Élevé
-      </div>
-    </div>
-
-    <div class="result-card">
-      <h3>📈 Piste de développement</h3>
-      <p>
-        Identifier de nouveaux clients et marchés
-        correspondant à votre activité.
-      </p>
-      <div class="score">
-        Priorité : Haute
-      </div>
-    </div>
-
-    <div class="result-card">
-      <h3>🚀 Action recommandée</h3>
-      <p>
-        Analyser les besoins des entreprises de votre secteur
-        afin de détecter les opportunités les plus rentables.
-      </p>
-    </div>
-
-  `;
 }
 
 </script>
