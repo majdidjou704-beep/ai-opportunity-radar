@@ -39,35 +39,35 @@ export default {
   },
   {
     role: "user",
+
     content:
-  "Analyse en profondeur cette activité ou ce secteur : " +
+  "Analyse cette activité ou ce secteur : " +
   business +
   ".\n\n" +
-  "Ton objectif est de détecter des opportunités commerciales réellement exploitables. " +
-  "Ne te contente pas de lister des services existants. Recherche des problèmes, besoins non satisfaits, pertes de temps, inefficacités, difficultés opérationnelles, besoins technologiques et possibilités d'automatisation.\n\n" +
-  "Pour chaque opportunité, relie clairement le problème, le client, la solution et la possibilité de créer une offre vendable.\n\n" +
-  "Présente ton analyse avec cette structure concise :\n\n" +
-  "1. 🎯 Résumé stratégique\n" +
-  "Donne une vision courte du secteur, de ses principales difficultés et des domaines présentant le plus de potentiel.\n\n" +
-  "2. 💡 5 opportunités commerciales\n" +
-  "Pour chacune des 5 opportunités, indique : opportunité, problème identifié, clients cibles, solution ou offre recommandée, utilisation possible de l'IA ou de l'automatisation, potentiel commercial qualitatif et justification courte.\n\n" +
-  "3. 🔥 Besoins prioritaires du marché\n" +
-  "Identifie les cinq besoins ou problèmes les plus importants à résoudre dans ce secteur.\n\n" +
-  "4. 🤖 Meilleures possibilités avec l'IA\n" +
-  "Identifie les trois tâches ou problèmes qui pourraient être particulièrement améliorés par l'intelligence artificielle ou l'automatisation.\n\n" +
-  "5. ⚠️ Difficultés et risques\n" +
-  "Indique les principaux obstacles, risques opérationnels, réglementaires, technologiques ou concurrentiels.\n\n" +
-  "6. 🚀 Plan d'action\n" +
-  "Donne cinq actions prioritaires et concrètes permettant de commencer à exploiter les meilleures opportunités.\n\n" +
-  "7. ⭐ Top 3 des opportunités\n" +
-  "Classe les trois meilleures opportunités selon leur intérêt commercial, leur faisabilité et leur potentiel de différenciation.\n\n" +
-  "8. 🧠 Idée de solution innovante\n" +
-  "Propose une solution combinant si possible intelligence artificielle, automatisation ou outil numérique pour résoudre un problème identifié.\n\n" +
-  "Règles importantes : sois concret, précis et orienté vers l'action. Évite les généralités et les répétitions. " +
-  "Ne présente jamais une hypothèse comme un fait. Ne fabrique aucune statistique, aucun pourcentage, aucun montant, aucune part de marché, aucun chiffre de croissance et aucune source. " +
-  "Pour le potentiel commercial, utilise uniquement Très fort, Fort, Moyen ou Faible avec une justification qualitative. " +
-  "Si les données réelles ne sont pas disponibles, indique clairement qu'il s'agit d'une hypothèse ou d'une estimation qualitative."
-    }
+  "Tu es un analyste stratégique spécialisé dans la détection d'opportunités commerciales, l'innovation, l'IA et l'automatisation. " +
+  "Ton objectif est de trouver des problèmes réels ou plausibles que des entreprises ou des clients pourraient vouloir résoudre et qui peuvent devenir des offres commerciales vendables.\n\n" +
+  "Ne te limite pas aux services déjà connus dans ce secteur. Cherche surtout les pertes de temps, tâches répétitives, problèmes d'organisation, difficultés de gestion, manque de visibilité, acquisition de clients, suivi des clients, devis, planification, qualité, coûts, erreurs et possibilités d'automatisation.\n\n" +
+  "Pour chaque opportunité, relie toujours clairement : problème → client cible → solution → utilisation de l'IA ou de l'automatisation → manière possible de vendre la solution.\n\n" +
+  "Présente la réponse avec cette structure :\n\n" +
+  "1. 🎯 Diagnostic stratégique\n" +
+  "Résume le secteur, ses principaux problèmes et les domaines qui semblent offrir le plus d'opportunités.\n\n" +
+  "2. 💡 5 opportunités à fort intérêt\n" +
+  "Pour chaque opportunité indique : nom de l'opportunité, problème, client cible, solution, rôle possible de l'IA ou de l'automatisation, modèle de vente possible et potentiel qualitatif.\n\n" +
+  "3. 🤖 3 opportunités spécifiquement liées à l'IA\n" +
+  "Identifie trois solutions numériques ou automatisées pouvant résoudre des problèmes concrets du secteur.\n\n" +
+  "4. 💰 Opportunité la plus facile à commercialiser\n" +
+  "Choisis une seule opportunité et explique pourquoi elle pourrait être relativement simple à proposer à des clients.\n\n" +
+  "5. 🚀 Plan de lancement\n" +
+  "Donne cinq actions concrètes pour transformer cette opportunité en offre réelle, en commençant par une solution simple et peu coûteuse.\n\n" +
+  "6. ⭐ Top 3 final\n" +
+  "Classe les trois meilleures opportunités selon : intérêt commercial, facilité de mise en œuvre et possibilité de différenciation.\n\n" +
+  "Règles essentielles : sois concret, original et orienté vers l'action. Évite les idées génériques et les répétitions. " +
+  "Ne fabrique aucune statistique, aucun pourcentage, aucun chiffre financier, aucun prix, aucune part de marché et aucune source. " +
+  "Ne présente jamais une hypothèse comme un fait. " +
+  "Pour le potentiel qualitatif, utilise uniquement : Très fort, Fort, Moyen ou Faible, avec une justification courte. " +
+  "Si une information ne peut pas être vérifiée, présente-la clairement comme une hypothèse ou une possibilité."  
+   
+  }
         ],
         max_tokens: 768
       }
