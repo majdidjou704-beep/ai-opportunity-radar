@@ -20,7 +20,7 @@ export default {
           );
         }
 
-        const response = await env.AI.run(
+        const response = await env.IA.run(
           "@cf/meta/llama-3.1-8b-instruct-fast",
           {
             messages: [
