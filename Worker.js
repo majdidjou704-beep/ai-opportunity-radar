@@ -1,166 +1,118 @@
 const MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
-const VERSION = "7.0";
+const VERSION = "7.1";
+
+/*
+  GouRare AI V7.1
+  Principe :
+  - recherche ciblée dans des pages officielles connues
+  - aucune information confirmée sans preuve
+  - distinction entre confirmé / à vérifier / recommandation
+*/
 
 const SOURCES = [
   {
-    name: "Service-Public",
+    id: "creation_ei",
+    nom: "Service-Public Entreprendre",
+    url: "https://entreprendre.service-public.fr/vosdroits/F36763",
+    domaines: [
+      "création",
+      "entreprise",
+      "entreprise individuelle",
+      "ei",
+      "micro-entreprise",
+      "immatriculation",
+      "formalités"
+    ]
+  },
+
+  {
+    id: "commerce",
+    nom: "Service-Public Entreprendre",
+    url: "https://entreprendre.service-public.fr/vosdroits/F23571",
+    domaines: [
+      "création",
+      "commerce",
+      "entreprise",
+      "immatriculation",
+      "micro-entreprise"
+    ]
+  },
+
+  {
+    id: "statut",
+    nom: "Service-Public Entreprendre",
+    url: "https://entreprendre.service-public.fr/vosdroits/R18323",
+    domaines: [
+      "statut",
+      "forme juridique",
+      "micro-entreprise",
+      "ei",
+      "société",
+      "création"
+    ]
+  },
+
+  {
+    id: "service_public",
+    nom: "Service-Public",
     url: "https://www.service-public.fr/",
-    keywords: [
-      "démarche", "administratif", "administration",
-      "droit", "obligation", "travail", "social"
+    domaines: [
+      "administratif",
+      "droit",
+      "démarche",
+      "social",
+      "travail"
     ]
   },
+
   {
-    name: "Service-Public Entreprendre",
-    url: "https://entreprendre.service-public.fr/",
-    keywords: [
-      "entreprise", "création", "entrepreneur",
-      "micro-entrepreneur", "immatriculation",
-      "activité", "commerce", "nettoyage"
-    ]
-  },
-  {
-    name: "URSSAF",
+    id: "urssaf",
+    nom: "URSSAF",
     url: "https://www.urssaf.fr/",
-    keywords: [
-      "urssaf", "cotisation", "social",
-      "micro-entrepreneur", "déclaration",
-      "revenu", "indépendant"
+    domaines: [
+      "urssaf",
+      "cotisation",
+      "indépendant",
+      "micro-entrepreneur",
+      "social"
     ]
   },
+
   {
-    name: "Impôts",
+    id: "impots",
+    nom: "Impôts",
     url: "https://www.impots.gouv.fr/",
-    keywords: [
-      "impôt", "fiscal", "taxe", "tva",
-      "cfe", "revenu", "fiscalité"
-    ]
-  },
-  {
-    name: "Économie",
-    url: "https://www.economie.gouv.fr/",
-    keywords: [
-      "tva", "entreprise", "fiscalité",
-      "prix", "obligation", "commerce"
-    ]
-  },
-  {
-    name: "Travail",
-    url: "https://travail-emploi.gouv.fr/",
-    keywords: [
-      "salarié", "emploi", "contrat",
-      "travail", "employeur", "recrutement"
+    domaines: [
+      "impôt",
+      "fiscalité",
+      "tva",
+      "cfe",
+      "taxe"
     ]
   }
 ];
 
-function clean(value, max = 4000) {
-  if (value === null || value === undefined) return "";
+function clean(value, max = 5000) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
   return String(value)
     .replace(/\u0000/g, "")
     .trim()
     .slice(0, max);
 }
 
-function normalizeText(value) {
-  if (typeof value === "string") return value;
-
-  if (Array.isArray(value)) {
-    return value
-      .map(normalizeText)
-      .filter(Boolean)
-      .join("\n");
+function arrayStrings(value) {
+  if (!Array.isArray(value)) {
+    return [];
   }
-
-  if (value && typeof value === "object") {
-    return Object.values(value)
-      .map(normalizeText)
-      .filter(Boolean)
-      .join("\n");
-  }
-
-  return "";
-}
-
-function extractJSON(value) {
-  if (value && typeof value === "object") {
-    if (value.response !== undefined) {
-      return extractJSON(value.response);
-    }
-
-    if (value.result && value.result.response !== undefined) {
-      return extractJSON(value.result.response);
-    }
-
-    return value;
-  }
-
-  if (typeof value !== "string") return null;
-
-  let text = value.trim();
-
-  text = text
-    .replace(/^```json/i, "")
-    .replace(/^```/i, "")
-    .replace(/```$/i, "")
-    .trim();
-
-  try {
-    return JSON.parse(text);
-  } catch {}
-
-  const first = text.indexOf("{");
-  const last = text.lastIndexOf("}");
-
-  if (first !== -1 && last > first) {
-    try {
-      return JSON.parse(text.slice(first, last + 1));
-    } catch {}
-  }
-
-  return null;
-}
-
-function arrayOfObjects(value) {
-  if (!Array.isArray(value)) return [];
 
   return value
     .map(item => {
       if (typeof item === "string") {
-        return {
-          texte: clean(item),
-          statut: "a_verifier",
-          source: ""
-        };
+        return clean(item);
       }
-
-      if (item && typeof item === "object") {
-        return {
-          texte: clean(
-            item.texte ||
-            item.text ||
-            item.description ||
-            item.nom ||
-            item.title ||
-            ""
-          ),
-          statut: clean(item.statut || "a_verifier"),
-          source: clean(item.source || ""),
-          preuve: clean(item.preuve || item.evidence || "")
-        };
-      }
-
-      return null;
-    })
-    .filter(item => item && item.texte);
-}
-
-function arrayOfStrings(value) {
-  if (!Array.isArray(value)) return [];
-
-  return value
-    .map(item => {
-      if (typeof item === "string") return clean(item);
 
       if (item && typeof item === "object") {
         return clean(
@@ -178,131 +130,323 @@ function arrayOfStrings(value) {
     .filter(Boolean);
 }
 
-function normalizeAnalysis(data) {
-  const source = data && typeof data === "object" ? data : {};
+function arrayFacts(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map(item => {
+      if (typeof item === "string") {
+        return {
+          texte: clean(item),
+          source: "",
+          preuve: "",
+          statut: "a_verifier"
+        };
+      }
+
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      return {
+        texte: clean(
+          item.texte ||
+          item.text ||
+          item.description ||
+          ""
+        ),
+
+        source: clean(
+          item.source ||
+          item.source_nom ||
+          ""
+        ),
+
+        preuve: clean(
+          item.preuve ||
+          item.evidence ||
+          ""
+        ),
+
+        statut: clean(
+          item.statut ||
+          "a_verifier"
+        )
+      };
+    })
+    .filter(item => item && item.texte);
+}
+
+function extractJSON(value) {
+  if (!value) {
+    return null;
+  }
+
+  if (typeof value === "object") {
+
+    if (value.response !== undefined) {
+      return extractJSON(value.response);
+    }
+
+    if (
+      value.result &&
+      value.result.response !== undefined
+    ) {
+      return extractJSON(value.result.response);
+    }
+
+    if (value.output !== undefined) {
+      return extractJSON(value.output);
+    }
+
+    return value;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  let text = value.trim();
+
+  text = text
+    .replace(/^```json/i, "")
+    .replace(/^```/i, "")
+    .replace(/```$/i, "")
+    .trim();
+
+  try {
+    return JSON.parse(text);
+  } catch {}
+
+  const debut = text.indexOf("{");
+  const fin = text.lastIndexOf("}");
+
+  if (
+    debut !== -1 &&
+    fin !== -1 &&
+    fin > debut
+  ) {
+    try {
+      return JSON.parse(
+        text.slice(debut, fin + 1)
+      );
+    } catch {}
+  }
+
+  return null;
+}
+
+function normalize(data) {
+  const source =
+    data && typeof data === "object"
+      ? data
+      : {};
 
   return {
-    titre: clean(source.titre || source.title || "Analyse GouRare AI"),
+    titre: clean(
+      source.titre ||
+      "Analyse GouRare AI"
+    ),
 
     compris: clean(
       source.compris ||
       source.ce_que_jai_compris ||
-      source.summary ||
       ""
     ),
 
     orientation: clean(
       source.orientation ||
-      source.conseil ||
-      source.answer ||
       ""
     ),
 
-    confirmees: arrayOfObjects(
+    confirmees: arrayFacts(
       source.confirmees ||
       source.informations_confirmees ||
-      source.confirmed ||
       []
     ),
 
-    aVerifier: arrayOfObjects(
+    aVerifier: arrayFacts(
       source.aVerifier ||
       source.a_verifier ||
       source.informations_a_verifier ||
-      source.verify ||
       []
     ),
 
-    recommandations: arrayOfStrings(
+    recommandations: arrayStrings(
       source.recommandations ||
-      source.recommendations ||
       []
     ),
 
-    actions: arrayOfStrings(
+    actions: arrayStrings(
       source.actions ||
-      source.prochaines_actions ||
       []
     ),
 
-    documents: arrayOfStrings(
+    documents: arrayStrings(
       source.documents ||
-      source.documents_necessaires ||
       []
     ),
 
-    risques: arrayOfStrings(
+    risques: arrayStrings(
       source.risques ||
-      source.risks ||
       []
     ),
 
     professionnel: clean(
       source.professionnel ||
-      source.professional ||
-      "Aucune orientation professionnelle nécessaire"
+      ""
     ),
 
     prochaineAction: clean(
       source.prochaineAction ||
       source.prochaine_action ||
-      source.next_action ||
       ""
     ),
 
     sources: Array.isArray(source.sources)
       ? source.sources
-          .map(item => {
-            if (typeof item === "string") {
-              return {
-                nom: clean(item),
-                url: ""
-              };
-            }
+          .map(sourceItem => ({
+            nom: clean(
+              sourceItem?.nom ||
+              sourceItem?.name ||
+              ""
+            ),
 
-            return {
-              nom: clean(item?.nom || item?.name || ""),
-              url: clean(item?.url || "")
-            };
-          })
+            url: clean(
+              sourceItem?.url ||
+              ""
+            )
+          }))
           .filter(item => item.nom)
       : []
   };
 }
 
-function detectSources(question, type) {
-  const text = `${question} ${type}`.toLowerCase();
+/*
+  Détermine les pages les plus pertinentes.
+*/
+function selectionnerSources(question) {
 
-  return SOURCES
-    .map(source => {
-      let score = 0;
+  const texte = clean(question)
+    .toLowerCase();
 
-      for (const keyword of source.keywords) {
-        if (text.includes(keyword.toLowerCase())) {
-          score++;
-        }
+  const scores = SOURCES.map(source => {
+
+    let score = 0;
+
+    for (const domaine of source.domaines) {
+
+      if (
+        texte.includes(
+          domaine.toLowerCase()
+        )
+      ) {
+        score += 3;
+      }
+    }
+
+    return {
+      ...source,
+      score
+    };
+  });
+
+  /*
+    Pour une question de création d'entreprise,
+    on privilégie les pages de création.
+  */
+
+  if (
+    texte.includes("créer") ||
+    texte.includes("création") ||
+    texte.includes("entreprise") ||
+    texte.includes("micro") ||
+    texte.includes("indépendant")
+  ) {
+
+    scores.forEach(source => {
+
+      if (
+        source.id === "creation_ei" ||
+        source.id === "statut"
+      ) {
+        source.score += 8;
       }
 
-      return {
-        ...source,
-        score
-      };
-    })
+    });
+  }
+
+  return scores
     .sort((a, b) => b.score - a.score)
     .filter(source => source.score > 0)
-    .slice(0, 3);
+    .slice(0, 4);
 }
 
-async function fetchSource(source) {
+/*
+  Extraction simplifiée du texte d'une page officielle.
+*/
+function nettoyerHTML(html) {
+
+  return html
+
+    .replace(
+      /<script[\s\S]*?<\/script>/gi,
+      " "
+    )
+
+    .replace(
+      /<style[\s\S]*?<\/style>/gi,
+      " "
+    )
+
+    .replace(
+      /<noscript[\s\S]*?<\/noscript>/gi,
+      " "
+    )
+
+    .replace(
+      /<[^>]+>/g,
+      " "
+    )
+
+    .replace(
+      /&nbsp;/gi,
+      " "
+    )
+
+    .replace(
+      /&amp;/gi,
+      "&"
+    )
+
+    .replace(
+      /\s+/g,
+      " "
+    )
+
+    .trim();
+}
+
+async function recupererSource(source) {
+
   try {
-    const response = await fetch(source.url, {
-      method: "GET",
-      headers: {
-        "User-Agent": "GouRare-AI/7.0"
+
+    const response = await fetch(
+      source.url,
+      {
+        method: "GET",
+
+        headers: {
+          "User-Agent":
+            "GouRare-AI/7.1"
+        }
       }
-    });
+    );
 
     if (!response.ok) {
+
       return {
         ...source,
         disponible: false,
@@ -310,22 +454,21 @@ async function fetchSource(source) {
       };
     }
 
-    const html = await response.text();
+    const html =
+      await response.text();
 
-    const texte = html
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 12000);
+    const texte =
+      nettoyerHTML(html)
+        .slice(0, 18000);
 
     return {
       ...source,
       disponible: true,
       texte
     };
+
   } catch {
+
     return {
       ...source,
       disponible: false,
@@ -334,227 +477,263 @@ async function fetchSource(source) {
   }
 }
 
-function systemPrompt() {
-  return `
-Tu es GouRare AI.
+/*
+  Recherche de mots importants dans le contenu.
+*/
+function extrairePreuves(
+  texte,
+  question
+) {
 
-Tu es un assistant d'orientation pratique pour les citoyens,
-salariés, demandeurs d'emploi, indépendants, entrepreneurs
-et petites entreprises.
+  const motsQuestion =
+    question
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(mot => mot.length >= 5)
+      .slice(0, 12);
 
-TON OBJECTIF :
+  const phrases =
+    texte
+      .split(/[.!?]/)
+      .map(item => item.trim())
+      .filter(item => item.length > 40);
 
-Comprendre la situation de l'utilisateur,
-identifier le domaine concerné,
-organiser les informations,
-orienter vers les bonnes démarches,
-identifier les points à vérifier,
-et donner une prochaine action concrète.
+  const resultats = [];
 
-REGLE ABSOLUE DE VERIFICATION :
+  for (const phrase of phrases) {
 
-Une information ne doit être placée dans "confirmees"
-QUE SI LES SOURCES FOURNIES DANS LE CONTEXTE
-LA SOUTIENNENT CLAIREMENT.
+    const phraseLower =
+      phrase.toLowerCase();
 
-Si la source ne permet pas de confirmer une information,
-place-la dans "aVerifier".
+    let score = 0;
 
-NE JAMAIS inventer :
+    for (const mot of motsQuestion) {
 
-- obligation
-- loi
-- article de loi
-- seuil
-- taux
-- montant
-- délai
-- pénalité
-- taxe
-- cotisation
-- numéro administratif
-- document obligatoire
-- autorisation
-- licence
-- statistique
-- prix
-- revenu
-- économie
-- pourcentage
-
-Ne transforme jamais une possibilité en obligation.
-
-Exemple :
-
-Mauvais :
-"Vous devez obligatoirement vous inscrire au RCS."
-
-Correct :
-"Les formalités d'immatriculation dépendent de la forme
-et de la nature de l'activité. Vérifier la formalité exacte
-pour cette activité."
-
-Même principe pour la TVA, CFE, assurances,
-autorisations, licences et documents.
-
-IMPORTANT :
-
-Ne considère jamais automatiquement qu'une entreprise
-doit avoir un numéro de TVA intracommunautaire.
-
-Ne considère jamais automatiquement que toute activité
-doit être inscrite au RCS.
-
-Ne considère jamais automatiquement qu'un document
-est obligatoire.
-
-Pour les activités réglementées, indique qu'il faut vérifier
-si l'activité concernée est réglementée.
-
-SOURCES :
-
-Les sources officielles fournies sont prioritaires.
-
-Si une source officielle n'est pas disponible,
-ne prétends pas l'avoir consultée.
-
-DISTINCTION :
-
-"confirmees" = information clairement soutenue par une source.
-
-"aVerifier" = information qui nécessite une vérification.
-
-"recommandations" = conseil pratique de GouRare AI.
-
-"actions" = prochaines étapes concrètes.
-
-"documents" = documents à vérifier ou préparer,
-mais ne les présente pas comme obligatoires sans preuve.
-
-"risques" = risques généraux ou points d'attention.
-
-PROFESSIONNEL :
-
-Si la situation nécessite un avocat, expert-comptable,
-professionnel du droit, professionnel fiscal,
-travailleur social ou autre spécialiste,
-indique-le clairement.
-
-GouRare AI ne prétend jamais remplacer ces professionnels.
-
-REPONSE :
-
-Toujours produire une réponse pratique,
-claire et compréhensible.
-
-Terminer par une "prochaineAction".
-
-FORMAT JSON STRICT :
-
-{
-  "titre": "",
-  "compris": "",
-  "orientation": "",
-  "confirmees": [
-    {
-      "texte": "",
-      "statut": "confirme",
-      "source": "",
-      "preuve": ""
+      if (
+        phraseLower.includes(mot)
+      ) {
+        score++;
+      }
     }
-  ],
-  "aVerifier": [
-    {
-      "texte": "",
-      "statut": "a_verifier",
-      "source": "",
-      "preuve": ""
+
+    if (score > 0) {
+
+      resultats.push({
+        phrase,
+        score
+      });
     }
-  ],
-  "recommandations": [],
-  "actions": [],
-  "documents": [],
-  "risques": [],
-  "professionnel": "",
-  "prochaineAction": "",
-  "sources": [
-    {
-      "nom": "",
-      "url": ""
-    }
-  ]
+  }
+
+  return resultats
+    .sort(
+      (a, b) =>
+        b.score - a.score
+    )
+    .slice(0, 12);
 }
+
+function construireContexte(
+  sources,
+  question
+) {
+
+  const blocs = [];
+
+  for (const source of sources) {
+
+    if (!source.disponible) {
+      continue;
+    }
+
+    const preuves =
+      extrairePreuves(
+        source.texte,
+        question
+      );
+
+    blocs.push(
+      `
+SOURCE OFFICIELLE
+Nom : ${source.nom}
+URL : ${source.url}
+
+EXTRAITS PERTINENTS :
+${preuves
+  .map(item => "- " + item.phrase)
+  .join("\n")}
+
+CONTENU SOURCE :
+${source.texte.slice(0, 12000)}
+`
+    );
+  }
+
+  if (!blocs.length) {
+
+    return `
+AUCUNE SOURCE OFFICIELLE
+N'A PU ÊTRE RECUPEREE.
 `;
+  }
+
+  return blocs.join(
+    "\n========================\n"
+  );
 }
 
 const schema = {
+
   type: "object",
+
   properties: {
-    titre: { type: "string" },
-    compris: { type: "string" },
-    orientation: { type: "string" },
+
+    titre: {
+      type: "string"
+    },
+
+    compris: {
+      type: "string"
+    },
+
+    orientation: {
+      type: "string"
+    },
 
     confirmees: {
+
       type: "array",
+
       items: {
+
         type: "object",
+
         properties: {
-          texte: { type: "string" },
-          statut: { type: "string" },
-          source: { type: "string" },
-          preuve: { type: "string" }
+
+          texte: {
+            type: "string"
+          },
+
+          source: {
+            type: "string"
+          },
+
+          preuve: {
+            type: "string"
+          },
+
+          statut: {
+            type: "string"
+          }
+
         },
-        required: ["texte", "statut", "source", "preuve"]
+
+        required: [
+          "texte",
+          "source",
+          "preuve",
+          "statut"
+        ]
       }
     },
 
     aVerifier: {
+
       type: "array",
+
       items: {
+
         type: "object",
+
         properties: {
-          texte: { type: "string" },
-          statut: { type: "string" },
-          source: { type: "string" },
-          preuve: { type: "string" }
+
+          texte: {
+            type: "string"
+          },
+
+          source: {
+            type: "string"
+          },
+
+          preuve: {
+            type: "string"
+          },
+
+          statut: {
+            type: "string"
+          }
+
         },
-        required: ["texte", "statut", "source", "preuve"]
+
+        required: [
+          "texte",
+          "source",
+          "preuve",
+          "statut"
+        ]
       }
     },
 
     recommandations: {
       type: "array",
-      items: { type: "string" }
+      items: {
+        type: "string"
+      }
     },
 
     actions: {
       type: "array",
-      items: { type: "string" }
+      items: {
+        type: "string"
+      }
     },
 
     documents: {
       type: "array",
-      items: { type: "string" }
+      items: {
+        type: "string"
+      }
     },
 
     risques: {
       type: "array",
-      items: { type: "string" }
+      items: {
+        type: "string"
+      }
     },
 
-    professionnel: { type: "string" },
+    professionnel: {
+      type: "string"
+    },
 
-    prochaineAction: { type: "string" },
+    prochaineAction: {
+      type: "string"
+    },
 
     sources: {
+
       type: "array",
+
       items: {
+
         type: "object",
+
         properties: {
-          nom: { type: "string" },
-          url: { type: "string" }
+
+          nom: {
+            type: "string"
+          },
+
+          url: {
+            type: "string"
+          }
+
         },
-        required: ["nom", "url"]
+
+        required: [
+          "nom",
+          "url"
+        ]
       }
     }
   },
@@ -575,177 +754,382 @@ const schema = {
   ]
 };
 
-async function askAI(env, question, contexte, type) {
-  const prompt = `
-TYPE DE DEMANDE :
-${type}
+function promptSysteme() {
 
+  return `
+Tu es GouRare AI.
+
+Tu aides l'utilisateur à comprendre une situation
+et à trouver la prochaine action utile.
+
+Tu ne remplaces jamais :
+- avocat
+- expert-comptable
+- médecin
+- travailleur social
+- administration
+- autre professionnel réglementé.
+
+REGLE CRITIQUE :
+
+Tu as reçu des sources officielles.
+
+Tu dois utiliser UNIQUEMENT les informations
+contenues dans ces sources pour déclarer
+une information comme "confirmee".
+
+Une information confirmée doit avoir :
+
+1. un texte réellement présent ou clairement
+   déductible du passage fourni ;
+
+2. une source officielle identifiable ;
+
+3. une preuve courte provenant réellement
+   du contenu fourni.
+
+INTERDICTION ABSOLUE :
+
+Tu ne dois jamais inventer une preuve.
+
+Tu ne dois jamais inventer une obligation.
+
+Tu ne dois jamais inventer :
+- taux
+- prix
+- montant
+- délai
+- pénalité
+- numéro
+- taxe
+- cotisation
+- document obligatoire
+- licence
+- autorisation
+- diplôme
+- registre
+- régime fiscal.
+
+IMPORTANT :
+
+Ne dis jamais automatiquement :
+
+"RCS obligatoire"
+
+"TVA obligatoire"
+
+"expert-comptable obligatoire"
+
+"avocat obligatoire"
+
+"document X obligatoire"
+
+si la source fournie ne le dit pas
+pour la situation précise.
+
+Si une information dépend :
+- du statut
+- de l'activité
+- du chiffre d'affaires
+- du nombre de salariés
+- de la nature exacte de l'activité
+- de la situation personnelle
+
+alors elle doit être placée dans
+"aVerifier" si les sources ne permettent
+pas de déterminer le cas précis.
+
+Pour "documents", indique seulement :
+- documents clairement indiqués par la source
+OU
+- "à vérifier selon le statut et l'activité".
+
+Pour "professionnel", ne recommande pas
+un professionnel sans raison identifiable.
+
+Si l'utilisateur demande simplement comment
+créer une entreprise, la réponse doit commencer
+par les étapes concrètes.
+
+Tu dois éviter les réponses vagues.
+
+Pour une création d'entreprise, cherche notamment :
+
+- forme juridique
+- activité
+- formalités
+- guichet des formalités
+- immatriculation
+- domiciliation
+- documents
+- fiscalité
+- cotisations
+- TVA
+- activité réglementée
+
+mais ne transforme jamais ces thèmes
+en obligations universelles.
+
+Le champ "compris" doit simplement reformuler
+la demande de l'utilisateur.
+
+Le champ "orientation" doit donner
+une orientation pratique.
+
+La "prochaineAction" doit être UNE action
+réaliste et immédiatement utile.
+
+Réponds uniquement en JSON.
+`;
+}
+
+async function demanderIA(
+  env,
+  question,
+  contexte
+) {
+
+  const prompt = `
 QUESTION UTILISATEUR :
+
 ${question}
 
-CONTEXTE DES SOURCES OFFICIELLES :
+SOURCES OFFICIELLES ET EXTRAITS :
 
 ${contexte}
 
-Analyse la situation.
+Produis une analyse pratique.
 
-Ne mets dans "confirmees" que les informations
-réellement soutenues par les extraits fournis.
+ATTENTION :
 
-Pour chaque information confirmée,
-indique la source et une courte preuve.
+Si une information n'est pas prouvée
+dans les extraits, elle ne doit PAS être
+dans "confirmees".
 
-Si la preuve n'existe pas,
-place l'information dans "aVerifier".
+Elle doit aller dans "aVerifier".
 
-Ne complète pas les informations manquantes
-avec tes connaissances générales.
+Une preuve doit être un extrait réel
+du contenu fourni.
+
+Ne fabrique jamais de preuve.
 
 Réponds uniquement en JSON.
 `;
 
-  const result = await env.IA.run(
-    MODEL,
-    {
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt()
+  const result =
+    await env.IA.run(
+      MODEL,
+      {
+
+        messages: [
+
+          {
+            role: "system",
+            content: promptSysteme()
+          },
+
+          {
+            role: "user",
+            content: prompt
+          }
+
+        ],
+
+        response_format: {
+          type: "json_schema",
+
+          json_schema: schema
         },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
 
-      response_format: {
-        type: "json_schema",
-        json_schema: schema
-      },
+        max_tokens: 2400,
 
-      max_tokens: 2200,
-      temperature: 0.1
-    }
-  );
-
-  const raw = extractJSON(result);
-
-  if (!raw) {
-    throw new Error("Réponse IA invalide.");
-  }
-
-  return normalizeAnalysis(raw);
-}
-
-function verifierConfirmations(analyse, sources) {
-  const disponibles = sources.filter(s => s.disponible);
-
-  const resultat = [];
-
-  for (const item of analyse.confirmees) {
-    const sourceName = clean(item.source).toLowerCase();
-    const preuve = clean(item.preuve);
-
-    const sourceExiste = disponibles.some(
-      source =>
-        source.name.toLowerCase() === sourceName
+        temperature: 0.05
+      }
     );
 
+  const data =
+    extractJSON(result);
+
+  if (!data) {
+    throw new Error(
+      "Réponse IA invalide"
+    );
+  }
+
+  return normalize(data);
+}
+
+/*
+  Vérification finale.
+  Une confirmation sans source/preuve
+  est automatiquement déplacée vers
+  "À vérifier".
+*/
+function verifierAnalyse(
+  analyse,
+  sources
+) {
+
+  const nomsSources =
+    sources
+      .filter(source =>
+        source.disponible
+      )
+      .map(source =>
+        source.nom.toLowerCase()
+      );
+
+  const confirmees = [];
+
+  const aVerifier =
+    Array.isArray(analyse.aVerifier)
+      ? [...analyse.aVerifier]
+      : [];
+
+  for (
+    const information
+    of analyse.confirmees
+  ) {
+
+    const source =
+      clean(
+        information.source
+      );
+
+    const preuve =
+      clean(
+        information.preuve
+      );
+
+    const sourceValide =
+      nomsSources.some(
+        nom =>
+          source
+            .toLowerCase()
+            .includes(nom)
+      );
+
+    const preuveValide =
+      preuve.length >= 20;
+
     if (
-      sourceExiste &&
-      preuve.length >= 15
+      sourceValide &&
+      preuveValide
     ) {
-      resultat.push({
-        ...item,
-        statut: "confirme"
+
+      confirmees.push({
+        texte:
+          information.texte,
+
+        source:
+          information.source,
+
+        preuve:
+          information.preuve,
+
+        statut:
+          "confirme"
       });
+
     } else {
-      analyse.aVerifier.push({
-        texte: item.texte,
-        statut: "a_verifier",
-        source: item.source || "",
-        preuve: item.preuve || ""
+
+      aVerifier.push({
+
+        texte:
+          information.texte,
+
+        source:
+          information.source || "",
+
+        preuve:
+          information.preuve || "",
+
+        statut:
+          "a_verifier"
       });
     }
   }
 
-  analyse.confirmees = resultat;
+  analyse.confirmees =
+    confirmees;
+
+  analyse.aVerifier =
+    aVerifier;
 
   return analyse;
 }
 
-async function analyser(env, question, type) {
-  const sourcesSelectionnees = detectSources(
-    question,
-    type
-  );
+async function analyser(
+  env,
+  question,
+  type
+) {
 
-  const sources = await Promise.all(
-    sourcesSelectionnees.map(fetchSource)
-  );
+  const sourcesChoisies =
+    selectionnerSources(
+      question
+    );
 
-  const contexte = sources
-    .filter(source => source.disponible)
-    .map(source => `
-SOURCE : ${source.name}
-URL : ${source.url}
+  const sources =
+    await Promise.all(
+      sourcesChoisies.map(
+        recupererSource
+      )
+    );
 
-CONTENU :
-${source.texte}
-`)
-    .join("\n-------------------\n");
+  const contexte =
+    construireContexte(
+      sources,
+      question
+    );
 
-  const analyse = await askAI(
-    env,
-    question,
-    contexte || "Aucun contenu officiel disponible.",
-    type
-  );
+  const analyse =
+    await demanderIA(
+      env,
+      question,
+      contexte
+    );
 
-  const resultat = verifierConfirmations(
-    analyse,
+  const resultat =
+    verifierAnalyse(
+      analyse,
+      sources
+    );
+
+  resultat.sources =
     sources
-  );
-
-  resultat.sources = sources
-    .filter(source => source.disponible)
-    .map(source => ({
-      nom: source.name,
-      url: source.url
-    }));
+      .filter(source =>
+        source.disponible
+      )
+      .map(source => ({
+        nom: source.nom,
+        url: source.url
+      }));
 
   return resultat;
 }
 
-async function handleAPI(request, env) {
-  if (request.method !== "POST") {
+async function api(
+  request,
+  env
+) {
+
+  if (
+    request.method !== "POST"
+  ) {
+
     return new Response(
       JSON.stringify({
         success: false,
-        error: "Méthode non autorisée."
+        error:
+          "Méthode non autorisée."
       }),
       {
         status: 405,
-        headers: {
-          "Content-Type": "application/json"
-        }
-      }
-    );
-  }
 
-  const contentType =
-    request.headers.get("content-type") || "";
-
-  if (!contentType.includes("application/json")) {
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: "JSON requis."
-      }),
-      {
-        status: 400,
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type":
+            "application/json"
         }
       }
     );
@@ -754,52 +1138,70 @@ async function handleAPI(request, env) {
   let body;
 
   try {
-    body = await request.json();
+
+    body =
+      await request.json();
+
   } catch {
+
     return new Response(
       JSON.stringify({
         success: false,
-        error: "JSON invalide."
+        error:
+          "JSON invalide."
       }),
       {
         status: 400,
+
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type":
+            "application/json"
         }
       }
     );
   }
 
-  const type = clean(body.type || "question", 100);
+  const question =
+    clean(
+      body.question ||
+      body.probleme ||
+      ""
+    );
 
-  const question = clean(
-    body.question ||
-    body.probleme ||
-    "",
-    3000
-  );
+  const type =
+    clean(
+      body.type ||
+      "question",
+      100
+    );
 
   if (!question) {
+
     return new Response(
       JSON.stringify({
         success: false,
-        error: "Question manquante."
+        error:
+          "Question manquante."
       }),
       {
         status: 400,
+
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type":
+            "application/json"
         }
       }
     );
   }
 
   try {
-    const analyse = await analyser(
-      env,
-      question,
-      type
-    );
+
+    const analyse =
+      await analyser(
+        env,
+        question,
+        type
+      );
 
     return new Response(
       JSON.stringify({
@@ -809,38 +1211,53 @@ async function handleAPI(request, env) {
       }),
       {
         status: 200,
+
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type":
+            "application/json"
         }
       }
     );
-  } catch (error) {
+
+  } catch {
+
     return new Response(
       JSON.stringify({
         success: false,
-        error: "Impossible de générer l'analyse.",
-        detail: "Service temporairement indisponible."
+        error:
+          "Le service est temporairement indisponible."
       }),
       {
         status: 500,
+
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type":
+            "application/json"
         }
       }
     );
   }
 }
 
-function page() {
+function interfaceHTML() {
+
   return `<!DOCTYPE html>
+
 <html lang="fr">
+
 <head>
+
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<meta
+name="viewport"
+content="width=device-width,initial-scale=1"
+>
 
 <title>GouRare AI</title>
 
 <style>
+
 * {
   box-sizing: border-box;
 }
@@ -855,8 +1272,8 @@ body {
 header {
   background: #111;
   color: white;
-  padding: 28px 20px;
   text-align: center;
+  padding: 30px 20px;
 }
 
 header h1 {
@@ -877,8 +1294,8 @@ main {
 
 .badge {
   text-align: center;
-  margin-bottom: 20px;
   font-weight: bold;
+  margin-bottom: 20px;
 }
 
 .tabs {
@@ -901,40 +1318,43 @@ main {
   color: white;
 }
 
-.panel {
+.panel,
+.result-card {
   background: white;
   padding: 20px;
   border-radius: 15px;
-  box-shadow: 0 5px 20px rgba(0,0,0,.06);
+  box-shadow:
+    0 5px 20px rgba(0,0,0,.06);
 }
 
-textarea,
-input {
+textarea {
   width: 100%;
+  min-height: 150px;
   padding: 14px;
   border: 1px solid #ccc;
   border-radius: 10px;
-  margin-bottom: 12px;
+  resize: vertical;
   font-size: 16px;
 }
 
-button.primary {
+.primary {
   width: 100%;
+  margin-top: 12px;
   padding: 14px;
   border: 0;
   border-radius: 10px;
   background: #111;
   color: white;
-  cursor: pointer;
   font-size: 16px;
+  cursor: pointer;
+}
+
+.primary:disabled {
+  opacity: .6;
 }
 
 .result-card {
-  background: white;
   margin-top: 20px;
-  padding: 20px;
-  border-radius: 15px;
-  box-shadow: 0 5px 20px rgba(0,0,0,.06);
 }
 
 .result-card h2 {
@@ -942,7 +1362,7 @@ button.primary {
 }
 
 .section {
-  margin-top: 18px;
+  margin-top: 20px;
 }
 
 .section h3 {
@@ -950,60 +1370,81 @@ button.primary {
 }
 
 .item {
-  padding: 10px;
+  background: #f2f2f2;
+  padding: 11px;
+  border-radius: 9px;
   margin: 7px 0;
-  background: #f3f3f3;
-  border-radius: 8px;
+  line-height: 1.5;
 }
 
-.ai-result {
-  white-space: pre-wrap;
-  line-height: 1.6;
+.small {
+  color: #666;
+  font-size: 13px;
+  margin-top: 5px;
 }
 
 footer {
   text-align: center;
-  padding: 25px;
   color: #666;
+  padding: 25px;
 }
 
-.small {
-  color: #777;
-  font-size: 13px;
-}
 </style>
+
 </head>
 
 <body>
 
 <header>
-  <h1>GouRare AI</h1>
-  <p>L'intelligence qui vous oriente vers la bonne action.</p>
+
+<h1>GouRare AI</h1>
+
+<p>
+L'intelligence qui vous oriente vers la bonne action.
+</p>
+
 </header>
 
 <main>
 
 <div class="badge">
-  🎗️ Avec vous contre le cancer
+🎗️ Avec vous contre le cancer
 </div>
 
 <div class="tabs">
-  <button class="active" data-type="question">Question</button>
-  <button data-type="secteur">Secteur</button>
-  <button data-type="independant">Indépendant</button>
-  <button data-type="probleme">Problème</button>
+
+<button
+class="active"
+data-type="question"
+>
+Question
+</button>
+
+<button data-type="secteur">
+Secteur
+</button>
+
+<button data-type="independant">
+Indépendant
+</button>
+
+<button data-type="probleme">
+Problème
+</button>
+
 </div>
 
 <div class="panel">
 
-<div id="questionPanel">
+<textarea
+id="question"
+placeholder="Décrivez votre situation ou votre question..."
+></textarea>
 
-<textarea id="question"
-placeholder="Décrivez votre situation ou votre question..."></textarea>
-
-</div>
-
-<button class="primary" id="analyser">
+<button
+id="analyser"
+class="primary"
+>
 Analyser avec GouRare AI
 </button>
 
@@ -1014,277 +1455,544 @@ Analyser avec GouRare AI
 </main>
 
 <footer>
-  🎗️ Notre soutien aux personnes touchées par le cancer.
-  <br>
-  <span class="small">
-    GouRare AI fournit une orientation et ne remplace pas
-    un professionnel qualifié.
-  </span>
+
+🎗️ Notre soutien aux personnes touchées par le cancer.
+
+<br>
+
+<span class="small">
+
+GouRare AI fournit une orientation
+et ne remplace pas un professionnel qualifié.
+
+</span>
+
 </footer>
 
 <script>
-const tabs = document.querySelectorAll(".tabs button");
-const analyserButton = document.getElementById("analyser");
-const question = document.getElementById("question");
-const results = document.getElementById("results");
 
-let currentType = "question";
+const tabs =
+  document.querySelectorAll(
+    ".tabs button"
+  );
+
+const question =
+  document.getElementById(
+    "question"
+  );
+
+const analyserButton =
+  document.getElementById(
+    "analyser"
+  );
+
+const results =
+  document.getElementById(
+    "results"
+  );
+
+let currentType =
+  "question";
 
 tabs.forEach(button => {
-  button.addEventListener("click", () => {
 
-    tabs.forEach(item => {
-      item.classList.remove("active");
-    });
+  button.addEventListener(
+    "click",
+    () => {
 
-    button.classList.add("active");
+      tabs.forEach(item => {
+        item.classList.remove(
+          "active"
+        );
+      });
 
-    currentType = button.dataset.type;
-  });
+      button.classList.add(
+        "active"
+      );
+
+      currentType =
+        button.dataset.type;
+    }
+  );
+
 });
 
 function escapeHTML(value) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+
+  return String(
+    value || ""
+  )
+  .replace(
+    /&/g,
+    "&amp;"
+  )
+  .replace(
+    /</g,
+    "&lt;"
+  )
+  .replace(
+    />/g,
+    "&gt;"
+  )
+  .replace(
+    /"/g,
+    "&quot;"
+  )
+  .replace(
+    /'/g,
+    "&#039;"
+  );
 }
 
-function listHTML(items) {
-  if (!Array.isArray(items) || !items.length) {
-    return "";
+function factsHTML(items) {
+
+  if (
+    !Array.isArray(items) ||
+    !items.length
+  ) {
+    return
+      '<div class="small">Aucune information.</div>';
   }
 
-  return items.map(item => {
+  return items
+    .map(item => {
 
-    if (typeof item === "string") {
-      return '<div class="item">' +
-        escapeHTML(item) +
-        '</div>';
-    }
+      if (
+        typeof item === "string"
+      ) {
 
-    return '<div class="item">' +
-      '<strong>' +
-      escapeHTML(item.texte || "") +
-      '</strong>' +
-      (item.source
-        ? '<div class="small">Source : ' +
-          escapeHTML(item.source) +
+        return (
+          '<div class="item">' +
+          escapeHTML(item) +
           '</div>'
-        : '') +
-      (item.preuve
-        ? '<div class="small">Preuve : ' +
-          escapeHTML(item.preuve) +
-          '</div>'
-        : '') +
-      '</div>';
+        );
+      }
 
-  }).join("");
+      return (
+        '<div class="item">' +
+
+        '<strong>' +
+        escapeHTML(
+          item.texte || ""
+        ) +
+        '</strong>' +
+
+        (
+          item.source
+            ? '<div class="small">' +
+              'Source : ' +
+              escapeHTML(
+                item.source
+              ) +
+              '</div>'
+            : ""
+        ) +
+
+        (
+          item.preuve
+            ? '<div class="small">' +
+              'Preuve : ' +
+              escapeHTML(
+                item.preuve
+              ) +
+              '</div>'
+            : ""
+        ) +
+
+        '</div>'
+      );
+
+    })
+    .join("");
 }
 
-function renderAnalyse(analyse) {
+function stringsHTML(items) {
+
+  if (
+    !Array.isArray(items) ||
+    !items.length
+  ) {
+    return
+      '<div class="small">Aucune information.</div>';
+  }
+
+  return items
+    .map(item =>
+      '<div class="item">' +
+      escapeHTML(item) +
+      '</div>'
+    )
+    .join("");
+}
+
+function render(analyse) {
 
   results.innerHTML =
+
     '<div class="result-card">' +
 
-      '<h2>' +
-        escapeHTML(analyse.titre) +
-      '</h2>' +
+    '<h2>' +
+    escapeHTML(
+      analyse.titre
+    ) +
+    '</h2>' +
 
-      '<div class="section">' +
-        '<h3>Ce que j\\'ai compris</h3>' +
-        '<div class="ai-result">' +
-          escapeHTML(analyse.compris) +
-        '</div>' +
-      '</div>' +
+    '<div class="section">' +
 
-      '<div class="section">' +
-        '<h3>Orientation</h3>' +
-        '<div class="ai-result">' +
-          escapeHTML(analyse.orientation) +
-        '</div>' +
-      '</div>' +
+    '<h3>Ce que j\\'ai compris</h3>' +
 
-      '<div class="section">' +
-        '<h3>Informations confirmées</h3>' +
-        listHTML(analyse.confirmees) +
-      '</div>' +
+    '<div class="item">' +
+    escapeHTML(
+      analyse.compris
+    ) +
+    '</div>' +
 
-      '<div class="section">' +
-        '<h3>À vérifier</h3>' +
-        listHTML(analyse.aVerifier) +
-      '</div>' +
+    '</div>' +
 
-      '<div class="section">' +
-        '<h3>Recommandations</h3>' +
-        listHTML(analyse.recommandations) +
-      '</div>' +
+    '<div class="section">' +
 
-      '<div class="section">' +
-        '<h3>Actions</h3>' +
-        listHTML(analyse.actions) +
-      '</div>' +
+    '<h3>Orientation</h3>' +
 
-      '<div class="section">' +
-        '<h3>Documents</h3>' +
-        listHTML(analyse.documents) +
-      '</div>' +
+    '<div class="item">' +
+    escapeHTML(
+      analyse.orientation
+    ) +
+    '</div>' +
 
-      '<div class="section">' +
-        '<h3>Risques / points d\\'attention</h3>' +
-        listHTML(analyse.risques) +
-      '</div>' +
+    '</div>' +
 
-      '<div class="section">' +
-        '<h3>Professionnel à consulter</h3>' +
-        '<div class="item">' +
-          escapeHTML(analyse.professionnel) +
-        '</div>' +
-      '</div>' +
+    '<div class="section">' +
 
-      '<div class="section">' +
-        '<h3>PROCHAINE ACTION</h3>' +
-        '<div class="item">' +
-          '<strong>' +
-            escapeHTML(analyse.prochaineAction) +
-          '</strong>' +
-        '</div>' +
-      '</div>' +
+    '<h3>Informations confirmées</h3>' +
 
-      '<div class="section">' +
-        '<h3>Sources consultées</h3>' +
-        listHTML(
-          (analyse.sources || []).map(source =>
-            source.nom +
-            (source.url ? " — " + source.url : "")
+    factsHTML(
+      analyse.confirmees
+    ) +
+
+    '</div>' +
+
+    '<div class="section">' +
+
+    '<h3>À vérifier</h3>' +
+
+    factsHTML(
+      analyse.aVerifier
+    ) +
+
+    '</div>' +
+
+    '<div class="section">' +
+
+    '<h3>Recommandations</h3>' +
+
+    stringsHTML(
+      analyse.recommandations
+    ) +
+
+    '</div>' +
+
+    '<div class="section">' +
+
+    '<h3>Actions</h3>' +
+
+    stringsHTML(
+      analyse.actions
+    ) +
+
+    '</div>' +
+
+    '<div class="section">' +
+
+    '<h3>Documents</h3>' +
+
+    stringsHTML(
+      analyse.documents
+    ) +
+
+    '</div>' +
+
+    '<div class="section">' +
+
+    '<h3>Risques / points d\\'attention</h3>' +
+
+    stringsHTML(
+      analyse.risques
+    ) +
+
+    '</div>' +
+
+    '<div class="section">' +
+
+    '<h3>Professionnel à consulter</h3>' +
+
+    '<div class="item">' +
+    escapeHTML(
+      analyse.professionnel
+    ) +
+    '</div>' +
+
+    '</div>' +
+
+    '<div class="section">' +
+
+    '<h3>PROCHAINE ACTION</h3>' +
+
+    '<div class="item">' +
+
+    '<strong>' +
+    escapeHTML(
+      analyse.prochaineAction
+    ) +
+    '</strong>' +
+
+    '</div>' +
+
+    '</div>' +
+
+    '<div class="section">' +
+
+    '<h3>Sources consultées</h3>' +
+
+    (
+      Array.isArray(
+        analyse.sources
+      )
+      ? analyse.sources
+          .map(source =>
+            '<div class="item">' +
+            escapeHTML(
+              source.nom
+            ) +
+            (
+              source.url
+                ? '<div class="small">' +
+                  escapeHTML(
+                    source.url
+                  ) +
+                  '</div>'
+                : ""
+            ) +
+            '</div>'
           )
-        ) +
-      '</div>' +
+          .join("")
+      : ""
+    ) +
+
+    '</div>' +
 
     '</div>';
 }
 
-analyserButton.addEventListener("click", async () => {
+analyserButton.addEventListener(
+  "click",
+  async () => {
 
-  const value = question.value.trim();
+    const value =
+      question.value.trim();
 
-  if (!value) {
-    alert("Veuillez décrire votre situation.");
-    return;
-  }
+    if (!value) {
 
-  analyserButton.disabled = true;
-  analyserButton.textContent = "Analyse en cours...";
-  results.innerHTML = "";
+      alert(
+        "Veuillez décrire votre situation."
+      );
 
-  try {
-
-    const response = await fetch("/api/analyze", {
-      method: "POST",
-
-      headers: {
-        "Content-Type": "application/json"
-      },
-
-      body: JSON.stringify({
-        type: currentType,
-        question: value
-      })
-    });
-
-    const data = await response.json();
-
-    if (!data.success) {
-      throw new Error("Analyse impossible");
+      return;
     }
 
-    renderAnalyse(data.analyse);
+    analyserButton.disabled =
+      true;
 
-  } catch (error) {
+    analyserButton.textContent =
+      "Analyse et vérification en cours...";
 
-    results.innerHTML =
-      '<div class="result-card">' +
+    results.innerHTML = "";
+
+    try {
+
+      const response =
+        await fetch(
+          "/api/analyze",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json"
+            },
+
+            body:
+              JSON.stringify({
+                type:
+                  currentType,
+
+                question:
+                  value
+              })
+          }
+        );
+
+      const data =
+        await response.json();
+
+      if (!data.success) {
+        throw new Error(
+          "Analyse impossible"
+        );
+      }
+
+      render(
+        data.analyse
+      );
+
+    } catch {
+
+      results.innerHTML =
+        '<div class="result-card">' +
+
         '<h2>Erreur</h2>' +
-        '<p>Le service est temporairement indisponible.</p>' +
-      '</div>';
 
-  } finally {
+        '<p>' +
+        'Le service est temporairement indisponible.' +
+        '</p>' +
 
-    analyserButton.disabled = false;
+        '</div>';
+    }
+
+    analyserButton.disabled =
+      false;
+
     analyserButton.textContent =
       "Analyser avec GouRare AI";
   }
-});
+);
+
 </script>
 
 </body>
+
 </html>`;
 }
 
 export default {
-  async fetch(request, env) {
 
-    const url = new URL(request.url);
+  async fetch(
+    request,
+    env
+  ) {
 
-    const headers = {
-      "X-Content-Type-Options": "nosniff",
-      "X-Frame-Options": "DENY",
-      "Referrer-Policy": "strict-origin-when-cross-origin",
+    const url =
+      new URL(request.url);
+
+    const securityHeaders = {
+
+      "X-Content-Type-Options":
+        "nosniff",
+
+      "X-Frame-Options":
+        "DENY",
+
+      "Referrer-Policy":
+        "strict-origin-when-cross-origin",
+
       "Permissions-Policy":
         "camera=(), microphone=(), geolocation=()",
-      "Cache-Control": "no-store"
+
+      "Cache-Control":
+        "no-store"
     };
 
-    if (url.pathname === "/health") {
+    if (
+      url.pathname === "/health"
+    ) {
 
       return new Response(
+
         JSON.stringify({
+
           success: true,
-          service: "GouRare AI",
-          status: "OK",
-          version: VERSION
+
+          service:
+            "GouRare AI",
+
+          status:
+            "OK",
+
+          version:
+            VERSION
+
         }),
+
         {
+          status: 200,
+
           headers: {
-            ...headers,
-            "Content-Type": "application/json"
+
+            ...securityHeaders,
+
+            "Content-Type":
+              "application/json"
           }
         }
       );
     }
 
-    if (url.pathname === "/api/analyze") {
+    if (
+      url.pathname === "/api/analyze"
+    ) {
 
-      const response = await handleAPI(
-        request,
-        env
-      );
+      const response =
+        await api(
+          request,
+          env
+        );
 
-      const newHeaders = new Headers(response.headers);
+      const headers =
+        new Headers(
+          response.headers
+        );
 
-      for (const [key, value] of Object.entries(headers)) {
-        newHeaders.set(key, value);
+      for (
+        const [
+          key,
+          value
+        ]
+        of Object.entries(
+          securityHeaders
+        )
+      ) {
+
+        headers.set(
+          key,
+          value
+        );
       }
 
       return new Response(
         response.body,
         {
-          status: response.status,
-          headers: newHeaders
+          status:
+            response.status,
+
+          headers
         }
       );
     }
 
-    if (request.method === "GET") {
+    if (
+      request.method === "GET"
+    ) {
 
       return new Response(
-        page(),
+        interfaceHTML(),
         {
+          status: 200,
+
           headers: {
-            ...headers,
-            "Content-Type": "text/html; charset=UTF-8"
+
+            ...securityHeaders,
+
+            "Content-Type":
+              "text/html; charset=UTF-8"
           }
         }
       );
@@ -1294,7 +2002,8 @@ export default {
       "Not Found",
       {
         status: 404,
-        headers
+        headers:
+          securityHeaders
       }
     );
   }
