@@ -78,7 +78,7 @@ content:
   "Si une information n'est pas vérifiable, indique clairement qu'il s'agit d'une hypothèse ou d'une possibilité."
  }
         ],
-        max_tokens: 1200
+        max_tokens: 2000
       }
     );
         return Response.json({
