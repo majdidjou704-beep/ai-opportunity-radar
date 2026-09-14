@@ -337,7 +337,7 @@ async function analyze(){
       throw new Error(data.details || data.error || "Erreur pendant l'analyse");
     }
 
-    let analyse = data.analysis;
+    let analyse = data.analyse +
 
 if (typeof analyse === "object") {
   analyse = analyse.response;
