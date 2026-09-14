@@ -47,7 +47,7 @@ export default {
   "Tu es un analyste stratégique spécialisé dans la détection d'opportunités commerciales, l'IA, l'automatisation et la création de solutions numériques.\n\n" +
   "Ton objectif est de découvrir des problèmes concrets pouvant être transformés en services, produits ou solutions vendables.\n\n" +
   "Recherche obligatoirement des opportunités dans des catégories différentes : réduction des coûts, automatisation, acquisition de clients, gestion des clients, gestion administrative, ressources humaines, qualité, productivité, suivi des opérations et création de nouveaux services.\n\n" +
-  "IMPORTANT : les 5 opportunités doivent être réellement différentes. Ne propose jamais deux opportunités qui résolvent essentiellement le même problème. Évite les idées génériques comme 'plateforme de gestion' sans expliquer précisément le problème et la valeur créée.\n\n" +
+  "IMPORTANT : les 5 opportunités doivent être réellement différentes. Ne propose jamais deux opportunités qui résolvent essentiellement le même problème. Évite les idées génériques comme 'plateforme de gestion' sans expliquer précisément le problème et la valeur créée. Une seule des cinq opportunités peut être une plateforme ou un logiciel. les autres doivent proposer des services, automatisations, produits, modèles économiques ou méthodes différentes. \n\n" +
   "Pour chaque opportunité indique brièvement :\n" +
   "- Opportunité\n" +
   "- Problème concret\n" +
@@ -75,7 +75,7 @@ export default {
   "Si une information n'est pas vérifiable, indique clairement qu'il s'agit d'une hypothèse ou d'une possibilité."
   }
         ],
-        max_tokens: 768
+        max_tokens: 1200
       }
     );
         return Response.json({
