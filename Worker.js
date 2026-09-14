@@ -1,131 +1,80 @@
 const MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
-const VERSION = "6.1";
+const VERSION = "7.0";
 
-/* =====================================================
-   SOURCES OFFICIELLES
-===================================================== */
-
-const SOURCES_OFFICIELLES = [
+const SOURCES = [
   {
-    nom: "Service-Public",
-    url: "https://www.service-public.fr/"
+    name: "Service-Public",
+    url: "https://www.service-public.fr/",
+    keywords: [
+      "démarche", "administratif", "administration",
+      "droit", "obligation", "travail", "social"
+    ]
   },
   {
-    nom: "Service-Public Entreprendre",
-    url: "https://entreprendre.service-public.fr/"
+    name: "Service-Public Entreprendre",
+    url: "https://entreprendre.service-public.fr/",
+    keywords: [
+      "entreprise", "création", "entrepreneur",
+      "micro-entrepreneur", "immatriculation",
+      "activité", "commerce", "nettoyage"
+    ]
   },
   {
-    nom: "URSSAF",
-    url: "https://www.urssaf.fr/"
+    name: "URSSAF",
+    url: "https://www.urssaf.fr/",
+    keywords: [
+      "urssaf", "cotisation", "social",
+      "micro-entrepreneur", "déclaration",
+      "revenu", "indépendant"
+    ]
   },
   {
-    nom: "Impôts",
-    url: "https://www.impots.gouv.fr/"
+    name: "Impôts",
+    url: "https://www.impots.gouv.fr/",
+    keywords: [
+      "impôt", "fiscal", "taxe", "tva",
+      "cfe", "revenu", "fiscalité"
+    ]
   },
   {
-    nom: "Économie",
-    url: "https://www.economie.gouv.fr/"
+    name: "Économie",
+    url: "https://www.economie.gouv.fr/",
+    keywords: [
+      "tva", "entreprise", "fiscalité",
+      "prix", "obligation", "commerce"
+    ]
   },
   {
-    nom: "Travail",
-    url: "https://travail-emploi.gouv.fr/"
+    name: "Travail",
+    url: "https://travail-emploi.gouv.fr/",
+    keywords: [
+      "salarié", "emploi", "contrat",
+      "travail", "employeur", "recrutement"
+    ]
   }
 ];
 
-/* =====================================================
-   OUTILS
-===================================================== */
-
-function clean(value, max = 5000) {
-  if (value === null || value === undefined) {
-    return "";
-  }
-
+function clean(value, max = 4000) {
+  if (value === null || value === undefined) return "";
   return String(value)
     .replace(/\u0000/g, "")
     .trim()
     .slice(0, max);
 }
 
-function json(data, status = 200) {
-  return new Response(
-    JSON.stringify(data),
-    {
-      status,
-      headers: {
-        "Content-Type": "application/json; charset=UTF-8",
-        "Cache-Control": "no-store",
-        "X-Content-Type-Options": "nosniff",
-        "X-Frame-Options": "DENY",
-        "Referrer-Policy": "strict-origin-when-cross-origin",
-        "Permissions-Policy":
-          "camera=(), microphone=(), geolocation=()"
-      }
-    }
-  );
-}
-
-function html(content) {
-  return new Response(content, {
-    headers: {
-      "Content-Type": "text/html; charset=UTF-8",
-      "Cache-Control": "no-store",
-      "X-Content-Type-Options": "nosniff",
-      "X-Frame-Options": "DENY",
-      "Referrer-Policy": "strict-origin-when-cross-origin",
-      "Permissions-Policy":
-        "camera=(), microphone=(), geolocation=()"
-    }
-  });
-}
-
-/* =====================================================
-   NORMALISATION DES RÉPONSES IA
-===================================================== */
-
-function valeurTexte(value) {
-  if (value === null || value === undefined) {
-    return "";
-  }
-
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
+function normalizeText(value) {
+  if (typeof value === "string") return value;
 
   if (Array.isArray(value)) {
     return value
-      .map(item => valeurTexte(item))
+      .map(normalizeText)
       .filter(Boolean)
       .join("\n");
   }
 
-  if (typeof value === "object") {
-    if (typeof value.text === "string") {
-      return value.text;
-    }
-
-    if (typeof value.response === "string") {
-      return value.response;
-    }
-
-    if (typeof value.content === "string") {
-      return value.content;
-    }
-
-    return Object.entries(value)
-      .map(([cle, contenu]) => {
-        const texte = valeurTexte(contenu);
-
-        if (!texte) {
-          return "";
-        }
-
-        return cle + " : " + texte;
-      })
+  if (value && typeof value === "object") {
+    return Object.values(value)
+      .map(normalizeText)
       .filter(Boolean)
       .join("\n");
   }
@@ -133,971 +82,859 @@ function valeurTexte(value) {
   return "";
 }
 
-function tableauTexte(value) {
-  if (!value) {
-    return [];
-  }
-
-  if (Array.isArray(value)) {
-    return value
-      .map(item => valeurTexte(item))
-      .filter(Boolean);
-  }
-
-  const texte = valeurTexte(value);
-
-  if (!texte) {
-    return [];
-  }
-
-  return [texte];
-}
-
-/* =====================================================
-   EXTRACTION JSON
-===================================================== */
-
-function extraireJSON(value) {
-  if (!value) {
-    return null;
-  }
-
-  if (typeof value === "object") {
-    if (
-      value.titre ||
-      value.comprehension ||
-      value.orientation ||
-      value.confirme ||
-      value.actions
-    ) {
-      return value;
+function extractJSON(value) {
+  if (value && typeof value === "object") {
+    if (value.response !== undefined) {
+      return extractJSON(value.response);
     }
 
-    if (value.response) {
-      return extraireJSON(value.response);
+    if (value.result && value.result.response !== undefined) {
+      return extractJSON(value.result.response);
     }
 
-    if (value.result) {
-      return extraireJSON(value.result);
-    }
-
-    if (value.output) {
-      return extraireJSON(value.output);
-    }
-
-    return null;
+    return value;
   }
 
-  const texte = String(value).trim();
+  if (typeof value !== "string") return null;
+
+  let text = value.trim();
+
+  text = text
+    .replace(/^```json/i, "")
+    .replace(/^```/i, "")
+    .replace(/```$/i, "")
+    .trim();
 
   try {
-    return JSON.parse(texte);
+    return JSON.parse(text);
   } catch {}
 
-  const debut = texte.indexOf("{");
-  const fin = texte.lastIndexOf("}");
+  const first = text.indexOf("{");
+  const last = text.lastIndexOf("}");
 
-  if (debut !== -1 && fin > debut) {
+  if (first !== -1 && last > first) {
     try {
-      return JSON.parse(
-        texte.slice(debut, fin + 1)
-      );
+      return JSON.parse(text.slice(first, last + 1));
     } catch {}
   }
 
   return null;
 }
 
-/* =====================================================
-   FORMAT FINAL
-===================================================== */
+function arrayOfObjects(value) {
+  if (!Array.isArray(value)) return [];
 
-function normaliserAnalyse(data) {
-  if (!data) {
-    return {
-      titre: "Réponse GouRare AI",
-      comprehension: "",
-      orientation:
-        "Les informations disponibles ne permettent pas de produire une réponse structurée fiable.",
-      confirme: [],
-      verifier: [
-        "Une vérification auprès de la source officielle compétente est nécessaire."
-      ],
-      actions: [],
-      documents: [],
-      risques: [],
-      professionnel:
-        "Si votre situation comporte un enjeu juridique, fiscal, comptable ou social important, demandez confirmation à un professionnel compétent.",
-      prochaine_action:
-        "Vérifiez votre situation auprès de la source officielle correspondant à votre démarche."
-    };
-  }
+  return value
+    .map(item => {
+      if (typeof item === "string") {
+        return {
+          texte: clean(item),
+          statut: "a_verifier",
+          source: ""
+        };
+      }
+
+      if (item && typeof item === "object") {
+        return {
+          texte: clean(
+            item.texte ||
+            item.text ||
+            item.description ||
+            item.nom ||
+            item.title ||
+            ""
+          ),
+          statut: clean(item.statut || "a_verifier"),
+          source: clean(item.source || ""),
+          preuve: clean(item.preuve || item.evidence || "")
+        };
+      }
+
+      return null;
+    })
+    .filter(item => item && item.texte);
+}
+
+function arrayOfStrings(value) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map(item => {
+      if (typeof item === "string") return clean(item);
+
+      if (item && typeof item === "object") {
+        return clean(
+          item.texte ||
+          item.text ||
+          item.description ||
+          item.nom ||
+          item.title ||
+          ""
+        );
+      }
+
+      return "";
+    })
+    .filter(Boolean);
+}
+
+function normalizeAnalysis(data) {
+  const source = data && typeof data === "object" ? data : {};
 
   return {
-    titre: valeurTexte(data.titre) || "Réponse GouRare AI",
+    titre: clean(source.titre || source.title || "Analyse GouRare AI"),
 
-    comprehension:
-      valeurTexte(data.comprehension),
+    compris: clean(
+      source.compris ||
+      source.ce_que_jai_compris ||
+      source.summary ||
+      ""
+    ),
 
-    orientation:
-      valeurTexte(data.orientation),
+    orientation: clean(
+      source.orientation ||
+      source.conseil ||
+      source.answer ||
+      ""
+    ),
 
-    confirme:
-      tableauTexte(data.confirme),
+    confirmees: arrayOfObjects(
+      source.confirmees ||
+      source.informations_confirmees ||
+      source.confirmed ||
+      []
+    ),
 
-    verifier:
-      tableauTexte(data.verifier),
+    aVerifier: arrayOfObjects(
+      source.aVerifier ||
+      source.a_verifier ||
+      source.informations_a_verifier ||
+      source.verify ||
+      []
+    ),
 
-    actions:
-      tableauTexte(data.actions),
+    recommandations: arrayOfStrings(
+      source.recommandations ||
+      source.recommendations ||
+      []
+    ),
 
-    documents:
-      tableauTexte(data.documents),
+    actions: arrayOfStrings(
+      source.actions ||
+      source.prochaines_actions ||
+      []
+    ),
 
-    risques:
-      tableauTexte(data.risques),
+    documents: arrayOfStrings(
+      source.documents ||
+      source.documents_necessaires ||
+      []
+    ),
 
-    professionnel:
-      valeurTexte(data.professionnel),
+    risques: arrayOfStrings(
+      source.risques ||
+      source.risks ||
+      []
+    ),
 
-    prochaine_action:
-      valeurTexte(data.prochaine_action)
+    professionnel: clean(
+      source.professionnel ||
+      source.professional ||
+      "Aucune orientation professionnelle nécessaire"
+    ),
+
+    prochaineAction: clean(
+      source.prochaineAction ||
+      source.prochaine_action ||
+      source.next_action ||
+      ""
+    ),
+
+    sources: Array.isArray(source.sources)
+      ? source.sources
+          .map(item => {
+            if (typeof item === "string") {
+              return {
+                nom: clean(item),
+                url: ""
+              };
+            }
+
+            return {
+              nom: clean(item?.nom || item?.name || ""),
+              url: clean(item?.url || "")
+            };
+          })
+          .filter(item => item.nom)
+      : []
   };
 }
 
-/* =====================================================
-   SOURCES
-===================================================== */
+function detectSources(question, type) {
+  const text = `${question} ${type}`.toLowerCase();
 
-function choisirSources(
-  question,
-  secteur,
-  activite
-) {
-  const texte = (
-    question +
-    " " +
-    secteur +
-    " " +
-    activite
-  ).toLowerCase();
+  return SOURCES
+    .map(source => {
+      let score = 0;
 
-  const sources = [];
-
-  function ajouter(nom) {
-    const source =
-      SOURCES_OFFICIELLES.find(
-        item => item.nom === nom
-      );
-
-    if (
-      source &&
-      !sources.some(
-        item => item.nom === nom
-      )
-    ) {
-      sources.push(source);
-    }
-  }
-
-  if (
-    texte.includes("impôt") ||
-    texte.includes("impot") ||
-    texte.includes("fiscal") ||
-    texte.includes("taxe") ||
-    texte.includes("tva") ||
-    texte.includes("cfe")
-  ) {
-    ajouter("Impôts");
-    ajouter("Service-Public Entreprendre");
-    ajouter("URSSAF");
-  }
-
-  if (
-    texte.includes("urssaf") ||
-    texte.includes("cotisation") ||
-    texte.includes("micro") ||
-    texte.includes("indépendant") ||
-    texte.includes("independant")
-  ) {
-    ajouter("URSSAF");
-    ajouter("Service-Public Entreprendre");
-  }
-
-  if (
-    texte.includes("entreprise") ||
-    texte.includes("création") ||
-    texte.includes("creation") ||
-    texte.includes("entrepreneur")
-  ) {
-    ajouter("Service-Public Entreprendre");
-    ajouter("URSSAF");
-    ajouter("Impôts");
-  }
-
-  if (
-    texte.includes("travail") ||
-    texte.includes("emploi") ||
-    texte.includes("salarié") ||
-    texte.includes("salarie") ||
-    texte.includes("contrat")
-  ) {
-    ajouter("Service-Public");
-    ajouter("Travail");
-  }
-
-  if (
-    texte.includes("social") ||
-    texte.includes("aide") ||
-    texte.includes("rsa") ||
-    texte.includes("logement") ||
-    texte.includes("famille")
-  ) {
-    ajouter("Service-Public");
-  }
-
-  if (
-    texte.includes("juridique") ||
-    texte.includes("droit") ||
-    texte.includes("avocat") ||
-    texte.includes("démarche") ||
-    texte.includes("demarche")
-  ) {
-    ajouter("Service-Public");
-  }
-
-  if (sources.length === 0) {
-    ajouter("Service-Public");
-    ajouter("Service-Public Entreprendre");
-  }
-
-  return sources.slice(0, 4);
-}
-
-async function recupererSource(source) {
-  try {
-    const response = await fetch(
-      source.url,
-      {
-        method: "GET",
-        headers: {
-          "User-Agent": "GouRareAI/6.1"
+      for (const keyword of source.keywords) {
+        if (text.includes(keyword.toLowerCase())) {
+          score++;
         }
       }
-    );
+
+      return {
+        ...source,
+        score
+      };
+    })
+    .sort((a, b) => b.score - a.score)
+    .filter(source => source.score > 0)
+    .slice(0, 3);
+}
+
+async function fetchSource(source) {
+  try {
+    const response = await fetch(source.url, {
+      method: "GET",
+      headers: {
+        "User-Agent": "GouRare-AI/7.0"
+      }
+    });
 
     if (!response.ok) {
       return {
-        nom: source.nom,
-        url: source.url,
+        ...source,
         disponible: false,
-        extrait: ""
+        texte: ""
       };
     }
 
-    const contenu =
-      await response.text();
+    const html = await response.text();
 
-    const propre =
-      contenu
-        .replace(
-          /<script[\s\S]*?<\/script>/gi,
-          " "
-        )
-        .replace(
-          /<style[\s\S]*?<\/style>/gi,
-          " "
-        )
-        .replace(
-          /<[^>]+>/g,
-          " "
-        )
-        .replace(
-          /\s+/g,
-          " "
-        )
-        .trim();
+    const texte = html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 12000);
 
     return {
-      nom: source.nom,
-      url: source.url,
+      ...source,
       disponible: true,
-      extrait:
-        propre.slice(0, 6000)
+      texte
     };
-
   } catch {
     return {
-      nom: source.nom,
-      url: source.url,
+      ...source,
       disponible: false,
-      extrait: ""
+      texte: ""
     };
   }
 }
 
-async function recupererSources(
-  question,
-  secteur,
-  activite
-) {
-  const sources =
-    choisirSources(
-      question,
-      secteur,
-      activite
-    );
-
-  return await Promise.all(
-    sources.map(
-      source => recupererSource(source)
-    )
-  );
-}
-
-/* =====================================================
-   PROMPT SYSTÈME
-===================================================== */
-
 function systemPrompt() {
   return `
-Tu es GouRare AI V6.1.
+Tu es GouRare AI.
 
-Tu es une intelligence d'orientation pratique.
+Tu es un assistant d'orientation pratique pour les citoyens,
+salariés, demandeurs d'emploi, indépendants, entrepreneurs
+et petites entreprises.
 
-Tu aides :
-- citoyens
-- salariés
-- demandeurs d'emploi
-- indépendants
-- micro-entrepreneurs
-- entrepreneurs
-- petites entreprises
+TON OBJECTIF :
 
-Domaines :
-- administratif
-- juridique
-- fiscal
-- comptable
-- social
-- emploi
-- métiers
-- secteurs
-- entreprise
-- stratégie
-- organisation
-- résolution de problèmes
-- opportunités
+Comprendre la situation de l'utilisateur,
+identifier le domaine concerné,
+organiser les informations,
+orienter vers les bonnes démarches,
+identifier les points à vérifier,
+et donner une prochaine action concrète.
 
-Tu n'es PAS un avocat.
-Tu n'es PAS un expert-comptable.
-Tu n'es PAS un travailleur social.
-Tu n'es PAS une administration.
-Tu ne remplaces pas un professionnel réglementé.
+REGLE ABSOLUE DE VERIFICATION :
 
-RÈGLE ABSOLUE :
+Une information ne doit être placée dans "confirmees"
+QUE SI LES SOURCES FOURNIES DANS LE CONTEXTE
+LA SOUTIENNENT CLAIREMENT.
 
-NE JAMAIS INVENTER :
-- loi
-- article
-- organisme
-- registre
-- autorisation
-- licence
+Si la source ne permet pas de confirmer une information,
+place-la dans "aVerifier".
+
+NE JAMAIS inventer :
+
 - obligation
+- loi
+- article de loi
 - seuil
 - taux
 - montant
-- pénalité
 - délai
-- aide
+- pénalité
+- taxe
+- cotisation
+- numéro administratif
+- document obligatoire
+- autorisation
+- licence
 - statistique
+- prix
+- revenu
+- économie
+- pourcentage
 
-Si une information n'est pas suffisamment confirmée :
-place-la dans "verifier".
+Ne transforme jamais une possibilité en obligation.
 
-Ne transforme jamais une hypothèse en fait.
+Exemple :
 
-Pour les informations françaises :
-utilise en priorité les sources officielles fournies.
+Mauvais :
+"Vous devez obligatoirement vous inscrire au RCS."
 
-La réponse doit être pratique.
+Correct :
+"Les formalités d'immatriculation dépendent de la forme
+et de la nature de l'activité. Vérifier la formalité exacte
+pour cette activité."
 
-Toujours distinguer :
-- information confirmée
-- information à vérifier
-- recommandation
-- besoin éventuel d'un professionnel
+Même principe pour la TVA, CFE, assurances,
+autorisations, licences et documents.
 
-Pour une démarche :
-indique si possible :
-quoi faire,
-où,
-documents,
-points à vérifier,
-risques,
-prochaine action.
+IMPORTANT :
 
-Pour l'orientation sociale :
-cherche les droits, aides, organismes et services possibles,
-mais ne promets jamais qu'une personne est éligible
-sans vérification.
+Ne considère jamais automatiquement qu'une entreprise
+doit avoir un numéro de TVA intracommunautaire.
 
-Pour une opportunité commerciale :
-ne fabrique aucun chiffre.
-Ne donne pas de faux scores.
-Une hypothèse doit être clairement présentée comme hypothèse.
+Ne considère jamais automatiquement que toute activité
+doit être inscrite au RCS.
 
-Pour une analyse de secteur :
-cherche des problèmes concrets et différents.
-Ne transforme pas toutes les opportunités en logiciel ou SaaS.
+Ne considère jamais automatiquement qu'un document
+est obligatoire.
 
-Réponds en français clair.
+Pour les activités réglementées, indique qu'il faut vérifier
+si l'activité concernée est réglementée.
+
+SOURCES :
+
+Les sources officielles fournies sont prioritaires.
+
+Si une source officielle n'est pas disponible,
+ne prétends pas l'avoir consultée.
+
+DISTINCTION :
+
+"confirmees" = information clairement soutenue par une source.
+
+"aVerifier" = information qui nécessite une vérification.
+
+"recommandations" = conseil pratique de GouRare AI.
+
+"actions" = prochaines étapes concrètes.
+
+"documents" = documents à vérifier ou préparer,
+mais ne les présente pas comme obligatoires sans preuve.
+
+"risques" = risques généraux ou points d'attention.
+
+PROFESSIONNEL :
+
+Si la situation nécessite un avocat, expert-comptable,
+professionnel du droit, professionnel fiscal,
+travailleur social ou autre spécialiste,
+indique-le clairement.
+
+GouRare AI ne prétend jamais remplacer ces professionnels.
+
+REPONSE :
+
+Toujours produire une réponse pratique,
+claire et compréhensible.
+
+Terminer par une "prochaineAction".
+
+FORMAT JSON STRICT :
+
+{
+  "titre": "",
+  "compris": "",
+  "orientation": "",
+  "confirmees": [
+    {
+      "texte": "",
+      "statut": "confirme",
+      "source": "",
+      "preuve": ""
+    }
+  ],
+  "aVerifier": [
+    {
+      "texte": "",
+      "statut": "a_verifier",
+      "source": "",
+      "preuve": ""
+    }
+  ],
+  "recommandations": [],
+  "actions": [],
+  "documents": [],
+  "risques": [],
+  "professionnel": "",
+  "prochaineAction": "",
+  "sources": [
+    {
+      "nom": "",
+      "url": ""
+    }
+  ]
+}
 `;
 }
 
-/* =====================================================
-   SCHÉMA
-===================================================== */
-
 const schema = {
   type: "object",
-
   properties: {
-    titre: {
-      type: "string"
-    },
+    titre: { type: "string" },
+    compris: { type: "string" },
+    orientation: { type: "string" },
 
-    comprehension: {
-      type: "string"
-    },
-
-    orientation: {
-      type: "string"
-    },
-
-    confirme: {
+    confirmees: {
       type: "array",
       items: {
-        type: "string"
+        type: "object",
+        properties: {
+          texte: { type: "string" },
+          statut: { type: "string" },
+          source: { type: "string" },
+          preuve: { type: "string" }
+        },
+        required: ["texte", "statut", "source", "preuve"]
       }
     },
 
-    verifier: {
+    aVerifier: {
       type: "array",
       items: {
-        type: "string"
+        type: "object",
+        properties: {
+          texte: { type: "string" },
+          statut: { type: "string" },
+          source: { type: "string" },
+          preuve: { type: "string" }
+        },
+        required: ["texte", "statut", "source", "preuve"]
       }
+    },
+
+    recommandations: {
+      type: "array",
+      items: { type: "string" }
     },
 
     actions: {
       type: "array",
-      items: {
-        type: "string"
-      }
+      items: { type: "string" }
     },
 
     documents: {
       type: "array",
-      items: {
-        type: "string"
-      }
+      items: { type: "string" }
     },
 
     risques: {
       type: "array",
+      items: { type: "string" }
+    },
+
+    professionnel: { type: "string" },
+
+    prochaineAction: { type: "string" },
+
+    sources: {
+      type: "array",
       items: {
-        type: "string"
+        type: "object",
+        properties: {
+          nom: { type: "string" },
+          url: { type: "string" }
+        },
+        required: ["nom", "url"]
       }
-    },
-
-    professionnel: {
-      type: "string"
-    },
-
-    prochaine_action: {
-      type: "string"
     }
   },
 
   required: [
     "titre",
-    "comprehension",
+    "compris",
     "orientation",
-    "confirme",
-    "verifier",
+    "confirmees",
+    "aVerifier",
+    "recommandations",
     "actions",
     "documents",
     "risques",
     "professionnel",
-    "prochaine_action"
+    "prochaineAction",
+    "sources"
   ]
 };
 
-/* =====================================================
-   APPEL WORKERS AI
-===================================================== */
-
-async function askAI(
-  env,
-  question,
-  contexteSources
-) {
+async function askAI(env, question, contexte, type) {
   const prompt = `
-DEMANDE :
+TYPE DE DEMANDE :
+${type}
 
+QUESTION UTILISATEUR :
 ${question}
 
-SOURCES OFFICIELLES DISPONIBLES :
+CONTEXTE DES SOURCES OFFICIELLES :
 
-${contexteSources ||
-  "Aucune source exploitable."}
+${contexte}
 
-INSTRUCTIONS :
+Analyse la situation.
 
-Réponds uniquement avec un objet JSON correspondant
-au schéma demandé.
+Ne mets dans "confirmees" que les informations
+réellement soutenues par les extraits fournis.
 
-Ne mets aucun texte avant ou après le JSON.
+Pour chaque information confirmée,
+indique la source et une courte preuve.
 
-Si une information n'est pas confirmée :
-mets-la dans "verifier".
+Si la preuve n'existe pas,
+place l'information dans "aVerifier".
 
-Si les sources ne permettent pas de confirmer une obligation,
-ne présente pas cette obligation comme un fait.
+Ne complète pas les informations manquantes
+avec tes connaissances générales.
 
-Ne fabrique aucun organisme,
-registre,
-licence,
-autorisation,
-seuil,
-taux,
-montant,
-délai ou pénalité.
+Réponds uniquement en JSON.
 `;
 
-  const result =
-    await env.IA.run(
-      MODEL,
-      {
-        messages: [
-          {
-            role: "system",
-            content: systemPrompt()
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-
-        response_format: {
-          type: "json_schema",
-          json_schema: schema
+  const result = await env.IA.run(
+    MODEL,
+    {
+      messages: [
+        {
+          role: "system",
+          content: systemPrompt()
         },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
 
-        max_tokens: 2200,
-        temperature: 0.08
+      response_format: {
+        type: "json_schema",
+        json_schema: schema
+      },
+
+      max_tokens: 2200,
+      temperature: 0.1
+    }
+  );
+
+  const raw = extractJSON(result);
+
+  if (!raw) {
+    throw new Error("Réponse IA invalide.");
+  }
+
+  return normalizeAnalysis(raw);
+}
+
+function verifierConfirmations(analyse, sources) {
+  const disponibles = sources.filter(s => s.disponible);
+
+  const resultat = [];
+
+  for (const item of analyse.confirmees) {
+    const sourceName = clean(item.source).toLowerCase();
+    const preuve = clean(item.preuve);
+
+    const sourceExiste = disponibles.some(
+      source =>
+        source.name.toLowerCase() === sourceName
+    );
+
+    if (
+      sourceExiste &&
+      preuve.length >= 15
+    ) {
+      resultat.push({
+        ...item,
+        statut: "confirme"
+      });
+    } else {
+      analyse.aVerifier.push({
+        texte: item.texte,
+        statut: "a_verifier",
+        source: item.source || "",
+        preuve: item.preuve || ""
+      });
+    }
+  }
+
+  analyse.confirmees = resultat;
+
+  return analyse;
+}
+
+async function analyser(env, question, type) {
+  const sourcesSelectionnees = detectSources(
+    question,
+    type
+  );
+
+  const sources = await Promise.all(
+    sourcesSelectionnees.map(fetchSource)
+  );
+
+  const contexte = sources
+    .filter(source => source.disponible)
+    .map(source => `
+SOURCE : ${source.name}
+URL : ${source.url}
+
+CONTENU :
+${source.texte}
+`)
+    .join("\n-------------------\n");
+
+  const analyse = await askAI(
+    env,
+    question,
+    contexte || "Aucun contenu officiel disponible.",
+    type
+  );
+
+  const resultat = verifierConfirmations(
+    analyse,
+    sources
+  );
+
+  resultat.sources = sources
+    .filter(source => source.disponible)
+    .map(source => ({
+      nom: source.name,
+      url: source.url
+    }));
+
+  return resultat;
+}
+
+async function handleAPI(request, env) {
+  if (request.method !== "POST") {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: "Méthode non autorisée."
+      }),
+      {
+        status: 405,
+        headers: {
+          "Content-Type": "application/json"
+        }
       }
     );
-
-  /* Plusieurs formats possibles */
-
-  let brut = result;
-
-  if (
-    result &&
-    result.response !== undefined
-  ) {
-    brut = result.response;
   }
 
-  if (
-    result &&
-    result.result &&
-    result.result.response !== undefined
-  ) {
-    brut =
-      result.result.response;
-  }
+  const contentType =
+    request.headers.get("content-type") || "";
 
-  if (
-    result &&
-    result.output !== undefined
-  ) {
-    brut = result.output;
-  }
-
-  const analyseBrute =
-    extraireJSON(brut);
-
-  if (analyseBrute) {
-    return normaliserAnalyse(
-      analyseBrute
+  if (!contentType.includes("application/json")) {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: "JSON requis."
+      }),
+      {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json"
+        }
+      }
     );
   }
 
-  /* Dernier recours : convertir proprement en texte */
+  let body;
 
-  const texte =
-    valeurTexte(brut);
-
-  return normaliserAnalyse({
-    titre: "Réponse GouRare AI",
-    comprehension: "",
-    orientation: texte,
-    confirme: [],
-    verifier: [
-      "La réponse doit être vérifiée auprès de la source officielle compétente."
-    ],
-    actions: [],
-    documents: [],
-    risques: [],
-    professionnel:
-      "Une confirmation professionnelle peut être nécessaire selon votre situation.",
-    prochaine_action:
-      "Vérifiez la démarche auprès de la source officielle compétente."
-  });
-}
-
-/* =====================================================
-   PROMPTS
-===================================================== */
-
-function promptGeneral(message) {
-  return `
-Analyse cette demande :
-
-${message}
-
-Détermine le domaine concerné.
-
-Donne une orientation pratique.
-
-Ne suppose pas des informations personnelles
-qui ne sont pas données.
-
-Indique clairement ce qui est confirmé
-et ce qui doit être vérifié.
-`;
-}
-
-function promptSecteur(secteur) {
-  return `
-Analyse le secteur :
-
-${secteur}
-
-Recherche exactement 5 opportunités différentes.
-
-Pour chaque opportunité :
-- problème concret
-- personne qui souffre du problème
-- personne qui décide
-- personne qui paie
-- pourquoi elle paierait
-- solution
-- type de solution
-- rôle possible de l'IA
-- difficulté de lancement
-- difficulté de vente
-- différenciation
-- test rapide
-
-Utilise :
-faible / moyen / élevé.
-
-NE DONNE PAS de scores numériques.
-
-NE FABRIQUE PAS de chiffres de marché.
-
-Ne transforme pas toutes les opportunités
-en logiciels ou SaaS.
-
-Les hypothèses doivent être indiquées comme hypothèses.
-`;
-}
-
-function promptIndependant(
-  activite,
-  statut,
-  message
-) {
-  return `
-Situation :
-
-Activité :
-${activite}
-
-Statut :
-${statut}
-
-Question :
-${message}
-
-Analyse la situation en France.
-
-Si pertinent, examine :
-- création
-- immatriculation
-- URSSAF
-- fiscalité
-- TVA
-- CFE
-- facturation
-- déclarations
-- comptabilité
-- assurances
-- obligations professionnelles
-- documents
-- compte bancaire
-- professionnel compétent
-
-IMPORTANT :
-
-Ne dis jamais automatiquement
-qu'une inscription au RCS,
-une licence,
-une autorisation
-ou une obligation particulière est nécessaire.
-
-Si ce n'est pas confirmé :
-mets-le dans "verifier".
-`;
-}
-
-function promptProbleme(probleme) {
-  return `
-Problème :
-
-${probleme}
-
-Identifie :
-
-1. problème central
-2. causes possibles
-3. conséquences
-4. vérifications
-5. solutions
-6. solution simple
-7. solution potentiellement efficace
-8. risques
-9. ordre des actions
-10. prochaine action
-
-Si le problème est administratif,
-juridique,
-fiscal,
-social
-ou lié à l'emploi,
-indique ce qui doit être vérifié officiellement.
-`;
-}
-
-function construirePrompt(
-  type,
-  message,
-  secteur,
-  activite,
-  statut
-) {
-  if (type === "sector") {
-    return promptSecteur(
-      secteur
+  try {
+    body = await request.json();
+  } catch {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: "JSON invalide."
+      }),
+      {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json"
+        }
+      }
     );
   }
 
-  if (type === "independent") {
-    return promptIndependant(
-      activite,
-      statut,
-      message
-    );
-  }
+  const type = clean(body.type || "question", 100);
 
-  if (type === "problem") {
-    return promptProbleme(
-      message
-    );
-  }
-
-  return promptGeneral(
-    message
+  const question = clean(
+    body.question ||
+    body.probleme ||
+    "",
+    3000
   );
-}
 
-/* =====================================================
-   PAGE
-===================================================== */
+  if (!question) {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: "Question manquante."
+      }),
+      {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json"
+        }
+      }
+    );
+  }
+
+  try {
+    const analyse = await analyser(
+      env,
+      question,
+      type
+    );
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        version: VERSION,
+        analyse
+      }),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json"
+        }
+      }
+    );
+  } catch (error) {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: "Impossible de générer l'analyse.",
+        detail: "Service temporairement indisponible."
+      }),
+      {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json"
+        }
+      }
+    );
+  }
+}
 
 function page() {
   return `<!DOCTYPE html>
-
 <html lang="fr">
-
 <head>
-
 <meta charset="UTF-8">
-
-<meta
-name="viewport"
-content="width=device-width, initial-scale=1.0"
->
+<meta name="viewport" content="width=device-width,initial-scale=1">
 
 <title>GouRare AI</title>
 
 <style>
-
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  min-height: 100vh;
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
-
-  background:
-    radial-gradient(
-      circle at top,
-      #18233c,
-      #070b13 58%
-    );
-
-  color: #f5f7fb;
-}
-
-.container {
-  width: min(1050px, 94%);
-  margin: auto;
-  padding: 35px 0 110px;
+  font-family: Arial, sans-serif;
+  background: #f5f6f8;
+  color: #151515;
 }
 
 header {
+  background: #111;
+  color: white;
+  padding: 28px 20px;
   text-align: center;
-  margin-bottom: 28px;
 }
 
-.logo {
-  font-size: 42px;
-  font-weight: 800;
-  letter-spacing: -2px;
+header h1 {
+  margin: 0 0 8px;
+  font-size: 34px;
 }
 
-.logo span {
-  color: #8ab4ff;
+header p {
+  margin: 0;
+  opacity: .8;
 }
 
-.subtitle {
-  margin-top: 8px;
-  color: #aeb8ca;
+main {
+  max-width: 900px;
+  margin: 25px auto;
+  padding: 0 15px 50px;
 }
 
 .badge {
-  display: inline-block;
-  margin-top: 15px;
-  padding: 8px 14px;
-  border-radius: 999px;
-  color: #c5d8ff;
-  background: rgba(138,180,255,.12);
-  border: 1px solid rgba(138,180,255,.2);
-  font-size: 13px;
-}
-
-.panel {
-  padding: 22px;
-  border-radius: 22px;
-  background: rgba(17,24,39,.9);
-  border: 1px solid rgba(255,255,255,.08);
-  box-shadow:
-    0 25px 70px rgba(0,0,0,.35);
+  text-align: center;
+  margin-bottom: 20px;
+  font-weight: bold;
 }
 
 .tabs {
-  display: grid;
-  grid-template-columns:
-    repeat(4, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 20px;
+  margin-bottom: 15px;
 }
 
-.tab {
-  border: 1px solid rgba(255,255,255,.08);
-  background: #111827;
-  color: #b8c0d0;
-  padding: 13px 8px;
-  border-radius: 12px;
+.tabs button {
+  border: 0;
+  padding: 12px 15px;
+  border-radius: 10px;
   cursor: pointer;
+  background: #ddd;
 }
 
-.tab.active {
-  background: #253b68;
+.tabs button.active {
+  background: #111;
   color: white;
-  border-color: #5278c9;
 }
 
-.mode {
-  display: none;
+.panel {
+  background: white;
+  padding: 20px;
+  border-radius: 15px;
+  box-shadow: 0 5px 20px rgba(0,0,0,.06);
 }
 
-.mode.active {
-  display: block;
-}
-
-label {
-  display: block;
-  margin: 14px 0 7px;
-  color: #dbe3f2;
-  font-weight: 600;
-}
-
-input,
-textarea {
+textarea,
+input {
   width: 100%;
   padding: 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,.1);
-  background: #0c1220;
-  color: white;
-  outline: none;
-  font-size: 15px;
-}
-
-textarea {
-  min-height: 130px;
-  resize: vertical;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  margin-bottom: 12px;
+  font-size: 16px;
 }
 
 button.primary {
   width: 100%;
-  margin-top: 18px;
-  padding: 15px;
+  padding: 14px;
   border: 0;
-  border-radius: 12px;
-  background: #4778d9;
+  border-radius: 10px;
+  background: #111;
   color: white;
-  font-size: 16px;
-  font-weight: 700;
   cursor: pointer;
-}
-
-button.primary:disabled {
-  opacity: .55;
-}
-
-.results {
-  margin-top: 25px;
+  font-size: 16px;
 }
 
 .result-card {
+  background: white;
+  margin-top: 20px;
   padding: 20px;
-  border-radius: 18px;
-  background: rgba(10,15,27,.92);
-  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 15px;
+  box-shadow: 0 5px 20px rgba(0,0,0,.06);
 }
 
 .result-card h2 {
@@ -1105,891 +942,360 @@ button.primary:disabled {
 }
 
 .section {
-  margin-top: 20px;
+  margin-top: 18px;
 }
 
 .section h3 {
-  color: #9fc0ff;
-}
-
-.section li {
   margin-bottom: 8px;
-  color: #d4dbea;
 }
 
-.next {
-  margin-top: 22px;
-  padding: 17px;
-  border-radius: 14px;
-  background: rgba(71,120,217,.15);
-  border: 1px solid rgba(71,120,217,.3);
+.item {
+  padding: 10px;
+  margin: 7px 0;
+  background: #f3f3f3;
+  border-radius: 8px;
 }
 
-.sources {
-  margin-top: 22px;
-  padding: 16px;
-  border-radius: 14px;
-  background: rgba(255,255,255,.035);
-}
-
-.sources a {
-  color: #9fc0ff;
-}
-
-.cancer-support {
-  position: fixed;
-  right: 16px;
-  bottom: 16px;
-  z-index: 50;
-
-  padding: 9px 13px;
-  border-radius: 999px;
-
-  background: rgba(20,27,42,.96);
-  color: #f4f6fb;
-
-  border: 1px solid rgba(255,255,255,.12);
-
-  text-decoration: none;
-  font-size: 12px;
+.ai-result {
+  white-space: pre-wrap;
+  line-height: 1.6;
 }
 
 footer {
-  margin-top: 35px;
   text-align: center;
-  color: #7f8aa0;
+  padding: 25px;
+  color: #666;
+}
+
+.small {
+  color: #777;
   font-size: 13px;
 }
-
-@media (max-width: 700px) {
-
-  .logo {
-    font-size: 34px;
-  }
-
-  .tabs {
-    grid-template-columns:
-      repeat(2, 1fr);
-  }
-
-  .panel {
-    padding: 15px;
-  }
-
-}
-
 </style>
-
 </head>
 
 <body>
 
-<div class="container">
-
 <header>
+  <h1>GouRare AI</h1>
+  <p>L'intelligence qui vous oriente vers la bonne action.</p>
+</header>
 
-<div class="logo">
-Gou<span>Rare</span> AI
-</div>
-
-<div class="subtitle">
-Intelligence • Orientation • Solutions
-</div>
+<main>
 
 <div class="badge">
-Intelligence vérifiée et orientation pratique
+  🎗️ Avec vous contre le cancer
 </div>
 
-</header>
+<div class="tabs">
+  <button class="active" data-type="question">Question</button>
+  <button data-type="secteur">Secteur</button>
+  <button data-type="independant">Indépendant</button>
+  <button data-type="probleme">Problème</button>
+</div>
 
 <div class="panel">
 
-<div class="tabs">
+<div id="questionPanel">
 
-<button
-class="tab active"
-data-mode="question"
->
-Question
-</button>
-
-<button
-class="tab"
-data-mode="sector"
->
-Secteur
-</button>
-
-<button
-class="tab"
-data-mode="independent"
->
-Indépendant
-</button>
-
-<button
-class="tab"
-data-mode="problem"
->
-Problème
-</button>
+<textarea id="question"
+placeholder="Décrivez votre situation ou votre question..."></textarea>
 
 </div>
 
-<div
-class="mode active"
-id="question"
->
-
-<label>
-Votre question
-</label>
-
-<textarea
-id="questionText"
-placeholder="Exemple : Je veux créer une entreprise de nettoyage en France. Que dois-je faire ?"
-></textarea>
-
-<button
-class="primary"
-onclick="analyser('question')"
->
+<button class="primary" id="analyser">
 Analyser avec GouRare AI
 </button>
 
 </div>
 
-<div
-class="mode"
-id="sector"
->
+<div id="results"></div>
 
-<label>
-Secteur ou métier
-</label>
-
-<input
-id="sectorText"
-placeholder="Exemple : Nettoyage"
-/>
-
-<button
-class="primary"
-onclick="analyser('sector')"
->
-Analyser le secteur
-</button>
-
-</div>
-
-<div
-class="mode"
-id="independent"
->
-
-<label>
-Activité
-</label>
-
-<input
-id="activityText"
-placeholder="Exemple : Nettoyage à domicile"
-/>
-
-<label>
-Statut
-</label>
-
-<input
-id="statusText"
-placeholder="Exemple : Micro-entrepreneur"
-/>
-
-<label>
-Votre question
-</label>
-
-<textarea
-id="independentQuestion"
-placeholder="Exemple : Quelles sont mes obligations fiscales ?"
-></textarea>
-
-<button
-class="primary"
-onclick="analyser('independent')"
->
-Analyser ma situation
-</button>
-
-</div>
-
-<div
-class="mode"
-id="problem"
->
-
-<label>
-Quel est votre problème ?
-</label>
-
-<textarea
-id="problemText"
-placeholder="Décrivez votre problème le plus précisément possible."
-></textarea>
-
-<button
-class="primary"
-onclick="analyser('problem')"
->
-Chercher une solution
-</button>
-
-</div>
-
-<div
-id="results"
-class="results"
-></div>
-
-</div>
+</main>
 
 <footer>
-
-GouRare AI — Une intelligence au service
-de l'orientation, des solutions et de la vie.
-
-<br><br>
-
-🎗️ Notre soutien aux personnes touchées par le cancer.
-
+  🎗️ Notre soutien aux personnes touchées par le cancer.
+  <br>
+  <span class="small">
+    GouRare AI fournit une orientation et ne remplace pas
+    un professionnel qualifié.
+  </span>
 </footer>
 
-</div>
-
-<a
-class="cancer-support"
-href="#soutien"
-aria-label="GouRare AI soutient les personnes touchées par le cancer"
->
-🎗️ Avec vous contre le cancer
-</a>
-
 <script>
+const tabs = document.querySelectorAll(".tabs button");
+const analyserButton = document.getElementById("analyser");
+const question = document.getElementById("question");
+const results = document.getElementById("results");
 
-const tabs =
-document.querySelectorAll(".tab");
+let currentType = "question";
 
-const modes =
-document.querySelectorAll(".mode");
+tabs.forEach(button => {
+  button.addEventListener("click", () => {
 
-tabs.forEach(tab => {
+    tabs.forEach(item => {
+      item.classList.remove("active");
+    });
 
-  tab.addEventListener(
-    "click",
-    () => {
+    button.classList.add("active");
 
-      tabs.forEach(t =>
-        t.classList.remove("active")
-      );
-
-      modes.forEach(m =>
-        m.classList.remove("active")
-      );
-
-      tab.classList.add("active");
-
-      document
-        .getElementById(
-          tab.dataset.mode
-        )
-        .classList.add("active");
-
-    }
-  );
-
+    currentType = button.dataset.type;
+  });
 });
 
 function escapeHTML(value) {
-
   return String(value || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
-function afficherListe(items) {
-
-  if (
-    !Array.isArray(items) ||
-    items.length === 0
-  ) {
-    return "<p>Aucune information particulière.</p>";
+function listHTML(items) {
+  if (!Array.isArray(items) || !items.length) {
+    return "";
   }
 
-  return (
-    "<ul>" +
-    items
-      .map(
-        item =>
-          "<li>" +
-          escapeHTML(item) +
-          "</li>"
-      )
-      .join("") +
-    "</ul>"
-  );
+  return items.map(item => {
+
+    if (typeof item === "string") {
+      return '<div class="item">' +
+        escapeHTML(item) +
+        '</div>';
+    }
+
+    return '<div class="item">' +
+      '<strong>' +
+      escapeHTML(item.texte || "") +
+      '</strong>' +
+      (item.source
+        ? '<div class="small">Source : ' +
+          escapeHTML(item.source) +
+          '</div>'
+        : '') +
+      (item.preuve
+        ? '<div class="small">Preuve : ' +
+          escapeHTML(item.preuve) +
+          '</div>'
+        : '') +
+      '</div>';
+
+  }).join("");
 }
 
-function afficherAnalyse(
-  analyse,
-  sources
-) {
-
-  const results =
-    document.getElementById(
-      "results"
-    );
-
-  let sourcesHTML = "";
-
-  if (
-    Array.isArray(sources) &&
-    sources.length
-  ) {
-
-    sourcesHTML =
-      '<div class="sources">' +
-      "<h3>Sources officielles consultées</h3>" +
-      "<ul>" +
-      sources
-        .map(source => {
-
-          return (
-            "<li>" +
-            '<a href="' +
-            escapeHTML(source.url) +
-            '" target="_blank" rel="noopener noreferrer">' +
-            escapeHTML(source.nom) +
-            "</a>" +
-            (
-              source.disponible
-                ? ""
-                : " — non disponible au moment de l'analyse"
-            ) +
-            "</li>"
-          );
-
-        })
-        .join("") +
-      "</ul>" +
-      "</div>";
-
-  }
+function renderAnalyse(analyse) {
 
   results.innerHTML =
     '<div class="result-card">' +
 
-    "<h2>" +
-    escapeHTML(analyse.titre) +
-    "</h2>" +
+      '<h2>' +
+        escapeHTML(analyse.titre) +
+      '</h2>' +
 
-    '<div class="section">' +
-    "<h3>Ce que j'ai compris</h3>" +
-    "<p>" +
-    escapeHTML(
-      analyse.comprehension
-    ) +
-    "</p>" +
-    "</div>" +
+      '<div class="section">' +
+        '<h3>Ce que j\\'ai compris</h3>' +
+        '<div class="ai-result">' +
+          escapeHTML(analyse.compris) +
+        '</div>' +
+      '</div>' +
 
-    '<div class="section">' +
-    "<h3>Orientation</h3>" +
-    "<p>" +
-    escapeHTML(
-      analyse.orientation
-    ) +
-    "</p>" +
-    "</div>" +
+      '<div class="section">' +
+        '<h3>Orientation</h3>' +
+        '<div class="ai-result">' +
+          escapeHTML(analyse.orientation) +
+        '</div>' +
+      '</div>' +
 
-    '<div class="section">' +
-    "<h3>Informations confirmées</h3>" +
-    afficherListe(
-      analyse.confirme
-    ) +
-    "</div>" +
+      '<div class="section">' +
+        '<h3>Informations confirmées</h3>' +
+        listHTML(analyse.confirmees) +
+      '</div>' +
 
-    '<div class="section">' +
-    "<h3>Informations à vérifier</h3>" +
-    afficherListe(
-      analyse.verifier
-    ) +
-    "</div>" +
+      '<div class="section">' +
+        '<h3>À vérifier</h3>' +
+        listHTML(analyse.aVerifier) +
+      '</div>' +
 
-    '<div class="section">' +
-    "<h3>Actions possibles</h3>" +
-    afficherListe(
-      analyse.actions
-    ) +
-    "</div>" +
+      '<div class="section">' +
+        '<h3>Recommandations</h3>' +
+        listHTML(analyse.recommandations) +
+      '</div>' +
 
-    '<div class="section">' +
-    "<h3>Documents / informations</h3>" +
-    afficherListe(
-      analyse.documents
-    ) +
-    "</div>" +
+      '<div class="section">' +
+        '<h3>Actions</h3>' +
+        listHTML(analyse.actions) +
+      '</div>' +
 
-    '<div class="section">' +
-    "<h3>Risques / points d'attention</h3>" +
-    afficherListe(
-      analyse.risques
-    ) +
-    "</div>" +
+      '<div class="section">' +
+        '<h3>Documents</h3>' +
+        listHTML(analyse.documents) +
+      '</div>' +
 
-    '<div class="section">' +
-    "<h3>Quand consulter un professionnel</h3>" +
-    "<p>" +
-    escapeHTML(
-      analyse.professionnel
-    ) +
-    "</p>" +
-    "</div>" +
+      '<div class="section">' +
+        '<h3>Risques / points d\\'attention</h3>' +
+        listHTML(analyse.risques) +
+      '</div>' +
 
-    '<div class="next">' +
-    "<strong>PROCHAINE ACTION</strong>" +
-    "<p>" +
-    escapeHTML(
-      analyse.prochaine_action
-    ) +
-    "</p>" +
-    "</div>" +
+      '<div class="section">' +
+        '<h3>Professionnel à consulter</h3>' +
+        '<div class="item">' +
+          escapeHTML(analyse.professionnel) +
+        '</div>' +
+      '</div>' +
 
-    sourcesHTML +
+      '<div class="section">' +
+        '<h3>PROCHAINE ACTION</h3>' +
+        '<div class="item">' +
+          '<strong>' +
+            escapeHTML(analyse.prochaineAction) +
+          '</strong>' +
+        '</div>' +
+      '</div>' +
 
-    "</div>";
+      '<div class="section">' +
+        '<h3>Sources consultées</h3>' +
+        listHTML(
+          (analyse.sources || []).map(source =>
+            source.nom +
+            (source.url ? " — " + source.url : "")
+          )
+        ) +
+      '</div>' +
 
-  results.scrollIntoView({
-    behavior: "smooth",
-    block: "start"
-  });
-
+    '</div>';
 }
 
-async function analyser(mode) {
+analyserButton.addEventListener("click", async () => {
 
-  const results =
-    document.getElementById(
-      "results"
-    );
+  const value = question.value.trim();
 
-  results.innerHTML =
-    '<div class="result-card">' +
-    "<p>⏳ GouRare AI analyse votre demande...</p>" +
-    "</div>";
-
-  const payload = {
-    type: mode,
-    message: "",
-    sector: "",
-    activity: "",
-    status: ""
-  };
-
-  if (mode === "question") {
-
-    payload.message =
-      document
-        .getElementById(
-          "questionText"
-        )
-        .value
-        .trim();
-
-  }
-
-  if (mode === "sector") {
-
-    payload.sector =
-      document
-        .getElementById(
-          "sectorText"
-        )
-        .value
-        .trim();
-
-  }
-
-  if (mode === "independent") {
-
-    payload.activity =
-      document
-        .getElementById(
-          "activityText"
-        )
-        .value
-        .trim();
-
-    payload.status =
-      document
-        .getElementById(
-          "statusText"
-        )
-        .value
-        .trim();
-
-    payload.message =
-      document
-        .getElementById(
-          "independentQuestion"
-        )
-        .value
-        .trim();
-
-  }
-
-  if (mode === "problem") {
-
-    payload.message =
-      document
-        .getElementById(
-          "problemText"
-        )
-        .value
-        .trim();
-
-  }
-
-  if (
-    !payload.message &&
-    !payload.sector &&
-    !payload.activity
-  ) {
-
-    results.innerHTML =
-      '<div class="result-card">' +
-      "<p>Veuillez remplir votre demande.</p>" +
-      "</div>";
-
+  if (!value) {
+    alert("Veuillez décrire votre situation.");
     return;
   }
 
-  const buttons =
-    document.querySelectorAll(
-      "button.primary"
-    );
-
-  buttons.forEach(
-    button =>
-      button.disabled = true
-  );
+  analyserButton.disabled = true;
+  analyserButton.textContent = "Analyse en cours...";
+  results.innerHTML = "";
 
   try {
 
-    const response =
-      await fetch(
-        "/api/analyze",
-        {
-          method: "POST",
+    const response = await fetch("/api/analyze", {
+      method: "POST",
 
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
+      headers: {
+        "Content-Type": "application/json"
+      },
 
-          body:
-            JSON.stringify(payload)
-        }
-      );
+      body: JSON.stringify({
+        type: currentType,
+        question: value
+      })
+    });
 
-    const data =
-      await response.json();
+    const data = await response.json();
 
-    if (!response.ok) {
-      throw new Error(
-        data.error ||
-        "Erreur pendant l'analyse."
-      );
+    if (!data.success) {
+      throw new Error("Analyse impossible");
     }
 
-    afficherAnalyse(
-      data.analyse,
-      data.sources
-    );
+    renderAnalyse(data.analyse);
 
   } catch (error) {
 
     results.innerHTML =
       '<div class="result-card">' +
-      "<h2>Erreur</h2>" +
-      "<p>" +
-      escapeHTML(
-        error.message
-      ) +
-      "</p>" +
-      "</div>";
+        '<h2>Erreur</h2>' +
+        '<p>Le service est temporairement indisponible.</p>' +
+      '</div>';
 
   } finally {
 
-    buttons.forEach(
-      button =>
-        button.disabled = false
-    );
-
+    analyserButton.disabled = false;
+    analyserButton.textContent =
+      "Analyser avec GouRare AI";
   }
-
-}
-
+});
 </script>
 
 </body>
-
 </html>`;
 }
 
-/* =====================================================
-   WORKER
-===================================================== */
-
 export default {
+  async fetch(request, env) {
 
-  async fetch(
-    request,
-    env
-  ) {
+    const url = new URL(request.url);
 
-    const url =
-      new URL(request.url);
+    const headers = {
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+      "Referrer-Policy": "strict-origin-when-cross-origin",
+      "Permissions-Policy":
+        "camera=(), microphone=(), geolocation=()",
+      "Cache-Control": "no-store"
+    };
 
-    /* HEALTH */
+    if (url.pathname === "/health") {
 
-    if (
-      url.pathname ===
-      "/health"
-    ) {
-
-      return json({
-        success: true,
-        service: "GouRare AI",
-        status: "OK",
-        version: VERSION
-      });
-
+      return new Response(
+        JSON.stringify({
+          success: true,
+          service: "GouRare AI",
+          status: "OK",
+          version: VERSION
+        }),
+        {
+          headers: {
+            ...headers,
+            "Content-Type": "application/json"
+          }
+        }
+      );
     }
 
-    /* ACCUEIL */
+    if (url.pathname === "/api/analyze") {
 
-    if (
-      url.pathname === "/" &&
-      request.method === "GET"
-    ) {
-
-      return html(
-        page()
+      const response = await handleAPI(
+        request,
+        env
       );
 
+      const newHeaders = new Headers(response.headers);
+
+      for (const [key, value] of Object.entries(headers)) {
+        newHeaders.set(key, value);
+      }
+
+      return new Response(
+        response.body,
+        {
+          status: response.status,
+          headers: newHeaders
+        }
+      );
     }
 
-    /* API */
+    if (request.method === "GET") {
 
-    if (
-      url.pathname ===
-      "/api/analyze"
-    ) {
-
-      if (
-        request.method !== "POST"
-      ) {
-
-        return json(
-          {
-            success: false,
-            error:
-              "Méthode non autorisée."
-          },
-          405
-        );
-
-      }
-
-      const contentType =
-        request.headers.get(
-          "content-type"
-        ) || "";
-
-      if (
-        !contentType
-          .toLowerCase()
-          .includes(
-            "application/json"
-          )
-      ) {
-
-        return json(
-          {
-            success: false,
-            error:
-              "Le contenu doit être envoyé en JSON."
-          },
-          415
-        );
-
-      }
-
-      let body;
-
-      try {
-
-        body =
-          await request.json();
-
-      } catch {
-
-        return json(
-          {
-            success: false,
-            error:
-              "JSON invalide."
-          },
-          400
-        );
-
-      }
-
-      const type =
-        clean(
-          body.type,
-          30
-        );
-
-      const message =
-        clean(
-          body.message,
-          5000
-        );
-
-      const sector =
-        clean(
-          body.sector,
-          150
-        );
-
-      const activity =
-        clean(
-          body.activity,
-          200
-        );
-
-      const status =
-        clean(
-          body.status,
-          150
-        );
-
-      if (
-        !message &&
-        !sector &&
-        !activity
-      ) {
-
-        return json(
-          {
-            success: false,
-            error:
-              "Veuillez fournir une demande."
-          },
-          400
-        );
-
-      }
-
-      const prompt =
-        construirePrompt(
-          type,
-          message,
-          sector,
-          activity,
-          status
-        );
-
-      const sources =
-        await recupererSources(
-          message + " " + prompt,
-          sector,
-          activity
-        );
-
-      const contexte =
-        sources
-          .filter(
-            source =>
-              source.disponible
-          )
-          .map(
-            source =>
-              `
-SOURCE : ${source.nom}
-
-URL : ${source.url}
-
-CONTENU :
-${source.extrait}
-`
-          )
-          .join("\n\n");
-
-      try {
-
-        const analyse =
-          await askAI(
-            env,
-            prompt,
-            contexte
-          );
-
-        return json({
-          success: true,
-          version: VERSION,
-          analyse,
-          sources:
-            sources.map(
-              source => ({
-                nom: source.nom,
-                url: source.url,
-                disponible:
-                  source.disponible
-              })
-            )
-        });
-
-      } catch {
-
-        return json(
-          {
-            success: false,
-            error:
-              "Le service d'intelligence est temporairement indisponible."
-          },
-          500
-        );
-
-      }
-
+      return new Response(
+        page(),
+        {
+          headers: {
+            ...headers,
+            "Content-Type": "text/html; charset=UTF-8"
+          }
+        }
+      );
     }
 
     return new Response(
-      "GouRare AI",
+      "Not Found",
       {
         status: 404,
-        headers: {
-          "Content-Type":
-            "text/plain; charset=UTF-8"
-        }
+        headers
       }
     );
-
   }
-
 };
