@@ -1,734 +1,541 @@
-const VERSION = "7.3";
 const MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
-
-/*
-  GouRare AI V7.3
-  Moteur de preuve contrôlé
-
-  Principe :
-  - L'IA ne crée pas les preuves.
-  - Les preuves viennent uniquement de notre base officielle.
-  - Une information ne peut être "confirmée" que si elle possède
-    un preuve_id valide.
-  - Une information conditionnelle reste conditionnelle.
-*/
+const VERSION = "7.4";
 
 const SOURCES = {
-  creation_ei: {
-    id: "creation_ei",
-    name: "Création d'une entreprise individuelle - Service Public Entreprendre",
-    url: "https://entreprendre.service-public.fr/vosdroits/F36763",
-
+  statut: {
+    id: "statut",
+    title: "Trouver le statut juridique adapté à son activité",
+    url: "https://entreprendre.service-public.fr/vosdroits/R18323",
     preuves: [
       {
-        id: "P1",
-        texte:
-          "Pour créer une entreprise individuelle (EI), il y a très peu de formalités à accomplir. L'une d'entre elles est l'immatriculation. Il s'agit de la déclaration d'activité auprès de l'administration."
+        id: "STATUT-P1",
+        texte: "Un simulateur permet de trouver le statut juridique adapté à une activité."
       },
       {
-        id: "P2",
-        texte:
-          "La demande d'immatriculation doit être réalisée sur le site internet du guichet des formalités des entreprises, au plus tôt 1 mois avant le début d'activité ou au plus tard dans les 15 jours qui suivent la date de début d'activité."
+        id: "STATUT-P2",
+        texte: "Le choix du statut s'effectue notamment à partir de l'activité exercée et du chiffre d'affaires estimé."
       },
       {
-        id: "P3",
-        texte:
-          "Une fois l'immatriculation réalisée, l'entreprise est inscrite sur le registre national des entreprises (RNE)."
+        id: "STATUT-P3",
+        texte: "Le simulateur permet de connaître les différentes formes juridiques possibles."
       },
       {
-        id: "P4",
-        texte:
-          "Le registre d'inscription est différent selon la nature de l'activité exercée."
-      },
-      {
-        id: "P5",
-        texte:
-          "Activité commerciale : l'entreprise individuelle (EI) est inscrite au registre du commerce et des sociétés (RCS) et au registre national des entreprises (RNE)."
-      },
-      {
-        id: "P6",
-        texte:
-          "Activité artisanale : pour une entreprise de moins de 11 salariés, l'entreprise individuelle (EI) est inscrite au registre national des entreprises (RNE) en tant qu'entreprise du secteur des métiers et de l'artisanat."
-      },
-      {
-        id: "P7",
-        texte:
-          "Activité libérale : l'entreprise individuelle est inscrite au registre national des entreprises (RNE)."
-      },
-      {
-        id: "P8",
-        texte:
-          "Lors de la demande d'immatriculation auprès du guichet des formalités des entreprises, il faut indiquer un certain nombre d'informations et joindre notamment un justificatif de domiciliation de l'entreprise, une déclaration sur l'honneur de non-condamnation et une attestation de filiation, ainsi qu'une copie de la pièce d'identité."
-      },
-      {
-        id: "P9",
-        texte:
-          "Si l'entrepreneur exerce une activité réglementée, une copie de l'autorisation d'exercice de l'activité, du diplôme ou du titre peut être demandée."
+        id: "STATUT-P4",
+        texte: "Les différentes formes peuvent être comparées notamment selon les revenus, la protection sociale, la comptabilité et la gestion juridique."
       }
     ]
   },
 
-  statut: {
-    id: "statut",
-    name: "Trouver le statut juridique adapté à son activité - Service Public Entreprendre",
-    url: "https://entreprendre.service-public.fr/vosdroits/R18323",
-
+  creation_ei: {
+    id: "creation_ei",
+    title: "Création d'une entreprise individuelle : formalités d'immatriculation",
+    url: "https://entreprendre.service-public.fr/vosdroits/F36763",
     preuves: [
       {
-        id: "P1",
-        texte:
-          "Ce questionnaire détaillé permet de choisir le statut juridique le plus adapté à son projet d'entreprise."
+        id: "EI-P1",
+        texte: "L'entreprise individuelle comporte peu de formalités de création, dont notamment l'immatriculation et la déclaration de l'activité."
       },
       {
-        id: "P2",
-        texte:
-          "Étape 1 : saisir les informations demandées : activité envisagée, chiffre d'affaires estimé."
+        id: "EI-P2",
+        texte: "L'immatriculation d'une entreprise individuelle se fait sur le Guichet des formalités des entreprises."
       },
       {
-        id: "P3",
-        texte:
-          "Étape 2 : connaître les formes juridiques possibles."
+        id: "EI-P3",
+        texte: "Après l'immatriculation, l'entreprise individuelle est inscrite au Registre national des entreprises (RNE)."
       },
       {
-        id: "P4",
-        texte:
-          "Étape 3 : comparer les revenus, la couverture sociale et la gestion comptable et juridique avant de faire son choix."
+        id: "EI-P4",
+        texte: "Le registre auquel l'entreprise individuelle est inscrite dépend de la nature de l'activité exercée."
+      },
+      {
+        id: "EI-P5",
+        texte: "Une entreprise individuelle exerçant une activité commerciale est inscrite au RCS et au RNE."
+      },
+      {
+        id: "EI-P6",
+        texte: "Une entreprise individuelle exerçant une activité artisanale est inscrite au RNE, avec des règles supplémentaires selon le nombre de salariés."
+      },
+      {
+        id: "EI-P7",
+        texte: "Une entreprise individuelle exerçant une activité libérale est inscrite au RNE."
+      },
+      {
+        id: "EI-P8",
+        texte: "Pour l'immatriculation d'une entreprise individuelle, certaines pièces peuvent être demandées, notamment un justificatif de domiciliation, une déclaration sur l'honneur de non-condamnation et une pièce d'identité."
+      },
+      {
+        id: "EI-P9",
+        texte: "Une activité réglementée peut nécessiter une autorisation, un diplôme ou un titre professionnel."
       }
     ]
   }
 };
 
 function clean(value, max = 5000) {
-  if (value === null || value === undefined) {
-    return "";
-  }
-
+  if (value === null || value === undefined) return "";
   return String(value)
     .replace(/\u0000/g, "")
     .trim()
     .slice(0, max);
 }
 
-function arrayText(value) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
+function normalizeArray(value) {
+  if (!Array.isArray(value)) return [];
   return value
-    .map(item => {
-      if (typeof item === "string") {
-        return clean(item, 1200);
-      }
-
-      if (item && typeof item === "object") {
-        return clean(
-          item.texte ||
-          item.text ||
-          item.description ||
-          "",
-          1200
-        );
-      }
-
-      return "";
-    })
+    .map(item => clean(item, 1000))
     .filter(Boolean);
 }
 
-function extractJSON(value) {
-  if (!value) {
-    return null;
+function unique(values) {
+  return [...new Set(values)];
+}
+
+function detectContext(question) {
+  const q = question.toLowerCase();
+
+  const nettoyage =
+    q.includes("nettoyage") ||
+    q.includes("ménage") ||
+    q.includes("menage") ||
+    q.includes("entretien");
+
+  const entreprise =
+    q.includes("entreprise") ||
+    q.includes("société") ||
+    q.includes("societe") ||
+    q.includes("créer") ||
+    q.includes("creer") ||
+    q.includes("création") ||
+    q.includes("creation");
+
+  const ei =
+    q.includes("entreprise individuelle") ||
+    q.includes("ei") ||
+    q.includes("micro-entreprise") ||
+    q.includes("micro entreprise") ||
+    q.includes("microentreprise");
+
+  const fiscal =
+    q.includes("impôt") ||
+    q.includes("impot") ||
+    q.includes("fiscal") ||
+    q.includes("taxe") ||
+    q.includes("tva") ||
+    q.includes("urssaf");
+
+  return {
+    nettoyage,
+    entreprise,
+    ei,
+    fiscal
+  };
+}
+
+function selectSources(question) {
+  const contexte = detectContext(question);
+  const sources = [];
+
+  if (contexte.entreprise || contexte.ei) {
+    sources.push(SOURCES.statut);
   }
 
-  if (typeof value === "object") {
-    if (value.response !== undefined) {
-      return extractJSON(value.response);
-    }
-
-    if (value.result !== undefined) {
-      return extractJSON(value.result);
-    }
-
-    if (value.output !== undefined) {
-      return extractJSON(value.output);
-    }
-
-    return value;
+  if (contexte.ei) {
+    sources.push(SOURCES.creation_ei);
   }
 
-  if (typeof value !== "string") {
-    return null;
+  if (
+    contexte.nettoyage &&
+    contexte.entreprise &&
+    !contexte.ei
+  ) {
+    sources.push(SOURCES.statut);
   }
 
-  let text = value.trim();
+  const map = new Map();
 
-  text = text
+  for (const source of sources) {
+    map.set(source.id, source);
+  }
+
+  return [...map.values()];
+}
+
+function buildConfirmedFacts(question) {
+  const contexte = detectContext(question);
+  const confirmees = [];
+
+  if (contexte.entreprise || contexte.nettoyage) {
+    confirmees.push({
+      texte:
+        "Le choix de la forme juridique peut être étudié à partir de l'activité exercée et d'autres critères comme le chiffre d'affaires estimé, les revenus, la protection sociale et la gestion.",
+      source_id: "statut",
+      preuve_id: "STATUT-P2"
+    });
+  }
+
+  if (contexte.ei) {
+    confirmees.push({
+      texte:
+        "Pour une entreprise individuelle, les formalités d'immatriculation passent par le Guichet des formalités des entreprises.",
+      source_id: "creation_ei",
+      preuve_id: "EI-P2"
+    });
+
+    confirmees.push({
+      texte:
+        "Après son immatriculation, une entreprise individuelle est inscrite au Registre national des entreprises (RNE).",
+      source_id: "creation_ei",
+      preuve_id: "EI-P3"
+    });
+
+    confirmees.push({
+      texte:
+        "Les registres concernés par une entreprise individuelle dépendent de la nature de l'activité exercée.",
+      source_id: "creation_ei",
+      preuve_id: "EI-P4"
+    });
+  }
+
+  return confirmees;
+}
+
+function buildDocuments(question) {
+  const contexte = detectContext(question);
+
+  if (!contexte.ei) {
+    return [];
+  }
+
+  return [
+    {
+      statut: "à vérifier",
+      texte:
+        "Un justificatif de domiciliation peut être demandé pour l'immatriculation.",
+      source_id: "creation_ei",
+      preuve_id: "EI-P8"
+    },
+    {
+      statut: "à vérifier",
+      texte:
+        "Une déclaration sur l'honneur de non-condamnation et une pièce d'identité peuvent être demandées.",
+      source_id: "creation_ei",
+      preuve_id: "EI-P8"
+    }
+  ];
+}
+
+function buildRisks(question) {
+  // Aucun risque juridique n'est affiché automatiquement
+  // sans preuve officielle spécifique.
+  return [];
+}
+
+function buildNextAction(question) {
+  const contexte = detectContext(question);
+
+  if (contexte.ei) {
+    return "Préciser la nature exacte de l'activité de nettoyage afin de vérifier les formalités et inscriptions applicables.";
+  }
+
+  if (contexte.nettoyage && contexte.entreprise) {
+    return "Préciser la forme juridique envisagée et la nature exacte de l'activité de nettoyage.";
+  }
+
+  return "Préciser votre situation et l'objectif recherché afin d'identifier la prochaine démarche adaptée.";
+}
+
+function buildRecommendations(question) {
+  const contexte = detectContext(question);
+
+  if (contexte.nettoyage && contexte.entreprise && !contexte.ei) {
+    return [
+      "Comparer les formes juridiques possibles avant de choisir celle qui correspond à votre activité.",
+      "Préciser si l'activité sera exercée seul ou avec d'autres personnes.",
+      "Préciser la nature exacte des prestations de nettoyage envisagées."
+    ];
+  }
+
+  if (contexte.ei) {
+    return [
+      "Vérifier la nature exacte de l'activité exercée.",
+      "Vérifier les formalités correspondant à cette activité sur le Guichet des formalités des entreprises."
+    ];
+  }
+
+  return [
+    "Préciser les éléments importants de votre situation.",
+    "Vérifier les informations spécifiques auprès de la source officielle concernée."
+  ];
+}
+
+function buildActions(question) {
+  const contexte = detectContext(question);
+
+  if (contexte.nettoyage && contexte.entreprise && !contexte.ei) {
+    return [
+      "Définir précisément les prestations de nettoyage proposées.",
+      "Comparer les formes juridiques adaptées à l'activité.",
+      "Vérifier ensuite les formalités correspondant au statut choisi."
+    ];
+  }
+
+  if (contexte.ei) {
+    return [
+      "Préciser la nature exacte de l'activité.",
+      "Vérifier les formalités d'immatriculation applicables.",
+      "Préparer uniquement les documents demandés pour la démarche concernée."
+    ];
+  }
+
+  return [
+    "Préciser votre situation.",
+    "Identifier la démarche concernée.",
+    "Vérifier les informations auprès de la source officielle adaptée."
+  ];
+}
+
+function buildSources(question) {
+  return selectSources(question).map(source => ({
+    id: source.id,
+    titre: source.title,
+    url: source.url
+  }));
+}
+
+function systemPrompt() {
+  return `
+Tu es GouRare AI, un assistant d'orientation intelligent.
+
+TON RÔLE
+Tu aides les citoyens, salariés, demandeurs d'emploi, indépendants,
+entrepreneurs et petites entreprises à comprendre leur situation,
+organiser les informations et identifier les prochaines actions.
+
+TU NE REMPLACES PAS :
+- un avocat
+- un expert-comptable
+- un médecin
+- un travailleur social
+- une administration
+- un autre professionnel réglementé
+
+RÈGLE ABSOLUE DE FIABILITÉ
+Tu ne dois jamais inventer :
+- lois
+- articles
+- obligations
+- sanctions
+- montants
+- taux
+- seuils
+- délais
+- documents obligatoires
+- statistiques
+- revenus
+- économies
+- prix
+
+Les informations confirmées sont déjà construites par le moteur de vérité.
+Tu ne dois PAS en créer de nouvelles.
+
+Ton travail consiste principalement à :
+1. expliquer simplement la situation ;
+2. organiser les informations ;
+3. distinguer ce qui est confirmé de ce qui doit être vérifié ;
+4. proposer des actions pratiques ;
+5. éviter les affirmations juridiques non prouvées.
+
+Si une information n'est pas certaine :
+dis "À vérifier" ou "Cela dépend de votre situation".
+
+Ne transforme jamais une recommandation en obligation légale.
+
+Réponds en français.
+
+Retourne uniquement un JSON valide avec cette structure :
+
+{
+  "orientation": "texte",
+  "a_verifier": ["texte"],
+  "recommandations": ["texte"],
+  "actions": ["texte"]
+}
+`;
+}
+
+async function askAI(question, contexte) {
+  const prompt = `
+Question de l'utilisateur :
+${question}
+
+Contexte détecté :
+${JSON.stringify(contexte)}
+
+Important :
+Les informations confirmées et les documents sont gérés séparément
+par le moteur de vérité.
+
+Tu dois éviter :
+- d'inventer une obligation ;
+- de dire qu'un statut est obligatoire sans preuve ;
+- de présenter un document comme obligatoire sans preuve ;
+- de produire des sanctions ;
+- de recommander automatiquement un avocat ou un expert-comptable.
+
+Explique la situation de manière pratique.
+`;
+
+  const response = await envIA(prompt);
+
+  return response;
+}
+
+async function envIA(prompt) {
+  throw new Error("IA_NOT_INITIALIZED");
+}
+
+function extractJSON(text) {
+  if (!text) return null;
+
+  if (typeof text === "object") {
+    return text;
+  }
+
+  let value = String(text).trim();
+
+  value = value
     .replace(/^```json/i, "")
-    .replace(/^```/, "")
-    .replace(/```$/, "")
+    .replace(/^```/i, "")
+    .replace(/```$/i, "")
     .trim();
 
   try {
-    return JSON.parse(text);
-  } catch (_) {}
+    return JSON.parse(value);
+  } catch {}
 
-  const first = text.indexOf("{");
-  const last = text.lastIndexOf("}");
+  const first = value.indexOf("{");
+  const last = value.lastIndexOf("}");
 
-  if (first !== -1 && last > first) {
+  if (first !== -1 && last !== -1 && last > first) {
     try {
-      return JSON.parse(
-        text.substring(first, last + 1)
-      );
-    } catch (_) {}
+      return JSON.parse(value.slice(first, last + 1));
+    } catch {}
   }
 
   return null;
 }
 
-/*
-  Détection du contexte.
-*/
-function detectContext(question) {
-  const q = question.toLowerCase();
-
-  const creation =
-    q.includes("créer une entreprise") ||
-    q.includes("création d'entreprise") ||
-    q.includes("creation d'entreprise") ||
-    q.includes("créer mon entreprise") ||
-    q.includes("lancer mon entreprise") ||
-    q.includes("ouvrir mon entreprise");
-
-  const nettoyage =
-    q.includes("nettoyage") ||
-    q.includes("ménage") ||
-    q.includes("menage");
-
-  const micro =
-    q.includes("micro-entreprise") ||
-    q.includes("micro entreprise") ||
-    q.includes("microentrepreneur") ||
-    q.includes("micro-entrepreneur");
-
-  const ei =
-    q.includes("entreprise individuelle") ||
-    q.includes("entreprise individuelle (ei)") ||
-    q.includes("statut ei");
+function cleanAIResult(data) {
+  if (!data || typeof data !== "object") {
+    return {
+      orientation: "",
+      a_verifier: [],
+      recommandations: [],
+      actions: []
+    };
+  }
 
   return {
-    creation,
-    nettoyage,
-    micro,
-    ei
+    orientation: clean(data.orientation, 3000),
+    a_verifier: unique(normalizeArray(data.a_verifier)),
+    recommandations: unique(normalizeArray(data.recommandations)),
+    actions: unique(normalizeArray(data.actions))
   };
 }
 
-/*
-  Sources autorisées selon la question.
-*/
-function selectSources(question) {
-  const context = detectContext(question);
+function filterAIResult(result, question) {
+  const interdit = [
+    "vous devez créer une entreprise individuelle",
+    "vous devez créer une entreprise",
+    "vous devez obligatoirement",
+    "sanction",
+    "pénalité",
+    "amende",
+    "peine",
+    "expert-comptable",
+    "avocat"
+  ];
 
-  const result = [];
+  function filtrer(tableau) {
+    return tableau.filter(item => {
+      const t = item.toLowerCase();
 
-  if (context.creation || context.nettoyage) {
-    result.push(SOURCES.statut);
-    result.push(SOURCES.creation_ei);
+      return !interdit.some(mot => t.includes(mot));
+    });
   }
 
-  if (context.ei && !result.includes(SOURCES.creation_ei)) {
-    result.push(SOURCES.creation_ei);
-  }
+  result.a_verifier = filtrer(result.a_verifier);
+  result.recommandations = filtrer(result.recommandations);
+  result.actions = filtrer(result.actions);
 
   return result;
 }
 
-/*
-  Contexte de preuve envoyé à l'IA.
-*/
-function buildProofContext(sources) {
-  return sources.map(source => {
-    const preuves = source.preuves
-      .map(
-        proof =>
-          `[${source.id}/${proof.id}] ${proof.texte}`
-      )
-      .join("\n");
+function buildResponse(question, aiResult) {
+  const contexte = detectContext(question);
 
-    return `
-SOURCE_ID: ${source.id}
-SOURCE: ${source.name}
-URL: ${source.url}
+  const confirmees = buildConfirmedFacts(question);
+  const documents = buildDocuments(question);
+  const risques = buildRisks(question);
+  const sources = buildSources(question);
 
-PREUVES OFFICIELLES :
-${preuves}
-`;
-  }).join("\n----------------------\n");
-}
+  let result = cleanAIResult(aiResult);
 
-function systemPrompt() {
-  return `
-Tu es GouRare AI.
+  result = filterAIResult(result, question);
 
-Tu aides les utilisateurs à comprendre leurs démarches,
-leurs droits, leurs obligations et leurs choix.
+  const orientation =
+    result.orientation ||
+    "Votre situation nécessite de préciser quelques éléments avant de déterminer les démarches adaptées.";
 
-Tu n'es pas avocat, expert-comptable, administration,
-médecin ou autre professionnel réglementé.
+  let aVerifier = result.a_verifier;
 
-RÈGLE ABSOLUE :
-
-Tu ne dois jamais inventer une obligation.
-
-Tu ne dois jamais transformer une possibilité en obligation.
-
-Tu ne dois jamais transformer une recommandation en obligation.
-
-Tu ne dois jamais présenter une information concernant
-l'entreprise individuelle comme une obligation générale
-pour toutes les formes d'entreprise.
-
-IMPORTANT :
-
-Si l'utilisateur dit seulement :
-"Je veux créer une entreprise de nettoyage"
-
-Tu ne dois PAS répondre :
-"Vous devez créer une entreprise individuelle."
-
-Tu dois dire que plusieurs formes juridiques peuvent exister
-et que le choix du statut doit être déterminé.
-
-Tu peux confirmer uniquement une information qui correspond
-à une preuve officielle fournie.
-
-Pour une information confirmée :
-- utiliser exactement un source_id valide
-- utiliser exactement un preuve_id valide
-
-Ne jamais inventer de preuve_id.
-
-Ne jamais écrire toi-même une preuve.
-
-Le système remplacera automatiquement preuve_id
-par le texte officiel réel.
-
-Si une information n'est pas suffisamment démontrée :
-mettre l'information dans aVerifier.
-
-Ne mets jamais :
-"L'intention de l'utilisateur n'est pas une information à vérifier."
-
-L'intention de l'utilisateur doit rester dans "compris".
-
-DOCUMENTS :
-
-Utilise :
-- obligatoire
-- conditionnel
-- a_verifier
-
-N'écris "obligatoire" que si la preuve le démontre clairement.
-
-Si le document dépend d'une situation :
-utilise "conditionnel".
-
-PROFESSIONNEL :
-
-Ne recommande pas automatiquement un avocat ou expert-comptable.
-Ne le recommande que si la situation le justifie réellement.
-
-STYLE :
-
-Simple.
-Pratique.
-Précis.
-Pas de jargon inutile.
-
-La prochaine action doit être réaliste.
-`;
-}
-
-const SCHEMA = {
-  type: "object",
-
-  properties: {
-    titre: {
-      type: "string"
-    },
-
-    compris: {
-      type: "string"
-    },
-
-    orientation: {
-      type: "string"
-    },
-
-    confirmees: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          texte: {
-            type: "string"
-          },
-          source_id: {
-            type: "string"
-          },
-          preuve_id: {
-            type: "string"
-          }
-        },
-        required: [
-          "texte",
-          "source_id",
-          "preuve_id"
-        ]
-      }
-    },
-
-    aVerifier: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          texte: {
-            type: "string"
-          }
-        },
-        required: [
-          "texte"
-        ]
-      }
-    },
-
-    recommandations: {
-      type: "array",
-      items: {
-        type: "string"
-      }
-    },
-
-    actions: {
-      type: "array",
-      items: {
-        type: "string"
-      }
-    },
-
-    documents: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          texte: {
-            type: "string"
-          },
-          statut: {
-            type: "string"
-          }
-        },
-        required: [
-          "texte",
-          "statut"
-        ]
-      }
-    },
-
-    risques: {
-      type: "array",
-      items: {
-        type: "string"
-      }
-    },
-
-    professionnel: {
-      type: "string"
-    },
-
-    prochaineAction: {
-      type: "string"
-    }
-  },
-
-  required: [
-    "titre",
-    "compris",
-    "orientation",
-    "confirmees",
-    "aVerifier",
-    "recommandations",
-    "actions",
-    "documents",
-    "risques",
-    "professionnel",
-    "prochaineAction"
-  ]
-};
-
-function getProof(sources, sourceId, proofId) {
-  const source = sources.find(
-    item => item.id === sourceId
-  );
-
-  if (!source) {
-    return null;
-  }
-
-  const proof = source.preuves.find(
-    item => item.id === proofId
-  );
-
-  if (!proof) {
-    return null;
+  if (aVerifier.length === 0) {
+    aVerifier = [
+      "Les démarches exactes peuvent dépendre de la forme juridique et de la nature précise de l'activité."
+    ];
   }
 
   return {
-    source: source.name,
-    url: source.url,
-    preuve: proof.texte
-  };
-}
+    success: true,
+    version: VERSION,
+    titre: "Analyse GouRare AI",
 
-/*
-  Nettoyage anti-hallucination.
-*/
-function sanitizeAnalyse(analyse, sources, question) {
-
-  const context = detectContext(question);
-
-  const confirmees = [];
-
-  for (const item of analyse.confirmees || []) {
-
-    const proof = getProof(
-      sources,
-      item.source_id,
-      item.preuve_id
-    );
-
-    if (!proof) {
-      continue;
-    }
-
-    /*
-      Interdiction de considérer EI comme choix obligatoire
-      lorsque l'utilisateur ne l'a pas demandé.
-    */
-    if (
-      !context.ei &&
-      /vous devez.*entreprise individuelle|doit.*entreprise individuelle|faut.*entreprise individuelle/i
-        .test(item.texte)
-    ) {
-      continue;
-    }
-
-    confirmees.push({
-      texte: clean(item.texte, 1600),
-      source: proof.source,
-      url: proof.url,
-      preuve: proof.preuve,
-      statut: "confirmé"
-    });
-  }
-
-  /*
-    Supprimer les doublons.
-  */
-  const uniques = [];
-  const dejaVu = new Set();
-
-  for (const item of confirmees) {
-    const key =
-      item.texte.toLowerCase() +
-      "|" +
-      item.preuve.toLowerCase();
-
-    if (!dejaVu.has(key)) {
-      dejaVu.add(key);
-      uniques.push(item);
-    }
-  }
-
-  let aVerifier = Array.isArray(analyse.aVerifier)
-    ? analyse.aVerifier
-        .map(item => clean(item?.texte || "", 1500))
-        .filter(Boolean)
-    : [];
-
-  /*
-    Supprimer toute phrase qui parle de l'intention
-    comme si elle devait être vérifiée.
-  */
-  aVerifier = aVerifier.filter(
-    item =>
-      !/l'intention de l'utilisateur|intention de l'utilisateur/i
-        .test(item)
-  );
-
-  /*
-    Orientation déterministe pour la création d'entreprise.
-  */
-  let orientation = clean(
-    analyse.orientation || "",
-    3000
-  );
-
-  if (context.creation || context.nettoyage) {
-    orientation =
-      "Le choix du statut juridique doit d'abord être déterminé. " +
-      "Pour une entreprise de nettoyage, les démarches et les inscriptions " +
-      "peuvent dépendre de la forme juridique et de la nature exacte de l'activité. " +
-      "Le Guichet des formalités des entreprises est ensuite utilisé pour les formalités d'immatriculation.";
-  }
-
-  /*
-    Action suivante déterministe.
-  */
-  let prochaineAction =
-    clean(analyse.prochaineAction || "", 1200);
-
-  if (context.creation || context.nettoyage) {
-    prochaineAction =
-      "Déterminer la forme juridique envisagée et préciser exactement l'activité de nettoyage.";
-  }
-
-  return {
-    titre:
-      clean(analyse.titre || "Analyse GouRare AI", 300),
-
-    compris:
-      clean(analyse.compris || "", 1800),
+    compris: contexte.nettoyage
+      ? "Vous souhaitez créer ou développer une activité de nettoyage en France."
+      : "Votre demande a été analysée selon les informations fournies.",
 
     orientation,
 
-    confirmees: uniques,
+    confirmees,
 
-    aVerifier,
+    a_verifier: aVerifier,
 
     recommandations:
-      arrayText(analyse.recommandations),
+      result.recommandations.length > 0
+        ? result.recommandations
+        : buildRecommendations(question),
 
     actions:
-      arrayText(analyse.actions),
+      result.actions.length > 0
+        ? result.actions
+        : buildActions(question),
 
-    documents:
-      Array.isArray(analyse.documents)
-        ? analyse.documents
-            .map(item => ({
-              texte: clean(
-                item?.texte || "",
-                1200
-              ),
-              statut: clean(
-                item?.statut || "a_verifier",
-                30
-              )
-            }))
-            .filter(item => item.texte)
-        : [],
+    documents,
 
-    risques:
-      arrayText(analyse.risques),
+    risques,
 
-    professionnel:
-      clean(
-        analyse.professionnel || "",
-        1000
-      ),
+    professionnel: [],
 
-    prochaineAction,
+    prochaine_action: buildNextAction(question),
 
-    sources:
-      sources.map(source => ({
-        name: source.name,
-        url: source.url
-      }))
+    sources,
+
+    soutien: "🎗️ Avec vous contre le cancer"
   };
 }
 
-async function askAI(
-  env,
-  question,
-  type,
-  sources
-) {
-
-  const proofContext =
-    buildProofContext(sources);
-
-  const prompt = `
-QUESTION :
-${question}
-
-TYPE :
-${type}
-
-${proofContext}
-
-RÈGLE :
-
-Si l'utilisateur demande simplement comment créer
-une entreprise de nettoyage, ne suppose pas qu'il a choisi
-l'entreprise individuelle.
-
-Utilise les preuves seulement lorsqu'elles correspondent
-exactement au contexte.
-
-Pour les informations confirmées :
-retourne source_id et preuve_id.
-
-Pour le reste :
-mets l'information dans aVerifier.
-
-Retourne uniquement le JSON.
-`;
-
-  const result =
-    await env.IA.run(
-      MODEL,
-      {
-        messages: [
-          {
-            role: "system",
-            content: systemPrompt()
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-
-        response_format: {
-          type: "json_schema",
-          json_schema: SCHEMA
-        },
-
-        max_tokens: 2200,
-        temperature: 0.05
-      }
-    );
-
-  const data =
-    extractJSON(result);
-
-  if (!data) {
-    throw new Error(
-      "Réponse IA invalide."
-    );
-  }
-
-  return sanitizeAnalyse(
-    data,
-    sources,
-    question
-  );
-}
-
-function escapeHTML(value) {
-  return clean(value, 10000)
+function htmlEscape(value) {
+  return String(value)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -736,185 +543,45 @@ function escapeHTML(value) {
     .replace(/'/g, "&#039;");
 }
 
-function renderFacts(items, emptyText) {
-
-  if (
-    !Array.isArray(items) ||
-    items.length === 0
-  ) {
-    return `
-      <div class="empty">
-        ${escapeHTML(emptyText)}
-      </div>
-    `;
-  }
-
-  return items.map(item => `
-    <div class="fact">
-
-      <div class="fact-text">
-        ${escapeHTML(item.texte || "")}
-      </div>
-
-      <div class="status">
-        ${escapeHTML(item.statut || "confirmé")}
-      </div>
-
-      <div class="source">
-        Source :
-        ${escapeHTML(item.source || "")}
-      </div>
-
-      <div class="preuve">
-        <strong>Preuve officielle :</strong><br>
-        ${escapeHTML(item.preuve || "")}
-      </div>
-
-    </div>
-  `).join("");
-}
-
-function renderList(items, emptyText) {
-
-  if (
-    !Array.isArray(items) ||
-    items.length === 0
-  ) {
-    return `
-      <div class="empty">
-        ${escapeHTML(emptyText)}
-      </div>
-    `;
-  }
-
-  return `
-    <ul>
-      ${items.map(item => `
-        <li>${escapeHTML(item)}</li>
-      `).join("")}
-    </ul>
-  `;
-}
-
-function renderDocuments(items) {
-
-  if (
-    !Array.isArray(items) ||
-    items.length === 0
-  ) {
-    return `
-      <div class="empty">
-        Aucun document identifié à ce stade.
-      </div>
-    `;
-  }
-
-  return `
-    <ul>
-      ${items.map(item => `
-        <li>
-          <strong>
-            ${escapeHTML(item.statut)}
-          </strong>
-          —
-          ${escapeHTML(item.texte)}
-        </li>
-      `).join("")}
-    </ul>
-  `;
-}
-
-function renderSources(items) {
-
-  if (
-    !Array.isArray(items) ||
-    items.length === 0
-  ) {
-    return `
-      <div class="empty">
-        Aucune source disponible.
-      </div>
-    `;
-  }
-
-  return `
-    <ul>
-      ${items.map(item => `
-        <li>
-          <strong>
-            ${escapeHTML(item.name)}
-          </strong>
-          <br>
-
-          <a
-            href="${escapeHTML(item.url)}"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Consulter la source officielle
-          </a>
-        </li>
-      `).join("")}
-    </ul>
-  `;
-}
-
-function renderPage(analyse) {
-
-  return `
-<!DOCTYPE html>
-
+function pageHTML() {
+  return `<!DOCTYPE html>
 <html lang="fr">
-
 <head>
-
 <meta charset="UTF-8">
-
-<meta
-  name="viewport"
-  content="width=device-width,initial-scale=1"
-/>
-
-<title>
-${escapeHTML(analyse.titre)}
-</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GouRare AI</title>
 
 <style>
-
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family:
-    Arial,
-    Helvetica,
-    sans-serif;
-
-  background: #f4f6f9;
-  color: #172033;
+  font-family: Arial, sans-serif;
+  background: #f5f7fa;
+  color: #17202a;
 }
 
 header {
-  background: #101827;
+  padding: 28px 20px;
+  background: #111827;
   color: white;
   text-align: center;
-  padding: 25px 15px;
 }
 
-.logo {
-  font-size: 30px;
-  font-weight: 800;
+header h1 {
+  margin: 0;
+  font-size: 32px;
 }
 
-.subtitle {
+header p {
+  margin: 8px 0 0;
   opacity: .8;
-  margin-top: 5px;
 }
 
-.container {
-  max-width: 980px;
+main {
+  max-width: 900px;
   margin: auto;
   padding: 20px;
 }
@@ -924,758 +591,540 @@ header {
   border-radius: 16px;
   padding: 20px;
   margin-bottom: 18px;
-
-  box-shadow:
-    0 5px 20px
-    rgba(0,0,0,.06);
+  box-shadow: 0 5px 20px rgba(0,0,0,.06);
 }
 
-h1 {
-  font-size: 26px;
+textarea {
+  width: 100%;
+  min-height: 130px;
+  padding: 15px;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  font-size: 16px;
+  resize: vertical;
 }
 
-h2 {
-  font-size: 19px;
+button {
+  width: 100%;
+  margin-top: 12px;
+  padding: 15px;
+  border: 0;
+  border-radius: 12px;
+  background: #111827;
+  color: white;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: .5;
+}
+
+.section {
   margin-top: 20px;
 }
 
-.fact {
-  background: #f7f9fc;
-  border-radius: 12px;
-  padding: 15px;
-  margin: 12px 0;
+.section h2 {
+  font-size: 20px;
+  margin-bottom: 10px;
 }
 
-.fact-text {
-  font-weight: 600;
+.item {
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 12px;
+  margin: 8px 0;
 }
 
-.status {
-  display: inline-block;
-  margin-top: 8px;
-  padding: 4px 9px;
-  background: #e7f1e9;
-  border-radius: 999px;
-  font-size: 12px;
+.confirmed {
+  border-left: 4px solid #16a34a;
+}
+
+.verify {
+  border-left: 4px solid #f59e0b;
+}
+
+.action {
+  border-left: 4px solid #2563eb;
 }
 
 .source {
-  margin-top: 10px;
-  font-size: 13px;
-  font-weight: 600;
+  display: block;
+  margin: 8px 0;
+  color: #2563eb;
+  text-decoration: none;
 }
 
-.preuve {
-  margin-top: 10px;
-  padding: 12px;
-  background: #eef4ff;
-  border-left: 4px solid #4568dc;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.empty {
-  color: #697386;
-  font-style: italic;
-}
-
-li {
-  margin: 9px 0;
-}
-
-a {
-  color: #2457d6;
-}
-
-.support {
+.badge {
   position: fixed;
-  right: 14px;
-  bottom: 14px;
-
+  right: 12px;
+  bottom: 12px;
   background: white;
-  padding: 10px 14px;
-
-  border-radius: 999px;
-
-  box-shadow:
-    0 5px 20px
-    rgba(0,0,0,.12);
-
+  padding: 9px 12px;
+  border-radius: 20px;
+  box-shadow: 0 4px 15px rgba(0,0,0,.15);
   font-size: 13px;
 }
 
 footer {
   text-align: center;
-  padding: 30px;
-  color: #697386;
+  padding: 25px;
+  color: #6b7280;
+  font-size: 13px;
 }
-
-@media(max-width:650px) {
-
-  .container {
-    padding: 12px;
-  }
-
-  .card {
-    padding: 15px;
-  }
-
-  h1 {
-    font-size: 22px;
-  }
-
-}
-
 </style>
-
 </head>
 
 <body>
 
 <header>
-
-<div class="logo">
-GouRare AI
-</div>
-
-<div class="subtitle">
-Intelligence, orientation et solutions
-</div>
-
+  <h1>GouRare AI</h1>
+  <p>Intelligence, orientation et solutions</p>
 </header>
 
-<div class="container">
+<main>
 
 <div class="card">
+  <h2>Posez votre question</h2>
 
-<h1>
-${escapeHTML(analyse.titre)}
-</h1>
+  <textarea id="question"
+    placeholder="Exemple : Je veux créer une entreprise de nettoyage en France. Que dois-je faire ?"></textarea>
 
-<h2>
-🧭 Ce que j'ai compris
-</h2>
-
-<p>
-${escapeHTML(
-  analyse.compris ||
-  "Situation à préciser."
-)}
-</p>
-
-<h2>
-💡 Orientation
-</h2>
-
-<p>
-${escapeHTML(
-  analyse.orientation ||
-  "Orientation à préciser."
-)}
-</p>
-
+  <button id="btn" onclick="analyser()">
+    Analyser avec GouRare AI
+  </button>
 </div>
-
-<div class="card">
-
-<h2>
-✅ Informations confirmées
-</h2>
-
-${renderFacts(
-  analyse.confirmees,
-  "Aucune information confirmée avec une preuve officielle suffisante."
-)}
-
-</div>
-
-<div class="card">
-
-<h2>
-🔎 À vérifier
-</h2>
-
-${renderList(
-  analyse.aVerifier,
-  "Aucun point particulier à vérifier."
-)}
-
-</div>
-
-<div class="card">
-
-<h2>
-💭 Recommandations
-</h2>
-
-${renderList(
-  analyse.recommandations,
-  "Aucune recommandation particulière."
-)}
-
-</div>
-
-<div class="card">
-
-<h2>
-📋 Actions concrètes
-</h2>
-
-${renderList(
-  analyse.actions,
-  "Aucune action précise identifiée."
-)}
-
-</div>
-
-<div class="card">
-
-<h2>
-📄 Documents
-</h2>
-
-${renderDocuments(
-  analyse.documents
-)}
-
-</div>
-
-<div class="card">
-
-<h2>
-⚠️ Points de vigilance
-</h2>
-
-${renderList(
-  analyse.risques,
-  "Aucun point de vigilance particulier."
-)}
-
-</div>
-
-<div class="card">
-
-<h2>
-👤 Professionnel
-</h2>
-
-<p>
-${escapeHTML(
-  analyse.professionnel ||
-  "Aucun professionnel n'est recommandé à ce stade."
-)}
-</p>
-
-</div>
-
-<div class="card">
-
-<h2>
-🚀 Prochaine action
-</h2>
-
-<p>
-<strong>
-${escapeHTML(
-  analyse.prochaineAction ||
-  "Préciser votre situation."
-)}
-</strong>
-</p>
-
-</div>
-
-<div class="card">
-
-<h2>
-📚 Sources consultées
-</h2>
-
-${renderSources(
-  analyse.sources
-)}
-
-</div>
-
-</div>
-
-<div class="support">
-🎗️ Avec vous contre le cancer
-</div>
-
-<footer>
-
-🎗️ Notre soutien aux personnes touchées par le cancer.
-
-<br><br>
-
-GouRare AI — Version ${VERSION}
-
-</footer>
-
-</body>
-
-</html>
-`;
-}
-
-function corsHeaders() {
-
-  return {
-
-    "Access-Control-Allow-Origin": "*",
-
-    "Access-Control-Allow-Methods":
-      "GET, POST, OPTIONS",
-
-    "Access-Control-Allow-Headers":
-      "Content-Type",
-
-    "X-Content-Type-Options":
-      "nosniff",
-
-    "X-Frame-Options":
-      "DENY",
-
-    "Referrer-Policy":
-      "strict-origin-when-cross-origin",
-
-    "Permissions-Policy":
-      "camera=(), microphone=(), geolocation=()",
-
-    "Cache-Control":
-      "no-store"
-
-  };
-}
-
-function jsonResponse(data, status = 200) {
-
-  return new Response(
-    JSON.stringify(data),
-    {
-      status,
-
-      headers: {
-        ...corsHeaders(),
-
-        "Content-Type":
-          "application/json; charset=utf-8"
-      }
-    }
-  );
-}
-
-export default {
-
-  async fetch(request, env) {
-
-    if (
-      request.method === "OPTIONS"
-    ) {
-
-      return new Response(null, {
-        status: 204,
-        headers: corsHeaders()
-      });
-
-    }
-
-    const url =
-      new URL(request.url);
-
-    if (
-      url.pathname === "/health"
-    ) {
-
-      return jsonResponse({
-
-        success: true,
-
-        service:
-          "GouRare AI",
-
-        status:
-          "OK",
-
-        version:
-          VERSION
-
-      });
-
-    }
-
-    if (
-      url.pathname === "/api/analyze"
-    ) {
-
-      if (
-        request.method !== "POST"
-      ) {
-
-        return jsonResponse(
-          {
-            success: false,
-            error:
-              "Méthode non autorisée."
-          },
-          405
-        );
-
-      }
-
-      const contentType =
-        request.headers.get(
-          "content-type"
-        ) || "";
-
-      if (
-        !contentType.includes(
-          "application/json"
-        )
-      ) {
-
-        return jsonResponse(
-          {
-            success: false,
-            error:
-              "Le contenu doit être au format JSON."
-          },
-          415
-        );
-
-      }
-
-      try {
-
-        const body =
-          await request.json();
-
-        const question =
-          clean(
-            body.question,
-            5000
-          );
-
-        const type =
-          clean(
-            body.type || "general",
-            50
-          );
-
-        if (!question) {
-
-          return jsonResponse(
-            {
-              success: false,
-              error:
-                "Question vide."
-            },
-            400
-          );
-
-        }
-
-        const sources =
-          selectSources(
-            question
-          );
-
-        const analyse =
-          await askAI(
-            env,
-            question,
-            type,
-            sources
-          );
-
-        return jsonResponse({
-
-          success: true,
-
-          version:
-            VERSION,
-
-          analyse,
-
-          html:
-            renderPage(analyse)
-
-        });
-
-      } catch (error) {
-
-        return jsonResponse(
-          {
-            success: false,
-            error:
-              "Impossible de terminer l'analyse.",
-            version:
-              VERSION
-          },
-          500
-        );
-
-      }
-    }
-
-    if (
-      url.pathname === "/"
-    ) {
-
-      return new Response(
-`
-<!DOCTYPE html>
-
-<html lang="fr">
-
-<head>
-
-<meta charset="UTF-8">
-
-<meta
-  name="viewport"
-  content="width=device-width,initial-scale=1"
-/>
-
-<title>
-GouRare AI
-</title>
-
-<style>
-
-body {
-  margin: 0;
-  padding: 25px;
-
-  font-family:
-    Arial,
-    sans-serif;
-
-  background:
-    #f4f6f9;
-
-  color:
-    #172033;
-}
-
-.box {
-
-  max-width:
-    750px;
-
-  margin:
-    auto;
-
-  background:
-    white;
-
-  padding:
-    25px;
-
-  border-radius:
-    18px;
-
-  box-shadow:
-    0 5px 25px
-    rgba(0,0,0,.08);
-
-}
-
-textarea {
-
-  width:
-    100%;
-
-  min-height:
-    150px;
-
-  padding:
-    14px;
-
-  border:
-    1px solid #ccd3df;
-
-  border-radius:
-    10px;
-
-  font-size:
-    16px;
-
-  resize:
-    vertical;
-
-}
-
-button {
-
-  margin-top:
-    12px;
-
-  padding:
-    13px 22px;
-
-  border:
-    0;
-
-  border-radius:
-    10px;
-
-  background:
-    #101827;
-
-  color:
-    white;
-
-  font-size:
-    16px;
-
-}
-
-#result {
-
-  margin-top:
-    20px;
-
-}
-
-</style>
-
-</head>
-
-<body>
-
-<div class="box">
-
-<h1>
-GouRare AI
-</h1>
-
-<p>
-Intelligence, orientation et solutions
-</p>
-
-<textarea
-id="question"
-placeholder="Exemple : Je veux créer une entreprise de nettoyage en France, que dois-je faire ?"
-></textarea>
-
-<br>
-
-<button
-onclick="analyser()"
->
-Analyser
-</button>
 
 <div id="result"></div>
 
-</div>
+</main>
+
+<div class="badge">🎗️ Avec vous contre le cancer</div>
+
+<footer>
+  🎗️ Notre soutien aux personnes touchées par le cancer.
+  <br><br>
+  GouRare AI — Version ${VERSION}
+</footer>
 
 <script>
-
 async function analyser() {
-
-  const question =
-    document
-      .getElementById("question")
-      .value
-      .trim();
-
-  const result =
-    document
-      .getElementById("result");
+  const question = document.getElementById("question").value.trim();
+  const button = document.getElementById("btn");
+  const result = document.getElementById("result");
 
   if (!question) {
-
-    result.innerHTML =
-      "<p>Veuillez saisir une question.</p>";
-
+    alert("Veuillez écrire votre question.");
     return;
   }
 
-  result.innerHTML =
-    "<p>⏳ Analyse en cours...</p>";
+  button.disabled = true;
+  button.textContent = "Analyse en cours...";
+  result.innerHTML = "";
 
   try {
+    const response = await fetch("/api/analyze", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        type: "question",
+        question: question
+      })
+    });
 
-    const response =
-      await fetch(
-        "/api/analyze",
-        {
-          method:
-            "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
-
-          body:
-            JSON.stringify({
-              type:
-                "general",
-
-              question:
-                question
-            })
-        }
-      );
-
-    const data =
-      await response.json();
+    const data = await response.json();
 
     if (!data.success) {
-      throw new Error(
-        data.error ||
-        "Erreur"
-      );
+      throw new Error(data.error || "Erreur");
     }
 
-    document.open();
-
-    document.write(
-      data.html
-    );
-
-    document.close();
+    afficher(data);
 
   } catch (error) {
 
     result.innerHTML =
-      "<p>❌ Une erreur est survenue. Veuillez réessayer.</p>";
+      '<div class="card">' +
+      '<h2>Erreur</h2>' +
+      '<p>Une erreur est survenue. Veuillez réessayer.</p>' +
+      '</div>';
 
+  } finally {
+    button.disabled = false;
+    button.textContent = "Analyser avec GouRare AI";
   }
-
 }
 
+function afficher(data) {
+
+  let html =
+    '<div class="card">' +
+
+    '<div class="section">' +
+    '<h2>🧭 Ce que j\\'ai compris</h2>' +
+    '<div class="item">' +
+    escapeHTML(data.compris) +
+    '</div>' +
+    '</div>' +
+
+    '<div class="section">' +
+    '<h2>💡 Orientation</h2>' +
+    '<div class="item">' +
+    escapeHTML(data.orientation) +
+    '</div>' +
+    '</div>';
+
+  html += '<div class="section"><h2>✅ Informations confirmées</h2>';
+
+  if (data.confirmees && data.confirmees.length) {
+
+    data.confirmees.forEach(function(item) {
+
+      html +=
+        '<div class="item confirmed">' +
+        escapeHTML(item.texte) +
+        '</div>';
+
+    });
+
+  } else {
+
+    html +=
+      '<div class="item">' +
+      'Aucune information confirmée avec une preuve officielle suffisante.' +
+      '</div>';
+  }
+
+  html += '</div>';
+
+  html += '<div class="section"><h2>🔎 À vérifier</h2>';
+
+  data.a_verifier.forEach(function(item) {
+
+    html +=
+      '<div class="item verify">' +
+      escapeHTML(item) +
+      '</div>';
+
+  });
+
+  html += '</div>';
+
+  html += '<div class="section"><h2>💭 Recommandations</h2>';
+
+  data.recommandations.forEach(function(item) {
+
+    html +=
+      '<div class="item">' +
+      escapeHTML(item) +
+      '</div>';
+
+  });
+
+  html += '</div>';
+
+  html += '<div class="section"><h2>📋 Actions concrètes</h2>';
+
+  data.actions.forEach(function(item) {
+
+    html +=
+      '<div class="item action">' +
+      escapeHTML(item) +
+      '</div>';
+
+  });
+
+  html += '</div>';
+
+  html += '<div class="section"><h2>📄 Documents</h2>';
+
+  if (data.documents && data.documents.length) {
+
+    data.documents.forEach(function(doc) {
+
+      html +=
+        '<div class="item">' +
+        '<strong>' +
+        escapeHTML(doc.statut) +
+        '</strong> — ' +
+        escapeHTML(doc.texte) +
+        '</div>';
+
+    });
+
+  } else {
+
+    html +=
+      '<div class="item">' +
+      'Aucun document précis à présenter à ce stade.' +
+      '</div>';
+  }
+
+  html += '</div>';
+
+  if (data.risques && data.risques.length) {
+
+    html += '<div class="section"><h2>⚠️ Points de vigilance</h2>';
+
+    data.risques.forEach(function(item) {
+
+      html +=
+        '<div class="item verify">' +
+        escapeHTML(item) +
+        '</div>';
+
+    });
+
+    html += '</div>';
+  }
+
+  html +=
+    '<div class="section">' +
+    '<h2>🚀 Prochaine action</h2>' +
+    '<div class="item action">' +
+    escapeHTML(data.prochaine_action) +
+    '</div>' +
+    '</div>';
+
+  html += '<div class="section"><h2>📚 Sources consultées</h2>';
+
+  data.sources.forEach(function(source) {
+
+    html +=
+      '<a class="source" target="_blank" rel="noopener noreferrer" href="' +
+      escapeHTML(source.url) +
+      '">' +
+      escapeHTML(source.titre) +
+      ' ↗' +
+      '</a>';
+
+  });
+
+  html +=
+    '</div>' +
+
+    '<div class="section">' +
+    '<div class="item">' +
+    escapeHTML(data.soutien) +
+    '</div>' +
+    '</div>' +
+
+    '</div>';
+
+  document.getElementById("result").innerHTML = html;
+}
+
+function escapeHTML(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
 </script>
 
 </body>
+</html>`;
+}
 
-</html>
-`,
+export default {
+  async fetch(request, env) {
+
+    const securityHeaders = {
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+      "Referrer-Policy": "strict-origin-when-cross-origin",
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+      "Cache-Control": "no-store"
+    };
+
+    const url = new URL(request.url);
+
+    if (url.pathname === "/health") {
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          service: "GouRare AI",
+          status: "OK",
+          version: VERSION
+        }),
         {
           headers: {
-            ...corsHeaders(),
-
-            "Content-Type":
-              "text/html; charset=utf-8"
+            ...securityHeaders,
+            "Content-Type": "application/json; charset=UTF-8"
           }
         }
       );
-
     }
 
-    return jsonResponse(
+    if (url.pathname === "/api/analyze") {
+
+      if (request.method !== "POST") {
+
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "Méthode non autorisée."
+          }),
+          {
+            status: 405,
+            headers: {
+              ...securityHeaders,
+              "Content-Type": "application/json; charset=UTF-8"
+            }
+          }
+        );
+      }
+
+      try {
+
+        const contentType =
+          request.headers.get("content-type") || "";
+
+        if (!contentType.includes("application/json")) {
+
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: "Content-Type JSON requis."
+            }),
+            {
+              status: 415,
+              headers: {
+                ...securityHeaders,
+                "Content-Type": "application/json; charset=UTF-8"
+              }
+            }
+          );
+        }
+
+        const body = await request.json();
+
+        const question = clean(body.question, 5000);
+
+        if (!question) {
+
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: "Question manquante."
+            }),
+            {
+              status: 400,
+              headers: {
+                ...securityHeaders,
+                "Content-Type": "application/json; charset=UTF-8"
+              }
+            }
+          );
+        }
+
+        const contexte = detectContext(question);
+
+        /*
+         * Appel AI.
+         *
+         * Le binding Cloudflare reste :
+         * env.IA
+         */
+
+        const aiResponse = await env.IA.run(
+          MODEL,
+          {
+            messages: [
+              {
+                role: "system",
+                content: systemPrompt()
+              },
+              {
+                role: "user",
+                content:
+                  "Question : " +
+                  question +
+                  "\\n\\nContexte : " +
+                  JSON.stringify(contexte)
+              }
+            ],
+            max_tokens: 1800,
+            temperature: 0.1
+          }
+        );
+
+        let raw = "";
+
+        if (typeof aiResponse === "string") {
+          raw = aiResponse;
+        } else if (aiResponse && aiResponse.response) {
+          raw = aiResponse.response;
+        } else if (
+          aiResponse &&
+          aiResponse.result &&
+          aiResponse.result.response
+        ) {
+          raw = aiResponse.result.response;
+        } else {
+          raw = JSON.stringify(aiResponse);
+        }
+
+        const parsed = extractJSON(raw);
+
+        const finalResponse = buildResponse(
+          question,
+          parsed || {}
+        );
+
+        return new Response(
+          JSON.stringify(finalResponse),
+          {
+            headers: {
+              ...securityHeaders,
+              "Content-Type": "application/json; charset=UTF-8"
+            }
+          }
+        );
+
+      } catch (error) {
+
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "Erreur interne du service.",
+            version: VERSION
+          }),
+          {
+            status: 500,
+            headers: {
+              ...securityHeaders,
+              "Content-Type": "application/json; charset=UTF-8"
+            }
+          }
+        );
+      }
+    }
+
+    if (request.method !== "GET") {
+
+      return new Response(
+        "Méthode non autorisée.",
+        {
+          status: 405,
+          headers: securityHeaders
+        }
+      );
+    }
+
+    return new Response(
+      pageHTML(),
       {
-        success: false,
-        error:
-          "Route introuvable."
-      },
-      404
+        headers: {
+          ...securityHeaders,
+          "Content-Type": "text/html; charset=UTF-8"
+        }
+      }
     );
-
   }
-
 };
