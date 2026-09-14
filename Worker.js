@@ -39,31 +39,37 @@ export default {
   },
   {
     role: "user",
-    AI Opportunity Radar
-Intelligence économique assistée par IA
-Détectez les opportunités avant les autres.
-Identifiez les opportunités, marchés et pistes de développement pertinentes pour votre entreprise.
-
-Votre activité ou secteur
-Nettoyage 
- Analyser les opportunités
-🤖 Analyse IA
-**1. 🎯 Résumé stratégique du secteur**
-
-Le secteur du nettoyage est un marché en constante évolution, caractérisé par une forte demande de services de nettoyage à domicile, en entreprise et dans les espaces publics. Les principales caractéristiques de ce secteur incluent :
-
-* Une forte concurrence entre les entreprises de nettoyage, qui s'appuient sur des effectifs de personnel qualifié et des équipements spécialisés.
-* Une tendance à la croissance des services de nettoyage à domicile, en particulier pour les personnes âgées et les familles avec des enfants.
-* Une nécessité croissante de services de nettoyage spécialisés, comme les services de nettoyage écologique et les services de désinfection.
-
-**2. 💡 5 opportunités commerciales concrètes**
-
-### Opportunité 1 : Nettoyage personnalisé pour les personnes âgées
-
-* Problème : Les personnes âgées ont souvent des difficultés à se déplacer et à effectuer les tâches ménagères, ce qui peut entraîner des problèmes de santé et
-          }
+    content:
+  "Analyse en profondeur cette activité ou ce secteur : " +
+  business +
+  ".\n\n" +
+  "Ton objectif est de détecter des opportunités commerciales réellement exploitables. " +
+  "Ne te contente pas de lister des services existants. Recherche des problèmes, besoins non satisfaits, pertes de temps, inefficacités, difficultés opérationnelles, besoins technologiques et possibilités d'automatisation.\n\n" +
+  "Pour chaque opportunité, relie clairement le problème, le client, la solution et la possibilité de créer une offre vendable.\n\n" +
+  "Présente ton analyse avec cette structure concise :\n\n" +
+  "1. 🎯 Résumé stratégique\n" +
+  "Donne une vision courte du secteur, de ses principales difficultés et des domaines présentant le plus de potentiel.\n\n" +
+  "2. 💡 5 opportunités commerciales\n" +
+  "Pour chacune des 5 opportunités, indique : opportunité, problème identifié, clients cibles, solution ou offre recommandée, utilisation possible de l'IA ou de l'automatisation, potentiel commercial qualitatif et justification courte.\n\n" +
+  "3. 🔥 Besoins prioritaires du marché\n" +
+  "Identifie les cinq besoins ou problèmes les plus importants à résoudre dans ce secteur.\n\n" +
+  "4. 🤖 Meilleures possibilités avec l'IA\n" +
+  "Identifie les trois tâches ou problèmes qui pourraient être particulièrement améliorés par l'intelligence artificielle ou l'automatisation.\n\n" +
+  "5. ⚠️ Difficultés et risques\n" +
+  "Indique les principaux obstacles, risques opérationnels, réglementaires, technologiques ou concurrentiels.\n\n" +
+  "6. 🚀 Plan d'action\n" +
+  "Donne cinq actions prioritaires et concrètes permettant de commencer à exploiter les meilleures opportunités.\n\n" +
+  "7. ⭐ Top 3 des opportunités\n" +
+  "Classe les trois meilleures opportunités selon leur intérêt commercial, leur faisabilité et leur potentiel de différenciation.\n\n" +
+  "8. 🧠 Idée de solution innovante\n" +
+  "Propose une solution combinant si possible intelligence artificielle, automatisation ou outil numérique pour résoudre un problème identifié.\n\n" +
+  "Règles importantes : sois concret, précis et orienté vers l'action. Évite les généralités et les répétitions. " +
+  "Ne présente jamais une hypothèse comme un fait. Ne fabrique aucune statistique, aucun pourcentage, aucun montant, aucune part de marché, aucun chiffre de croissance et aucune source. " +
+  "Pour le potentiel commercial, utilise uniquement Très fort, Fort, Moyen ou Faible avec une justification qualitative. " +
+  "Si les données réelles ne sont pas disponibles, indique clairement qu'il s'agit d'une hypothèse ou d'une estimation qualitative."
+    }
         ],
-        max_token: 768
+        max_tokens: 768
       }
     );
         return Response.json({
