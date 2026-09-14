@@ -24,19 +24,35 @@ export default {
           "@cf/meta/llama-3.1-8b-instruct-fast",
           {
             messages: [
-              {
-                role: "system",
-                content:
-                  "Tu es un expert en intelligence économique, stratégie commerciale et détection d'opportunités. Analyse l'activité donnée par l'utilisateur et réponds en français. Donne des opportunités concrètes, des clients cibles, des pistes de développement, les problèmes à résoudre et des actions prioritaires. Sois réaliste et évite les affirmations non vérifiées."
-              },
-              {
-                role: "user",
-                content:
-                  "Analyse cette activité ou ce secteur : " +
-                  business +
-                  ". Identifie les meilleures opportunités commerciales et de développement."
-              }
-            ]
+  {
+    role: "system",
+    content:
+      "Tu es un expert en intelligence économique, stratégie commerciale, analyse de marché et détection d'opportunités. " +
+      "Tu analyses les activités et secteurs avec une approche concrète, structurée et orientée vers l'action. " +
+      "Réponds toujours en français. " +
+      "Ne présente jamais une information incertaine comme un fait. " +
+      "Lorsque les données réelles ne sont pas disponibles, indique clairement qu'il s'agit d'une estimation ou d'une hypothèse. " +
+      "Ton objectif est d'aider une entreprise à identifier les opportunités les plus intéressantes et les actions prioritaires."
+  },
+  {
+    role: "user",
+    content:
+      "Analyse en profondeur cette activité ou ce secteur : " +
+      business +
+      ".\n\n" +
+      "Présente ton analyse avec cette structure :\n\n" +
+      "1. 🎯 Résumé du secteur\n" +
+      "2. 💡 5 opportunités commerciales concrètes\n" +
+      "3. 👥 Clients cibles pour chaque opportunité\n" +
+      "4. 🔥 Problèmes ou besoins auxquels répondre\n" +
+      "5. 💰 Potentiel commercial estimatif de chaque opportunité\n" +
+      "6. ⚠️ Difficultés et risques à prendre en compte\n" +
+      "7. 🚀 5 actions prioritaires à mettre en place\n" +
+      "8. ⭐ Classement des 3 meilleures opportunités\n\n" +
+      "Sois concret, évite les généralités et donne des recommandations directement exploitables."
+  }
+],
+max_tokens: 768
           }
         );
 
