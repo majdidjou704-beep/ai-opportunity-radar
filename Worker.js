@@ -40,24 +40,14 @@ export default {
   {
     role: "user",
 
-   content:
+content:
   "Analyse cette activité ou ce secteur : " +
   business +
   ".\n\n" +
   "Tu es un analyste stratégique spécialisé dans la détection d'opportunités commerciales, l'IA, l'automatisation et la création de solutions numériques.\n\n" +
   "Ton objectif est de découvrir des problèmes concrets pouvant être transformés en services, produits ou solutions vendables.\n\n" +
   "Recherche obligatoirement des opportunités dans des catégories différentes : réduction des coûts, automatisation, acquisition de clients, gestion des clients, gestion administrative, ressources humaines, qualité, productivité, suivi des opérations et création de nouveaux services.\n\n" +
-  "IMPORTANT : les 5 opportunités doivent être réellement différentes. Ne propose jamais deux opportunités qui résolvent essentiellement le même problème. Évite les idées génériques comme 'plateforme de gestion' sans expliquer précisément le problème et la valeur créée. Une seule des cinq opportunités peut être une plateforme ou un logiciel. les autres doivent proposer des services, automatisations, produits, modèles économiques ou méthodes différentes. \n\n" +
-  "Ne transforme pas automatiquement chaque problème en application, plateforme ou logiciel. Une opportunité peut être un service, une automatisation, un produit, une prestation spécialisée, une nouvelle offre commerciale, un système interne ou un logiciel. Choisis le format de solution uniquement lorsqu'il correspond réellement au problème.\n\n" +
-  "Reste très concis : chaque opportunité doit être présentée en quelques lignes maximum. Ne répète pas les mêmes explications entre les opportunités.\n\n" +
- content:
-  "Analyse cette activité ou ce secteur : " +
-  business +
-  ".\n\n" +
-  "Tu es un analyste stratégique spécialisé dans la détection d'opportunités commerciales, l'IA, l'automatisation et la création de solutions numériques.\n\n" +
-  "Ton objectif est de découvrir des problèmes concrets pouvant être transformés en services, produits ou solutions vendables.\n\n" +
-  "Recherche obligatoirement des opportunités dans des catégories différentes : réduction des coûts, automatisation, acquisition de clients, gestion des clients, gestion administrative, ressources humaines, qualité, productivité, suivi des opérations et création de nouveaux services.\n\n" +
-  "IMPORTANT : les 5 opportunités doivent être réellement différentes. Ne propose jamais deux opportunités qui résolvent essentiellement le même problème. Évite les idées génériques comme 'plateforme de gestion' sans expliquer précisément le problème et la valeur créée. Une seule des cinq opportunités peut être une plateforme ou un logiciel. les autres doivent proposer des services, automatisations, produits, modèles économiques ou méthodes différentes. \n\n" +
+  "IMPORTANT : les 5 opportunités doivent être réellement différentes. Ne propose jamais deux opportunités qui résolvent essentiellement le même problème. Évite les idées génériques comme 'plateforme de gestion' sans expliquer précisément le problème et la valeur créée. Une seule des cinq opportunités peut être une plateforme ou un logiciel. Les autres doivent proposer des services, automatisations, produits, modèles économiques ou méthodes différentes.\n\n" +
   "Ne transforme pas automatiquement chaque problème en application, plateforme ou logiciel. Une opportunité peut être un service, une automatisation, un produit, une prestation spécialisée, une nouvelle offre commerciale, un système interne ou un logiciel. Choisis le format de solution uniquement lorsqu'il correspond réellement au problème.\n\n" +
   "Reste très concis : chaque opportunité doit être présentée en quelques lignes maximum. Ne répète pas les mêmes explications entre les opportunités.\n\n" +
   "Les actions proposées doivent être immédiatement réalisables et concrètes. Évite les conseils vagues comme 'faire une étude de marché', 'analyser le marché' ou 'améliorer la stratégie'. Donne plutôt une action précise permettant de tester l'opportunité rapidement.\n\n" +
@@ -86,35 +76,7 @@ export default {
   "Ne fabrique aucune statistique, aucun pourcentage, aucun chiffre financier, aucun prix, aucune part de marché et aucune source. " +
   "Ne présente jamais une hypothèse comme un fait. " +
   "Si une information n'est pas vérifiable, indique clairement qu'il s'agit d'une hypothèse ou d'une possibilité."
-  }
-        ],
-        max_tokens: 1200
-     "Pour chaque opportunité indique brièvement :\n" +
-  "- Opportunité\n" +
-  "- Problème concret\n" +
-  "- Client cible\n" +
-  "- Solution proposée\n" +
-  "- Utilisation possible de l'IA ou de l'automatisation\n" +
-  "- Comment la solution pourrait être vendue\n" +
-  "- Potentiel : Très fort, Fort, Moyen ou Faible\n\n" +
-  "Structure de la réponse :\n\n" +
-  "1. 🎯 Diagnostic stratégique\n" +
-  "Résume les principaux problèmes et les domaines présentant le plus d'opportunités.\n\n" +
-  "2. 💡 5 opportunités différentes\n" +
-  "Présente cinq opportunités provenant de catégories différentes et évite toute répétition.\n\n" +
-  "3. 🤖 Meilleure opportunité IA\n" +
-  "Choisis la solution qui pourrait bénéficier le plus de l'IA ou de l'automatisation et explique brièvement pourquoi.\n\n" +
-  "4. 💰 Opportunité la plus facile à vendre\n" +
-  "Choisis une seule opportunité et explique pourquoi elle pourrait être relativement simple à commercialiser.\n\n" +
-  "5. 🚀 Première action\n" +
-  "Donne une action concrète permettant de tester rapidement cette opportunité avec peu de moyens.\n\n" +
-  "6. ⭐ Top 3\n" +
-  "Classe les trois meilleures opportunités selon leur intérêt commercial, leur faisabilité et leur potentiel de différenciation.\n\n" +
-  "Règles essentielles : sois concret, original, court et orienté vers l'action. " +
-  "Ne fabrique aucune statistique, aucun pourcentage, aucun chiffre financier, aucun prix, aucune part de marché et aucune source. " +
-  "Ne présente jamais une hypothèse comme un fait. " +
-  "Si une information n'est pas vérifiable, indique clairement qu'il s'agit d'une hypothèse ou d'une possibilité."
-  }
+ }
         ],
         max_tokens: 1200
       }
