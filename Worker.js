@@ -347,7 +347,7 @@ if (typeof analyse === "object") {
       '<div class="result-card">' +
       '<h3>🤖 Analyse IA</h3>' +
       '<div class="ai-result">' +
-      analysis +
+      analyse +
       '</div>' +
       '</div>';
 
