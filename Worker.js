@@ -863,14 +863,13 @@ async function analyzeBusiness() {
 
     }
 
-    results.innerHTML = `
-      <div class="result-card">
-        <h2>🤖 Analyse IA</h2>
-        <div class="ai-result">
-          ${escapeHTML(analyse)}
-        </div>
-      </div>
-    `;
+    results.innerHTML =
+  '<div class="result-card">' +
+    '<h2>🤖 Analyse IA</h2>' +
+    '<div class="ai-result">' +
+      escapeHTML(analyse) +
+    '</div>' +
+  '</div>';
 
     status.textContent =
       "Analyse terminée.";
