@@ -49,10 +49,10 @@ export default {
       "3. 👥 Clients cibles pour chaque opportunité\n" +
       "4. 🔥 Problèmes ou besoins auxquels répondre\n" +
       "5. 💰 Potentiel commercial qualitatif de chaque opportunité 
-      "6.    Pour le potentiel commercial, utilise uniquement une évaluation qualitative : Très fort, Fort, Moyen ou Faible, avec une courte justification. N'utilise aucun pourcentage, montant, chiffre de croissance, part de marché ou statistique, sauf si une donnée vérifiable a réellement été fournie dans le contexte.
-      "7. ⚠️ Difficultés et risques à prendre en compte\n" +
-      "8. 🚀 5 actions prioritaires à mettre en place\n" +
-      "9. ⭐ Classement des 3 meilleures opportunités\n\n" +
+      "Pour le potentiel commercial, utilise uniquement une évaluation qualitative : Très fort, Fort, Moyen ou Faible, avec une courte justification. N'utilise aucun pourcentage, montant, chiffre de croissance, part de marché ou statistique, sauf si une donnée vérifiable a réellement été fournie dans le contexte.
+      "6. ⚠️ Difficultés et risques à prendre en compte\n" +
+      "7. 🚀 5 actions prioritaires à mettre en place\n" +
+      "8. ⭐ Classement des 3 meilleures opportunités\n\n" +
       "Sois concret, évite les généralités et donne des recommandations directement exploitables."
   }
 ],
