@@ -40,23 +40,36 @@ export default {
   {
     role: "user",
     content:
-      "Analyse en profondeur cette activité ou ce secteur : " +
-      business +
-      ".\n\n" +
-      "Présente ton analyse avec cette structure :\n\n" +
-      "1. 🎯 Résumé du secteur\n" +
-      "2. 💡 5 opportunités commerciales concrètes\n" +
-      "3. 👥 Clients cibles pour chaque opportunité\n" +
-      "4. 🔥 Problèmes ou besoins auxquels répondre\n" +
-      "5. 💰 Potentiel commercial qualitatif de chaque opportunité\n" +
-      "Pour le potentiel commercial, utilise uniquement une évaluation qualitative : Très fort, Fort, Moyen ou Faible, avec une courte justification. N'utilise aucun pourcentage, montant, chiffre de croissance, part de marché ou statistique, sauf si une donnée vérifiable a réellement été fournie dans le contexte.\n" +
-      "6. ⚠️ Difficultés et risques à prendre en compte\n" +
-      "7. 🚀 5 actions prioritaires à mettre en place\n" +
-      "8. ⭐ Classement des 3 meilleures opportunités\n\n" +
-      "Sois concret, évite les généralités et donne des recommandations directement exploitables."
-  }
-],
-max_tokens: 768
+  "Analyse en profondeur cette activité ou ce secteur : " +
+  business +
+  ".\n\n" +
+  "Ton objectif est de détecter des opportunités commerciales réellement exploitables, et pas simplement de lister des services déjà connus. " +
+  "Cherche en priorité les problèmes, besoins non satisfaits, inefficacités, pertes de temps, difficultés opérationnelles, besoins technologiques et possibilités d'amélioration.\n\n" +
+  "Pour chaque opportunité, explique clairement le lien entre le problème identifié, le client concerné et la solution ou le service qui pourrait être proposé.\n\n" +
+  "Présente ton analyse avec cette structure :\n\n" +
+  "1. 🎯 Résumé stratégique du secteur\n" +
+  "Explique brièvement le fonctionnement du secteur, ses principales caractéristiques et les domaines dans lesquels des améliorations ou opportunités peuvent exister.\n\n" +
+  "2. 💡 5 opportunités commerciales concrètes\n" +
+  "Pour chaque opportunité, indique : le problème ou besoin identifié, la solution ou offre possible et pourquoi cette opportunité peut être intéressante.\n\n" +
+  "3. 👥 Clients cibles pour chaque opportunité\n" +
+  "Identifie précisément les types de clients susceptibles d'avoir ce problème ou ce besoin. Évite les catégories trop générales lorsque c'est possible.\n\n" +
+  "4. 🔥 Problèmes ou besoins auxquels répondre\n" +
+  "Explique les difficultés concrètes rencontrées par les clients et pourquoi elles peuvent justifier une solution.\n\n" +
+  "5. 🛠️ Solution ou offre recommandée\n" +
+  "Pour chaque opportunité, propose une solution concrète qui pourrait être transformée en produit, service, outil numérique ou solution basée sur l'intelligence artificielle.\n\n" +
+  "6. 💰 Potentiel commercial qualitatif de chaque opportunité\n" +
+  "Utilise uniquement une évaluation qualitative : Très fort, Fort, Moyen ou Faible, avec une courte justification. N'utilise aucun pourcentage, montant, chiffre de croissance, part de marché ou statistique, sauf si une donnée vérifiable a réellement été fournie dans le contexte.\n\n" +
+  "7. ⚠️ Difficultés et risques à prendre en compte\n" +
+  "Identifie les principales difficultés, contraintes, risques opérationnels, réglementaires ou concurrentiels.\n\n" +
+  "8. 🚀 5 actions prioritaires à mettre en place\n" +
+  "Donne cinq actions concrètes et réalisables pour commencer à exploiter les meilleures opportunités.\n\n" +
+  "9. ⭐ Classement des 3 meilleures opportunités\n" +
+  "Classe les trois opportunités les plus intéressantes et explique brièvement pourquoi elles sont prioritaires.\n\n" +
+  "10. 🤖 Opportunités d'utilisation de l'IA\n" +
+  "Identifie les tâches ou problèmes qui pourraient être améliorés grâce à l'intelligence artificielle, à l'automatisation ou à un outil numérique.\n\n" +
+  "Règles importantes : sois concret, évite les généralités, ne présente jamais une hypothèse comme un fait, ne fabrique aucune statistique, aucun chiffre, aucune source et aucune donnée financière. " +
+  "Lorsque les données réelles ne sont pas disponibles, indique clairement qu'il s'agit d'une hypothèse ou d'une estimation qualitative. " +
+  "Privilégie les opportunités qui peuvent réellement conduire à une offre, un produit ou une solution vendable."
           }
         );
 
