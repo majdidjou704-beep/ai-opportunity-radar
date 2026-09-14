@@ -48,6 +48,7 @@ export default {
   "Ton objectif est de découvrir des problèmes concrets pouvant être transformés en services, produits ou solutions vendables.\n\n" +
   "Recherche obligatoirement des opportunités dans des catégories différentes : réduction des coûts, automatisation, acquisition de clients, gestion des clients, gestion administrative, ressources humaines, qualité, productivité, suivi des opérations et création de nouveaux services.\n\n" +
   "IMPORTANT : les 5 opportunités doivent être réellement différentes. Ne propose jamais deux opportunités qui résolvent essentiellement le même problème. Évite les idées génériques comme 'plateforme de gestion' sans expliquer précisément le problème et la valeur créée. Une seule des cinq opportunités peut être une plateforme ou un logiciel. les autres doivent proposer des services, automatisations, produits, modèles économiques ou méthodes différentes. \n\n" +
+  "Ne transforme pas automatiquement chaque problème en application, plateforme ou logiciel. Une opportunité peut être un service, une automatisation, un produit, une prestation spécialisée, une nouvelle offre commerciale, un système interne ou un logiciel. Choisis le format de solution uniquement lorsqu'il correspond réellement au problème.\n\n" +
   "Pour chaque opportunité indique brièvement :\n" +
   "- Opportunité\n" +
   "- Problème concret\n" +
