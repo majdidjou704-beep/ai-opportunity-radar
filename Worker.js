@@ -863,7 +863,7 @@ async function analyzeBusiness() {
 
     }
 
-    results.innerHTML =
+   results.innerHTML =
   '<div class="result-card">' +
     '<h2>🤖 Analyse IA</h2>' +
     '<div class="ai-result">' +
