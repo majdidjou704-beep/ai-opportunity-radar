@@ -337,15 +337,10 @@ async function analyze(){
       throw new Error(data.details || data.error || "Erreur pendant l'analyse");
     }
 
-    let analysis = data.analysis;
+    let analyse = donnees.analysis;
 
-if(typeof analysis === "object"){
-  analysis =
-    analysis.response ||
-    analysis.result ||
-    analysis.text ||
-    analysis.output_text ||
-    JSON.stringify(analysis, null, 2);
+if (typeof analyse === "object") {
+  analyse = analyse.response;
 }
 
     results.innerHTML =
