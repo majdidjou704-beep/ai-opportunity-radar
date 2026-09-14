@@ -339,9 +339,14 @@ async function analyze(){
 
     let analysis = data.analysis;
 
-    if(typeof analysis === "object"){
-      analysis = JSON.stringify(analysis, null, 2);
-    }
+if(typeof analysis === "object"){
+  analysis =
+    analysis.response ||
+    analysis.result ||
+    analysis.text ||
+    analysis.output_text ||
+    JSON.stringify(analysis, null, 2);
+}
 
     results.innerHTML =
       '<div class="result-card">' +
