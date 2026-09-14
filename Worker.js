@@ -71,8 +71,10 @@ export default {
   "Lorsque les données réelles ne sont pas disponibles, indique clairement qu'il s'agit d'une hypothèse ou d'une estimation qualitative. " +
   "Privilégie les opportunités qui peuvent réellement conduire à une offre, un produit ou une solution vendable."
           }
-        );
-
+        ],
+        max_token: 768
+      }
+    );
         return Response.json({
           success: true,
           business: business,
