@@ -337,7 +337,7 @@ async function analyze(){
       throw new Error(data.details || data.error || "Erreur pendant l'analyse");
     }
 
-    let analyse = data.analyse +
+    let analyse = data.analyse ;
 
 if (typeof analyse === "object") {
   analyse = analyse.response;
@@ -347,7 +347,7 @@ if (typeof analyse === "object") {
       '<div class="result-card">' +
       '<h3>🤖 Analyse IA</h3>' +
       '<div class="ai-result">' +
-      analysis +
+      analyse +
       '</div>' +
       '</div>';
 
