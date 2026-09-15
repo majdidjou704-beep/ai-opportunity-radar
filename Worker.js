@@ -1,504 +1,235 @@
-/* =========================================================
-   GouRare AI — Version 9.4
-   France-first intelligent orientation assistant
-   Cloudflare Workers + Workers AI
-   ========================================================= */
+const MODEL="@cf/meta/llama-3.1-8b-instruct-fast";
+const MODEL_VISION="@cf/meta/llama-3.2-11b-vision-instruct";
+const MODEL_AUDIO="@cf/openai/whisper-large-v3-turbo";
+const VERSION="9.4";
 
-const MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
-const MODEL_VISION = "@cf/meta/llama-3.2-11b-vision-instruct";
-const MODEL_AUDIO = "@cf/openai/whisper-large-v3-turbo";
+const LIMITS={question:12000,imageFile:5500000,imageData:8000000,audioFile:9000000,audioData:16000000,historique:24000,analyzeBody:400000,imageBody:8500000,audioBody:17000000};
+const RATE_LIMITS={analyze:{windowMs:60000,maxRequests:20},image:{windowMs:60000,maxRequests:6},transcribe:{windowMs:60000,maxRequests:6}};
+const rateStore=new Map();
 
-const VERSION = "9.4";
-
-/* =========================================================
-   LIMITES
-   ========================================================= */
-
-const LIMITS = {
-  question: 12000,
-
-  imageFile: 5500000,
-  imageData: 8000000,
-
-  audioFile: 9000000,
-  audioData: 16000000,
-
-  historique: 24000,
-
-  analyzeBody: 400000,
-  imageBody: 8500000,
-  audioBody: 17000000
+const SOURCES={
+  anef:{id:"anef",titre:"Démarches des étrangers en France",organisme:"Service-Public.fr",url:"https://www.service-public.fr/particuliers/vosdroits/R59398"},
+  travailEtranger:{id:"travailEtranger",titre:"Autorisation de travail d'un étranger salarié en France",organisme:"Service-Public.fr",url:"https://www.service-public.fr/particuliers/vosdroits/F2728"},
+  statut:{id:"statut",titre:"Trouver le statut juridique adapté à son activité",organisme:"Service Public Entreprendre",url:"https://entreprendre.service-public.fr/vosdroits/R18323"},
+  guichet:{id:"guichet",titre:"Guichet des formalités des entreprises",organisme:"Service Public Entreprendre",url:"https://entreprendre.service-public.fr/vosdroits/F23571"}
 };
 
-/* =========================================================
-   RATE LIMIT
-   ========================================================= */
-
-const RATE_LIMITS = {
-  analyze: {
-    windowMs: 60000,
-    maxRequests: 20
+const PARCOURS={
+  migrant:{
+    titre:"🌍 Migrant / Nouveau arrivant",
+    description:"Situation administrative, travail, logement, droits et démarches.",
+    situations:[
+      ["arrive","🆕 Je viens d'arriver"],
+      ["administratif","🪪 Ma situation administrative"],
+      ["emploi","💼 Je cherche un emploi"],
+      ["logement","🏠 Je cherche un logement"],
+      ["document","📄 Je ne comprends pas un document"],
+      ["droits","⚖️ Je veux connaître mes droits"],
+      ["social","🤝 Je cherche une aide sociale"],
+      ["etudes","🎓 Je veux étudier"],
+      ["famille","👨‍👩‍👧 Famille / regroupement familial"],
+      ["asile","🛂 Asile / protection"],
+      ["irreguliere","❓ Situation irrégulière"],
+      ["autre","❓ Autre situation"]
+    ]
   },
-
-  image: {
-    windowMs: 60000,
-    maxRequests: 6
+  particulier:{
+    titre:"👤 Particulier / Résident",
+    description:"Vie quotidienne, droits, démarches et problèmes personnels.",
+    situations:[
+      ["administratif","🧾 Démarches administratives"],
+      ["emploi","💼 Travail / emploi"],
+      ["logement","🏠 Logement"],
+      ["finance","💰 Impôts / finances"],
+      ["social","🤝 Aides sociales"],
+      ["juridique","⚖️ Droits / problème juridique"],
+      ["message","✉️ Lettre / email / message"],
+      ["document","📷 Comprendre un document"],
+      ["opportunite","🎯 Trouver une opportunité"],
+      ["autre","❓ Autre"]
+    ]
   },
-
-  transcribe: {
-    windowMs: 60000,
-    maxRequests: 6
+  emploi:{
+    titre:"💼 Chercheur d'emploi",
+    description:"Recherche d'emploi, candidature, CV et entretien.",
+    situations:[
+      ["offres","🔎 Trouver des offres"],
+      ["cv","📄 Créer / améliorer mon CV"],
+      ["candidature","✉️ Candidature / lettre de motivation"],
+      ["annonce","📩 Répondre à une annonce"],
+      ["entretien","🎤 Préparer un entretien"],
+      ["entreprise","🏢 Trouver une entreprise"],
+      ["adapte","♿ Rechercher un emploi adapté à ma situation"],
+      ["comparaison","🎯 Comparer plusieurs offres"],
+      ["autre","❓ Autre"]
+    ]
+  },
+  entreprise:{
+    titre:"🏢 Entreprise / Entrepreneur",
+    description:"Créer, gérer, développer et trouver des opportunités.",
+    situations:[
+      ["creation","🚀 Créer mon entreprise"],
+      ["developpement","📈 Développer mon activité"],
+      ["fiscalite","💰 Fiscalité"],
+      ["comptabilite","🧾 Comptabilité / obligations"],
+      ["salaries","👥 Salariés"],
+      ["juridique","⚖️ Problème juridique"],
+      ["fournisseurs","🔎 Trouver des fournisseurs"],
+      ["offres","💶 Comparer des offres / prix"],
+      ["opportunite","🎯 Trouver des opportunités"],
+      ["ia","🤖 Trouver une solution IA"],
+      ["autre","❓ Autre"]
+    ]
   }
 };
 
-const rateStore = new Map();
+function texte(v,max=10000){
+  if(v===null||v===undefined)return "";
+  return String(v).replace(/\u0000/g,"").replace(/\r/g,"").trim().slice(0,max)
+}
 
-function cleanupRateStore(now) {
-  const stale = now - 300000;
+function unique(a){
+  return [...new Set((a||[]).filter(Boolean))]
+}
 
-  for (const [key, arr] of rateStore) {
-    if (!arr.length || arr[arr.length - 1] < stale) {
+function escapeHTML(v){
+  return texte(v,50000)
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#039;")
+}
+
+function jsonResponse(data,status=200,extra={}){
+  return new Response(JSON.stringify(data),{
+    status,
+    headers:{
+      "content-type":"application/json; charset=utf-8",
+      "cache-control":"no-store",
+      ...extra
+    }
+  })
+}
+
+function securityHeaders(){
+  return {
+    "X-Content-Type-Options":"nosniff",
+    "X-Frame-Options":"DENY",
+    "Referrer-Policy":"strict-origin-when-cross-origin",
+    "Permissions-Policy":"camera=(self), microphone=(self), geolocation=()",
+    "Cache-Control":"no-store"
+  }
+}
+
+function cleanupRateStore(now){
+  const stale=now-300000;
+
+  for(const [key,arr] of rateStore){
+    if(!arr.length||arr[arr.length-1]<stale){
       rateStore.delete(key);
     }
   }
 
-  if (rateStore.size > 10000) {
-    const entries = [...rateStore.entries()]
-      .sort((a, b) => {
-        const aa = a[1];
-        const bb = b[1];
+  if(rateStore.size>10000){
+    const entries=[...rateStore.entries()]
+      .sort((a,b)=>(a[1].at(-1)||0)-(b[1].at(-1)||0));
 
-        const ta = aa.length ? aa[aa.length - 1] : 0;
-        const tb = bb.length ? bb[bb.length - 1] : 0;
-
-        return ta - tb;
-      });
-
-    const removeCount = rateStore.size - 10000;
-
-    for (let i = 0; i < removeCount; i++) {
+    for(let i=0;i<rateStore.size-10000;i++){
       rateStore.delete(entries[i][0]);
     }
   }
 }
 
-function clientKey(request) {
-  return request.headers.get("CF-Connecting-IP") || "anonymous";
+function clientKey(request){
+  return request.headers.get("CF-Connecting-IP")||"anonymous";
 }
 
-function rateLimit(request, type) {
-  const cfg = RATE_LIMITS[type];
+function rateLimit(request,name){
+  const rule=RATE_LIMITS[name];
+  if(!rule)return true;
 
-  if (!cfg) {
-    return {
-      allowed: true,
-      retryAfter: 0
-    };
-  }
-
-  const now = Date.now();
-
+  const now=Date.now();
   cleanupRateStore(now);
 
-  const key = `${type}:${clientKey(request)}`;
+  const key=name+":"+clientKey(request);
+  const arr=rateStore.get(key)||[];
+  const min=now-rule.windowMs;
+  const kept=arr.filter(t=>t>min);
 
-  let arr = rateStore.get(key);
-
-  if (!arr) {
-    arr = [];
-    rateStore.set(key, arr);
+  if(kept.length>=rule.maxRequests){
+    rateStore.set(key,kept);
+    return false;
   }
 
-  const minTime = now - cfg.windowMs;
-
-  while (arr.length && arr[0] <= minTime) {
-    arr.shift();
-  }
-
-  if (arr.length >= cfg.maxRequests) {
-    const retryAfter = Math.max(
-      1,
-      Math.ceil((arr[0] + cfg.windowMs - now) / 1000)
-    );
-
-    return {
-      allowed: false,
-      retryAfter
-    };
-  }
-
-  arr.push(now);
-
-  return {
-    allowed: true,
-    retryAfter: 0
-  };
+  kept.push(now);
+  rateStore.set(key,kept);
+  return true;
 }
 
-/* =========================================================
-   OUTILS
-   ========================================================= */
-
-function texte(value, max = 12000) {
-  return String(value ?? "")
-    .replace(/\u0000/g, "")
-    .trim()
-    .slice(0, max);
+function isValidImageDataURL(value){
+  return /^data:image\/(?:jpeg|jpg|png|webp);base64,/i.test(String(value||""))
 }
 
-function unique(arr) {
-  return [...new Set(arr.filter(Boolean))];
+function isValidAudioDataURL(value){
+  return /^data:audio\/[^,]+;base64,/i.test(String(value||""))
 }
 
-function escapeHTML(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+function base64FromDataURL(v){
+  const s=String(v||"");
+  const i=s.indexOf(",");
+  return s.startsWith("data:")&&i>=0?s.slice(i+1):s
 }
 
-function securityHeaders(extra = {}) {
-  return {
-    "Content-Security-Policy":
-      "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
-
-    "X-Content-Type-Options": "nosniff",
-
-    "X-Frame-Options": "DENY",
-
-    "Referrer-Policy": "strict-origin-when-cross-origin",
-
-    "Permissions-Policy":
-      "camera=(), geolocation=(), microphone=(self)",
-
-    "Cross-Origin-Opener-Policy": "same-origin",
-
-    ...extra
-  };
+function approxBytesFromBase64(b64){
+  return Math.floor((String(b64||"").length*3)/4)
 }
 
-function jsonResponse(data, status = 200, extraHeaders = {}) {
-  return new Response(
-    JSON.stringify(data),
-    {
-      status,
-      headers: securityHeaders({
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-        ...extraHeaders
-      })
-    }
-  );
+function normalizeLang(v){
+  const s=texte(v,20).toLowerCase();
+  return /^(ar|arab)/.test(s)?"ar":"fr"
 }
 
-function contentLengthTooLarge(request, limit) {
-  const value = Number(
-    request.headers.get("Content-Length") || 0
-  );
+function detectContext(question){
+  const s=texte(question,LIMITS.question).toLowerCase();
 
-  return Number.isFinite(value) && value > limit;
-}
+  const immigration=
+    /\b(titre de séjour|titre de sejour|carte de séjour|carte de sejour|visa|récépissé|recepisse|préfecture|prefecture|anef|étranger|etranger|immigration|asile|demande de séjour|demande de sejour)\b/i.test(s);
 
-/* =========================================================
-   DATA URL VALIDATION
-   ========================================================= */
+  const workProblem=
+    /\b(employeur|salarié|salarie|salariée|salariee|contrat de travail|salaire|bulletin de paie|licenciement|licencié|licencie|conditions de travail|heures de travail|patron|collègue|collegue|travailleur)\b/i.test(s);
 
-function isValidImageDataURL(value) {
-  return /^data:image\/(?:jpeg|jpg|png|webp);base64,/i
-    .test(String(value || ""));
-}
+  const jobSearch=
+    /\b(cherche un emploi|cherche du travail|recherche d'emploi|recherche d emploi|trouver un emploi|trouver du travail|candidature|candidat|cv|poste|recrutement|embauche|offre d'emploi|offre d emploi|intérim|interim)\b/i.test(s);
 
-function isValidAudioDataURL(value) {
-  return /^data:audio\/[^,]+;base64,/i
-    .test(String(value || ""));
-}
+  const businessAction=
+    /\b(créer une entreprise|creer une entreprise|création d'entreprise|creation d entreprise|micro-entreprise|micro entreprise|auto-entrepreneur|auto entrepreneur|entrepreneur|lancer mon activité|lancer mon activite|développer mon activité|developper mon activite|statut juridique|société|societe)\b/i.test(s);
 
-function base64FromDataURL(value) {
-  const s = String(value || "");
+  const businessMention=
+    /\b(mon entreprise|mon activité|mon activite|business|activité professionnelle|activite professionnelle)\b/i.test(s);
 
-  const i = s.indexOf(",");
+  const entreprise=
+    businessAction||
+    (businessMention&&!workProblem&&!jobSearch);
 
-  return s.startsWith("data:") && i >= 0
-    ? s.slice(i + 1)
-    : s;
-}
+  const administratif=
+    immigration||
+    /\b(démarche|demarche|administration|préfecture|prefecture|mairie|caf|cpam|dossier|formulaire)\b/i.test(s);
 
-/* =========================================================
-   SOURCES OFFICIELLES
-   ========================================================= */
+  const logement=
+    /\b(logement|appartement|maison|location|locataire|loyer|hébergement|hebergement)\b/i.test(s);
 
-const SOURCES = {
-  anef: {
-    title: "ANEF — démarches des étrangers",
-    url:
-      "https://www.service-public.fr/particuliers/vosdroits/R59398"
-  },
+  const finance=
+    /\b(argent|banque|compte bancaire|crédit|credit|dette|paiement|facture|budget|impôt|impot)\b/i.test(s);
 
-  travailEtranger: {
-    title: "Travail d'un étranger en France",
-    url:
-      "https://www.service-public.fr/particuliers/vosdroits/F2728"
-  },
+  const social=
+    /\b(caf|rsa|prime|aide sociale|allocation|sécurité sociale|securite sociale|cpam)\b/i.test(s);
 
-  statut: {
-    title: "Statut juridique d'une entreprise",
-    url:
-      "https://entreprendre.service-public.fr/vosdroits/R18323"
-  },
+  const juridique=
+    /\b(avocat|tribunal|justice|juridique|litige|plainte|droit|mise en demeure)\b/i.test(s);
 
-  guichet: {
-    title: "Guichet unique des formalités",
-    url:
-      "https://entreprendre.service-public.fr/vosdroits/F23571"
-  }
-};
-
-/* =========================================================
-   PARCOURS
-   ========================================================= */
-
-const PARCOURS = {
-  migrant: [
-    ["arrive", "Je viens d'arriver en France"],
-    ["administratif", "Démarches administratives"],
-    ["emploi", "Je cherche un emploi"],
-    ["logement", "Logement"],
-    ["document", "Document / titre de séjour"],
-    ["droits", "Droits sociaux"],
-    ["social", "Aide sociale"],
-    ["etudes", "Études / formation"],
-    ["famille", "Famille"],
-    ["asile", "Asile"],
-    ["irreguliere", "Situation administrative difficile"],
-    ["autre", "Autre"]
-  ],
-
-  particulier: [
-    ["administratif", "Démarche administrative"],
-    ["emploi", "Emploi"],
-    ["logement", "Logement"],
-    ["finance", "Finance"],
-    ["social", "Social"],
-    ["juridique", "Juridique"],
-    ["message", "Message / courrier"],
-    ["document", "Document"],
-    ["opportunite", "Opportunité"],
-    ["autre", "Autre"]
-  ],
-
-  emploi: [
-    ["offres", "Trouver des offres"],
-    ["cv", "CV"],
-    ["candidature", "Candidature"],
-    ["annonce", "Comprendre une annonce"],
-    ["entretien", "Entretien"],
-    ["entreprise", "Comprendre une entreprise"],
-    ["adapte", "Emploi adapté"],
-    ["comparaison", "Comparer des emplois"],
-    ["autre", "Autre"]
-  ],
-
-  entreprise: [
-    ["creation", "Créer une entreprise"],
-    ["developpement", "Développer mon activité"],
-    ["fiscalite", "Fiscalité"],
-    ["comptabilite", "Comptabilité"],
-    ["salaries", "Salariés"],
-    ["juridique", "Juridique"],
-    ["fournisseurs", "Fournisseurs"],
-    ["offres", "Offres / clients"],
-    ["opportunite", "Opportunité"],
-    ["ia", "IA / automatisation"],
-    ["autre", "Autre"]
-  ]
-};
-
-/* =========================================================
-   CONTEXTE
-   ========================================================= */
-
-function detectContext(question) {
-  const s = texte(question, LIMITS.question).toLowerCase();
-
-  const immigration =
-    /\b(
-      titre de séjour|
-      titre\s+de\s+sejour|
-      carte de séjour|
-      carte\s+de\s+sejour|
-      visa|
-      récépissé|
-      recepisse|
-      préfecture|
-      prefecture|
-      anef|
-      étranger|
-      etranger|
-      immigration|
-      asile|
-      demande de séjour|
-      demande\s+de\s+sejour
-    )\b/ix.test(s);
-
-  const workProblem =
-    /\b(
-      employeur|
-      salarié|
-      salarie|
-      salariée|
-      salariee|
-      contrat de travail|
-      salaire|
-      bulletin de paie|
-      licenciement|
-      licencié|
-      licencie|
-      conditions de travail|
-      heures de travail|
-      patron|
-      collègue|
-      collegue|
-      travailleur
-    )\b/ix.test(s);
-
-  const jobSearch =
-    /\b(
-      cherche un emploi|
-      cherche du travail|
-      recherche d'emploi|
-      recherche d emploi|
-      trouver un emploi|
-      trouver du travail|
-      candidature|
-      candidat|
-      cv|
-      poste|
-      recrutement|
-      embauche|
-      offre d'emploi|
-      offre d emploi|
-      intérim|
-      interim
-    )\b/ix.test(s);
-
-  const businessAction =
-    /\b(
-      créer une entreprise|
-      creer une entreprise|
-      création d'entreprise|
-      creation d entreprise|
-      micro-entreprise|
-      micro entreprise|
-      auto-entrepreneur|
-      auto entrepreneur|
-      entrepreneur|
-      lancer mon activité|
-      lancer mon activite|
-      développer mon activité|
-      developper mon activite|
-      mon activité|
-      mon activite|
-      mon entreprise|
-      statut juridique|
-      société|
-      societe
-    )\b/ix.test(s);
-
-  const businessMention =
-    /\b(
-      entreprise|
-      activité professionnelle|
-      activite professionnelle|
-      business
-    )\b/ix.test(s);
-
-  const entreprise =
-    businessAction ||
-    (
-      businessMention &&
-      !workProblem &&
-      !jobSearch
-    );
-
-  const administratif =
-    immigration ||
-    /\b(
-      démarche|
-      demarche|
-      administration|
-      préfecture|
-      prefecture|
-      mairie|
-      caf|
-      cpam|
-      dossier|
-      formulaire
-    )\b/ix.test(s);
-
-  const logement =
-    /\b(
-      logement|
-      appartement|
-      maison|
-      location|
-      locataire|
-      loyer|
-      hébergement|
-      hebergement
-    )\b/ix.test(s);
-
-  const finance =
-    /\b(
-      argent|
-      banque|
-      compte bancaire|
-      crédit|
-      credit|
-      dette|
-      paiement|
-      facture|
-      budget
-    )\b/ix.test(s);
-
-  const social =
-    /\b(
-      caf|
-      rsa|
-      prime|
-      aide sociale|
-      allocation|
-      sécurité sociale|
-      securite sociale|
-      cpam
-    )\b/ix.test(s);
-
-  const juridique =
-    /\b(
-      avocat|
-      tribunal|
-      justice|
-      juridique|
-      litige|
-      plainte|
-      droit
-    )\b/ix.test(s);
-
-  const statut =
-    /\b(
-      statut juridique|
-      micro-entreprise|
-      micro entreprise|
-      auto-entrepreneur|
-      auto entrepreneur|
-      sas|
-      sasu|
-      sarl|
-      eurl|
-      société|
-      societe
-    )\b/ix.test(s);
+  const statut=
+    /\b(statut juridique|micro-entreprise|micro entreprise|auto-entrepreneur|auto entrepreneur|sas|sasu|sarl|eurl|société|societe|entreprise individuelle)\b/i.test(s);
 
   return {
     immigration,
@@ -508,2583 +239,1937 @@ function detectContext(question) {
     social,
     juridique,
     travail:
-      workProblem ||
-      jobSearch ||
+      workProblem||
+      jobSearch||
       (
-        /\b(travail|emploi|poste)\b/i.test(s) &&
+        /\b(travail|emploi|poste)\b/i.test(s)&&
         !businessAction
       ),
     entreprise,
     statut,
     message:
-      /\b(
-        écris-moi|
-        ecris-moi|
-        rédige|
-        redige|
-        message|
-        mail|
-        email|
-        courrier
-      )\b/ix.test(s),
-
+      /\b(écris-moi|ecris-moi|rédige|redige|message|mail|email|courrier)\b/i.test(s),
     image:
-      /\b(
-        photo|
-        image|
-        document|
-        capture|
-        screenshot
-      )\b/ix.test(s),
-
-    audio:
-      false,
-
+      /\b(photo|image|document|capture|screenshot)\b/i.test(s),
+    audio:false,
     recepisse:
       /\b(récépissé|recepisse|attestation)\b/i.test(s)
-  };
+  }
 }
 
-/* =========================================================
-   EXTRACTION D'INFORMATIONS
-   ========================================================= */
+function extraireInformations(question){
+  const s=texte(question,LIMITS.question);
+  const l=s.toLowerCase();
+  const result=[];
 
-function extraireInformations(question) {
-  const s = texte(question, LIMITS.question);
-  const l = s.toLowerCase();
-
-  const result = [];
-
-  if (
-    /\b(
-      je viens d'arriver|
-      je viens d arriver|
-      nouvel arrivant|
-      nouvelle arrivée|
-      nouvelle arrivee|
-      arrivé récemment|
-      arrive récemment
-    )\b/ix.test(l)
-  ) {
+  if(
+    /\b(je viens d'arriver|je viens d arriver|nouvel arrivant|nouvelle arrivée|nouvelle arrivee|arrivé récemment|arrive récemment)\b/i.test(l)
+  ){
     result.push({
-      type: "situation",
-      valeur: "arrivée récente en France"
+      type:"situation",
+      valeur:"arrivée récente en France"
     });
   }
 
-  /*
-   * Important :
-   * "je viens d'arriver" NE signifie PAS
-   * automatiquement "première demande".
-   */
-
-  if (
-    /\b(
-      première demande|
-      premiere demande|
-      première fois|
-      premiere fois|
-      jamais demandé|
-      jamais demande
-    )\b/ix.test(l)
-  ) {
+  if(
+    /\b(première demande|premiere demande|première fois|premiere fois|jamais demandé|jamais demande)\b/i.test(l)
+  ){
     result.push({
-      type: "premiere_demande",
-      valeur: "oui"
+      type:"premiere_demande",
+      valeur:"oui"
     });
   }
 
-  if (
-    /\b(
-      j'ai déposé|
-      j ai depose|
-      demande déposée|
-      demande deposee|
-      dossier déposé|
-      dossier depose|
-      j'ai fait la demande|
-      j ai fait la demande
-    )\b/ix.test(l)
-  ) {
+  if(
+    /\b(j'ai déposé|j ai depose|demande déposée|demande deposee|dossier déposé|dossier depose|j'ai fait la demande|j ai fait la demande)\b/i.test(l)
+  ){
     result.push({
-      type: "depot",
-      valeur: "oui"
+      type:"depot",
+      valeur:"oui"
     });
   }
 
-  if (
-    /\b(
-      je n'ai pas déposé|
-      je n ai pas depose|
-      aucune demande|
-      pas encore déposé|
-      pas encore depose
-    )\b/ix.test(l)
-  ) {
+  if(
+    /\b(je n'ai pas déposé|je n ai pas depose|aucune demande|pas encore déposé|pas encore depose)\b/i.test(l)
+  ){
     result.push({
-      type: "depot",
-      valeur: "non"
+      type:"depot",
+      valeur:"non"
     });
   }
 
-  if (
-    /\b(
-      en ligne|
-      internet|
-      anef|
-      en ligne sur anef
-    )\b/ix.test(l)
-  ) {
+  if(
+    /\b(en ligne|internet|anef|en ligne sur anef)\b/i.test(l)
+  ){
     result.push({
-      type: "procedure",
-      valeur: "en ligne / ANEF"
+      type:"procedure",
+      valeur:"en ligne / ANEF"
     });
   }
 
-  if (
-    /\b(
-      préfecture|
-      prefecture|
-      au guichet|
-      guichet
-    )\b/ix.test(l)
-  ) {
+  if(
+    /\b(préfecture|prefecture|au guichet|guichet)\b/i.test(l)
+  ){
     result.push({
-      type: "procedure",
-      valeur: "préfecture / guichet"
+      type:"procedure",
+      valeur:"préfecture / guichet"
     });
   }
 
-  if (
-    /\b(
-      je n'ai rien reçu|
-      je n ai rien recu|
-      je n'ai pas reçu|
-      je n ai pas recu|
-      aucun récépissé|
-      aucun recepisse|
-      pas reçu de récépissé|
-      pas recu de recepisse|
-      pas d'attestation|
-      pas d attestation
-    )\b/ix.test(l)
-  ) {
+  if(
+    /\b(je n'ai rien reçu|je n ai rien recu|je n'ai pas reçu|je n ai pas recu|aucun récépissé|aucun recepisse|pas reçu de récépissé|pas recu de recepisse|pas d'attestation|pas d attestation)\b/i.test(l)
+  ){
     result.push({
-      type: "document_recu",
-      valeur: "aucun document reçu"
+      type:"document_recu",
+      valeur:"aucun document reçu"
     });
   }
 
-  if (
-    /\b(
-      j'ai reçu|
-      j ai recu|
-      reçu un récépissé|
-      recu un recepisse|
-      j'ai une attestation|
-      j ai une attestation|
-      attestation reçue|
-      attestation recue
-    )\b/ix.test(l)
-  ) {
+  if(
+    /\b(j'ai reçu|j ai recu|reçu un récépissé|recu un recepisse|j'ai une attestation|j ai une attestation|attestation reçue|attestation recue)\b/i.test(l)
+  ){
     result.push({
-      type: "document_recu",
-      valeur: "un document a été reçu"
+      type:"document_recu",
+      valeur:"un document a été reçu"
     });
   }
 
-  if (
-    /\b(
-      cherche un emploi|
-      recherche d'emploi|
-      recherche d emploi|
-      cherche du travail|
-      trouver un emploi|
-      trouver du travail|
-      candidature|
-      candidat|
-      recrutement|
-      poste
-    )\b/ix.test(l)
-  ) {
+  if(
+    /\b(cherche un emploi|recherche d'emploi|recherche d emploi|cherche du travail|trouver un emploi|trouver du travail|candidature|candidat|recrutement|poste)\b/i.test(l)
+  ){
     result.push({
-      type: "objectif_professionnel",
-      valeur: "recherche d'emploi"
+      type:"objectif_professionnel",
+      valeur:"recherche d'emploi"
     });
   }
 
-  if (
-    /\b(
-      employeur|
-      contrat de travail|
-      salaire|
-      licenciement|
-      bulletin de paie|
-      conditions de travail
-    )\b/ix.test(l)
-  ) {
+  if(
+    /\b(employeur|contrat de travail|salaire|licenciement|bulletin de paie|conditions de travail)\b/i.test(l)
+  ){
     result.push({
-      type: "objectif_professionnel",
-      valeur: "situation professionnelle"
+      type:"objectif_professionnel",
+      valeur:"situation professionnelle"
     });
   }
 
-  if (
-    /\b(
-      créer une entreprise|
-      creer une entreprise|
-      création d'entreprise|
-      creation d entreprise|
-      micro-entreprise|
-      micro entreprise|
-      auto-entrepreneur|
-      auto entrepreneur|
-      lancer mon activité|
-      lancer mon activite|
-      mon entreprise|
-      mon activité|
-      mon activite
-    )\b/ix.test(l)
-  ) {
+  if(
+    /\b(créer une entreprise|creer une entreprise|création d'entreprise|creation d entreprise|micro-entreprise|micro entreprise|auto-entrepreneur|auto entrepreneur|lancer mon activité|lancer mon activite|mon entreprise|mon activité|mon activite)\b/i.test(l)
+  ){
     result.push({
-      type: "activite",
-      valeur: "projet entrepreneurial mentionné"
+      type:"activite",
+      valeur:"projet entrepreneurial mentionné"
     });
   }
 
-  if (
-    /\b(
-      cv|
-      curriculum vitae
-    )\b/i.test(l)
-  ) {
+  if(
+    /\b(cv|curriculum vitae)\b/i.test(l)
+  ){
     result.push({
-      type: "document",
-      valeur: "CV"
+      type:"document",
+      valeur:"CV"
     });
   }
 
   return result;
 }
 
-/* =========================================================
-   ÉTAT DU DOSSIER
-   ========================================================= */
+function etatDepot(reponses){
+  const s=JSON.stringify(reponses||[]).toLowerCase();
 
-function etatDepot(infos) {
-  const item = infos.find(x => x.type === "depot");
+  if(
+    /\b(aucune demande|pas encore déposé|pas encore depose|je n'ai pas déposé|je n ai pas depose|depot.*non)\b/.test(s)
+  ){
+    return "non";
+  }
 
-  if (!item) return "inconnu";
+  if(
+    /\b(j'ai déposé|demande déposée|dossier déposé|j'ai fait la demande|depot.*oui)\b/.test(s)
+  ){
+    return "oui";
+  }
 
-  return item.valeur === "oui"
-    ? "oui"
-    : item.valeur === "non"
-      ? "non"
-      : "inconnu";
+  return "inconnu";
 }
 
-/* =========================================================
-   INFORMATIONS TEXTE
-   ========================================================= */
+function prochaineQuestion(base,reponses){
+  const info=extraireInformations(base);
+  const known=new Set((reponses||[]).map(x=>x.type));
 
-function infosToText(infos) {
-  if (!Array.isArray(infos) || !infos.length) {
-    return "Aucune information structurée supplémentaire.";
+  if(
+    !known.has("situation")&&
+    !info.some(x=>x.type==="situation")&&
+    detectContext(base).immigration
+  ){
+    return "Êtes-vous déjà en France actuellement ?";
   }
 
-  return infos
-    .map(x => `- ${x.type}: ${x.valeur}`)
-    .join("\n");
-}
+  let depot=etatDepot(reponses);
 
-function confirmed(infos, type) {
-  return Array.isArray(infos) &&
-    infos.some(x => x.type === type);
-}
+  if(depot==="inconnu"){
+    const depotInitial=etatDepot(base);
 
-function documents(infos) {
-  return infos
-    .filter(x =>
-      x.type === "document" ||
-      x.type === "document_recu"
-    )
-    .map(x => x.valeur);
-}
+    if(depotInitial!=="inconnu"){
+      depot=depotInitial;
+    }else{
+      const depotInfo=info.find(x=>x.type==="depot");
 
-/* =========================================================
-   PROGRESSION
-   ========================================================= */
-
-function progression(context, infos) {
-  let total = 4;
-  let done = 0;
-
-  if (context.immigration) {
-    total = 5;
-
-    if (confirmed(infos, "situation")) done++;
-    if (confirmed(infos, "depot")) done++;
-    if (confirmed(infos, "procedure")) done++;
-    if (confirmed(infos, "document_recu")) done++;
-    if (confirmed(infos, "objectif_professionnel")) done++;
-  } else if (context.travail) {
-    total = 3;
-
-    if (confirmed(infos, "objectif_professionnel")) done++;
-    if (confirmed(infos, "document")) done++;
-    if (confirmed(infos, "situation")) done++;
-  } else if (context.entreprise) {
-    total = 3;
-
-    if (confirmed(infos, "activite")) done++;
-    if (confirmed(infos, "statut")) done++;
-    if (confirmed(infos, "document")) done++;
-  }
-
-  return {
-    done,
-    total,
-    percent: Math.min(
-      100,
-      Math.round((done / total) * 100)
-    )
-  };
-}
-
-/* =========================================================
-   PROCHAINE QUESTION
-   ========================================================= */
-
-function prochaineQuestion(context, infos, baseInfos = []) {
-  const all = [
-    ...(Array.isArray(baseInfos) ? baseInfos : []),
-    ...(Array.isArray(infos) ? infos : [])
-  ];
-
-  const depotInfo = all.find(x => x.type === "depot");
-
-  let depot = etatDepot(infos);
-
-  if (depot === "inconnu") {
-    const depotInitial = etatDepot(baseInfos);
-
-    if (depotInitial !== "inconnu") {
-      depot = depotInitial;
-    } else if (depotInfo) {
-      depot =
-        depotInfo.valeur.includes("aucun")
-          ? "non"
-          : "oui";
-    }
-  }
-
-  /*
-   * IMMIGRATION
-   */
-
-  if (context.immigration) {
-    if (
-      depot === "inconnu" &&
-      !confirmed(all, "premiere_demande")
-    ) {
-      return {
-        question:
-          "Avez-vous déjà déposé cette demande ?",
-        type: "depot"
-      };
-    }
-
-    if (
-      depot === "oui" &&
-      !confirmed(all, "procedure")
-    ) {
-      return {
-        question:
-          "La demande a-t-elle été faite en ligne sur l’ANEF ou auprès de la préfecture ?",
-        type: "procedure"
-      };
-    }
-
-    if (
-      depot === "oui" &&
-      !confirmed(all, "document_recu")
-    ) {
-      return {
-        question:
-          "Avez-vous reçu un récépissé, une attestation ou une confirmation ?",
-        type: "document_recu"
-      };
-    }
-
-    if (
-      depot === "non" &&
-      !confirmed(all, "objectif_professionnel")
-    ) {
-      return {
-        question:
-          "Quelle est votre démarche principale actuellement ?",
-        type: "objectif_professionnel"
-      };
-    }
-  }
-
-  /*
-   * EMPLOI
-   */
-
-  if (context.travail) {
-    if (!confirmed(all, "objectif_professionnel")) {
-      return {
-        question:
-          "Cherchez-vous un emploi ou avez-vous déjà un problème avec votre travail actuel ?",
-        type: "objectif_professionnel"
-      };
-    }
-
-    if (
-      !confirmed(all, "situation") &&
-      !confirmed(all, "document")
-    ) {
-      return {
-        question:
-          "Quel type de poste ou de situation professionnelle recherchez-vous ?",
-        type: "situation"
-      };
-    }
-  }
-
-  /*
-   * ENTREPRISE
-   */
-
-  if (context.entreprise) {
-    if (!confirmed(all, "activite")) {
-      return {
-        question:
-          "Quelle activité souhaitez-vous créer ou développer ?",
-        type: "activite"
-      };
-    }
-
-    if (
-      context.statut &&
-      !confirmed(all, "statut")
-    ) {
-      return {
-        question:
-          "Avez-vous déjà choisi un statut juridique pour cette activité ?",
-        type: "statut"
-      };
-    }
-  }
-
-  /*
-   * CAS GÉNÉRAL
-   */
-
-  if (
-    context.logement &&
-    !confirmed(all, "situation")
-  ) {
-    return {
-      question:
-        "Pouvez-vous me préciser votre situation de logement ?",
-      type: "situation"
-    };
-  }
-
-  if (
-    context.finance &&
-    !confirmed(all, "situation")
-  ) {
-    return {
-      question:
-        "Quel est votre principal problème financier actuellement ?",
-      type: "situation"
-    };
-  }
-
-  return null;
-}
-
-/* =========================================================
-   ACTIONS
-   ========================================================= */
-
-function actions(context) {
-  const result = [];
-
-  if (context.immigration) {
-    result.push(
-      "Vérifier le statut de la démarche et les documents disponibles.",
-      "Conserver les preuves de dépôt et les confirmations.",
-      "Vérifier les informations officielles avant toute démarche."
-    );
-  }
-
-  if (context.travail) {
-    result.push(
-      "Identifier le type de poste ou le problème professionnel.",
-      "Préparer les documents utiles.",
-      "Comparer les options avant de candidater ou de prendre une décision."
-    );
-  }
-
-  if (context.entreprise) {
-    result.push(
-      "Définir précisément l'activité.",
-      "Vérifier le statut juridique approprié.",
-      "Préparer les formalités nécessaires."
-    );
-  }
-
-  if (context.logement) {
-    result.push(
-      "Identifier le besoin exact.",
-      "Rassembler les justificatifs disponibles."
-    );
-  }
-
-  return unique(result).slice(0, 6);
-}
-
-function recommendations(context) {
-  const result = [];
-
-  if (context.immigration) {
-    result.push(
-      "Privilégier les informations officielles.",
-      "Ne pas payer un intermédiaire simplement pour une information disponible gratuitement."
-    );
-  }
-
-  if (context.travail) {
-    result.push(
-      "Adapter le CV à chaque candidature.",
-      "Vérifier les conditions réelles de l'offre avant de s'engager."
-    );
-  }
-
-  if (context.entreprise) {
-    result.push(
-      "Comparer les statuts avant la création.",
-      "Vérifier les obligations administratives et fiscales."
-    );
-  }
-
-  return unique(result).slice(0, 5);
-}
-
-function nextAction(context, infos) {
-  const q = prochaineQuestion(context, infos);
-
-  return q
-    ? q.question
-    : "Vous pouvez maintenant préciser votre besoin pour obtenir une orientation plus ciblée.";
-}
-
-/* =========================================================
-   SOURCES
-   ========================================================= */
-
-function selectSources(context) {
-  const sources = [];
-
-  if (context.immigration) {
-    sources.push(SOURCES.anef);
-  }
-
-  if (
-    context.immigration &&
-    context.travail
-  ) {
-    sources.push(SOURCES.travailEtranger);
-  }
-
-  if (
-    context.entreprise ||
-    context.statut
-  ) {
-    sources.push(SOURCES.statut);
-  }
-
-  if (context.entreprise) {
-    sources.push(SOURCES.guichet);
-  }
-
-  return unique(
-    sources.map(x => JSON.stringify(x))
-  ).map(x => JSON.parse(x));
-}
-
-/* =========================================================
-   SYSTEM PROMPT
-   ========================================================= */
-
-function systemPrompt() {
-  return `
-Tu es GouRare AI, un assistant intelligent d'orientation.
-
-MISSION :
-Aider l'utilisateur à comprendre sa situation, identifier ses options et proposer les prochaines étapes utiles.
-
-ZONE :
-La France est le périmètre principal actuel.
-Ne prétends pas offrir actuellement un service juridique ou administratif complet pour toute l'Europe.
-
-RÈGLES :
-- Une question à la fois.
-- Ne redemande jamais une information déjà fournie.
-- Ne déduis jamais "première demande" simplement parce que l'utilisateur dit qu'il vient d'arriver en France.
-- Ne transforme pas une hypothèse en fait.
-- Si une information est incertaine, indique-le clairement.
-- Pour les démarches administratives, privilégie les sources officielles.
-- Ne promets jamais un résultat administratif.
-- Ne donne pas de fausses garanties.
-- Pour une question juridique sensible, indique qu'une vérification professionnelle peut être nécessaire.
-- Réponds de manière claire, pratique et structurée.
-- Évite le jargon inutile.
-- Si l'utilisateur cherche un emploi sans diplôme ou expérience, propose des pistes réalistes.
-- Respecte la vie privée.
-- Ne demande pas de mot de passe, données bancaires, codes de sécurité ou informations inutiles.
-
-STYLE :
-Français simple, professionnel, humain et direct.
-
-GouRare AI doit aider l'utilisateur à avancer concrètement, pas seulement à recevoir une explication.
-`;
-}
-
-/* =========================================================
-   AI
-   ========================================================= */
-
-async function askAI(env, prompt, maxTokens = 700) {
-  const response = await env.IA.run(
-    MODEL,
-    {
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt()
-        },
-        {
-          role: "user",
-          content: texte(prompt, 60000)
-        }
-      ],
-      max_tokens: maxTokens,
-      temperature: 0.15
-    }
-  );
-
-  const answer =
-    typeof response === "string"
-      ? response
-      : (
-          response?.response ||
-          response?.result?.response ||
-          ""
-        );
-
-  return texte(answer, 12000);
-}
-
-/* =========================================================
-   MESSAGE
-   ========================================================= */
-
-async function messagePrompt(env, question) {
-  try {
-    const result = await askAI(
-      env,
-      `
-L'utilisateur veut probablement rédiger ou améliorer un message.
-
-Demande :
-${texte(question, 12000)}
-
-Produis une réponse directement utilisable en français.
-Si nécessaire, propose un message court, poli et professionnel.
-`,
-      500
-    );
-
-    if (result) return result;
-
-    return "Le service IA n’a pas pu traiter ce contenu pour le moment. Réessayez dans quelques instants.";
-  } catch (error) {
-    console.error("GouRare AI message:", error);
-
-    return "Le service IA n’a pas pu traiter ce contenu pour le moment. Réessayez dans quelques instants.";
-  }
-}
-
-/* =========================================================
-   ANALYSE IMAGE
-   ========================================================= */
-
-async function analyserImage(env, image, question = "") {
-  if (!isValidImageDataURL(image)) {
-    throw new Error("INVALID_IMAGE_FORMAT");
-  }
-
-  if (image.length > LIMITS.imageData) {
-    throw new Error("IMAGE_TOO_LARGE");
-  }
-
-  const response = await env.IA.run(
-    MODEL_VISION,
-    {
-      messages: [
-        {
-          role: "system",
-          content: `
-Tu es GouRare AI.
-Analyse l'image avec prudence.
-Ne prétends pas identifier avec certitude une information qui n'est pas lisible.
-Si l'image contient un document, explique les éléments visibles et indique les points qui nécessitent une vérification officielle.
-`
-        },
-        {
-          role: "user",
-          content: texte(question || "Analyse cette image et explique-moi ce qui est important.", 5000),
-          image
-        }
-      ],
-      max_tokens: 900,
-      temperature: 0.1
-    }
-  );
-
-  return texte(
-    typeof response === "string"
-      ? response
-      : (
-          response?.response ||
-          response?.result?.response ||
-          ""
-        ),
-    12000
-  );
-}
-
-/* =========================================================
-   TRANSCRIPTION AUDIO
-   ========================================================= */
-
-async function transcrireAudio(env, audio) {
-  if (!isValidAudioDataURL(audio)) {
-    throw new Error("INVALID_AUDIO_FORMAT");
-  }
-
-  if (audio.length > LIMITS.audioData) {
-    throw new Error("AUDIO_TOO_LARGE");
-  }
-
-  const base64 = base64FromDataURL(audio);
-
-  const response = await env.IA.run(
-    MODEL_AUDIO,
-    {
-      audio: base64,
-      task: "transcribe",
-      language: "fr"
-    }
-  );
-
-  return texte(
-    typeof response === "string"
-      ? response
-      : (
-          response?.text ||
-          response?.result?.text ||
-          ""
-        ),
-    LIMITS.question
-  );
-}
-
-/* =========================================================
-   ANALYSE QUESTION
-   ========================================================= */
-
-async function analyserQuestion(
-  env,
-  question,
-  historique = []
-) {
-  const q = texte(question, LIMITS.question);
-
-  const context = detectContext(q);
-
-  const extracted = extraireInformations(q);
-
-  let baseInfos = [];
-
-  if (Array.isArray(historique)) {
-    for (const item of historique) {
-      if (item?.questionInitiale) {
-        baseInfos.push(
-          ...extraireInformations(
-            item.questionInitiale
-          )
-        );
-      }
-
-      if (item?.reponseUtilisateur) {
-        baseInfos.push(
-          ...extraireInformations(
-            item.reponseUtilisateur
-          )
-        );
+      if(depotInfo){
+        depot=depotInfo.valeur.includes("aucun")?"non":"oui";
       }
     }
   }
 
-  baseInfos = unique(
-    baseInfos.map(x => JSON.stringify(x))
-  ).map(x => JSON.parse(x));
+  if(
+    depot==="inconnu"&&
+    detectContext(base).immigration
+  ){
+    return "Avez-vous déjà déposé votre demande ?";
+  }
 
-  const allInfos = unique(
-    [...baseInfos, ...extracted]
-      .map(x => JSON.stringify(x))
-  ).map(x => JSON.parse(x));
+  if(
+    depot==="oui"&&
+    !known.has("document_recu")&&
+    !info.some(x=>x.type==="document_recu")
+  ){
+    return "Avez-vous reçu un récépissé ou une attestation ?";
+  }
 
-  let orientation = "";
-  let aiStatus = "ok";
+  if(
+    detectContext(base).entreprise&&
+    !known.has("activite")&&
+    !info.some(x=>x.type==="activite")
+  ){
+    return "Quelle est l'activité exacte que vous souhaitez exercer ?";
+  }
 
-  try {
-    orientation = await askAI(
-      env,
-      `
-QUESTION ACTUELLE :
+  if(
+    detectContext(base).travail&&
+    !known.has("objectif_professionnel")&&
+    !info.some(x=>x.type==="objectif_professionnel")
+  ){
+    return "Quel type de poste recherchez-vous ?";
+  }
+
+  return "Quelle est votre priorité principale aujourd'hui ?";
+}
+
+function selectSources(c){
+  const ids=[];
+
+  if(c.immigration){
+    ids.push("anef");
+  }
+
+  if(c.immigration&&c.travail){
+    ids.push("travailEtranger");
+  }
+
+  if(c.entreprise||c.statut){
+    ids.push("statut");
+  }
+
+  if(c.entreprise){
+    ids.push("guichet");
+  }
+
+  return unique(ids).map(id=>SOURCES[id]);
+}
+
+function ruleConfirmed(q,c){
+  const a=[];
+
+  if(c.immigration){
+    a.push("La question concerne une démarche liée à la situation d'un étranger en France.");
+  }
+
+  if(c.travail){
+    a.push("La question concerne le travail, l'emploi ou la situation professionnelle.");
+  }
+
+  if(c.entreprise){
+    a.push("La question concerne une activité professionnelle ou un projet d'entreprise.");
+  }
+
+  return unique(a);
+}
+
+function ruleVerify(q,c){
+  const a=[];
+
+  if(c.immigration){
+    a.push("Les conditions exactes dépendent de votre titre, de votre nationalité, de votre démarche et de votre situation : vérifiez la procédure officielle.");
+  }
+
+  if(c.travail&&!c.immigration){
+    a.push("Les conditions du poste, du contrat et du recrutement doivent être vérifiées selon l'offre et votre situation.");
+  }
+
+  if(c.entreprise){
+    a.push("Le choix d'un statut et les formalités dépendent de l'activité exacte et de sa réglementation éventuelle.");
+  }
+
+  if(c.juridique){
+    a.push("Pour une situation juridique individuelle ou un litige, une vérification professionnelle peut être nécessaire.");
+  }
+
+  return unique(a);
+}
+
+function ruleActions(q,c){
+  const a=[];
+
+  if(c.immigration){
+    a.push("Identifier la démarche exacte et vérifier la procédure officielle correspondante.");
+  }
+
+  if(c.travail){
+    a.push("Préciser le métier, la zone géographique et les contraintes du poste.");
+  }
+
+  if(c.entreprise){
+    a.push("Décrire précisément les prestations ou produits proposés avant de choisir une forme juridique.");
+  }
+
+  if(c.message){
+    a.push("Relire le message reçu et préciser l'objectif de la réponse avant de l'envoyer.");
+  }
+
+  return unique(a);
+}
+
+function ruleRecommendations(q,c){
+  const a=[];
+
+  if(c.immigration){
+    a.push("Conserver les justificatifs et utiliser en priorité les informations officielles.");
+  }
+
+  if(c.travail){
+    a.push("Comparer plusieurs offres et vérifier les conditions réelles du poste.");
+  }
+
+  if(c.entreprise){
+    a.push("Comparer les formes juridiques avant de retenir celle qui correspond au projet.");
+  }
+
+  return unique(a);
+}
+
+function systemPrompt(langue){
+  return `Tu es GouRare AI, assistant d'orientation France-first.
+Tu aides à comprendre une situation et à choisir la prochaine étape.
+Tu n'es pas avocat, médecin, administration ou expert-comptable.
+Les sources officielles fournies par le moteur sont prioritaires.
+N'invente jamais de loi, article, montant, délai, seuil, sanction, document obligatoire ou condition.
+Si une information n'est pas dans les données fournies, dis qu'elle doit être vérifiée.
+Réponds en ${langue==="ar"?"arabe clair":"français clair"}.
+Ne donne pas de fausses citations.
+Donne des conseils pratiques, prudents et compréhensibles.`;
+}
+
+async function askAI(env,prompt){
+  if(!env||!env.IA){
+    throw new Error("Binding IA indisponible.");
+  }
+
+  const r=await env.IA.run(MODEL,{
+    messages:[
+      {
+        role:"system",
+        content:systemPrompt("fr")
+      },
+      {
+        role:"user",
+        content:prompt
+      }
+    ]
+  });
+
+  const text=
+    typeof r==="string"
+      ?r
+      :(r?.response||r?.result||"");
+
+  if(!text){
+    throw new Error("Réponse IA vide.");
+  }
+
+  return String(text);
+}
+
+function safeFallback(q,c,langue){
+  if(langue==="ar"){
+    return "فهمت طلبك. سأساعدك خطوة بخطوة، لكن المعلومات الإدارية أو القانونية الدقيقة يجب التحقق منها في المصادر الرسمية. حدّد لي وضعك الحالي والهدف الذي تريد الوصول إليه.";
+  }
+
+  if(c.immigration){
+    return "Votre demande concerne votre situation administrative en France. Je peux vous aider à identifier la démarche et la prochaine étape, mais les conditions exactes doivent être vérifiées selon votre situation.";
+  }
+
+  if(c.travail){
+    return "Votre demande concerne le travail ou la recherche d'emploi. Nous pouvons préciser le poste recherché, puis déterminer les étapes utiles.";
+  }
+
+  if(c.entreprise){
+    return "Votre demande concerne un projet professionnel ou entrepreneurial. Il faut d'abord préciser l'activité exacte avant de choisir les démarches ou le statut.";
+  }
+
+  return "J'ai compris votre demande. Je peux vous orienter étape par étape à partir de votre situation et de votre objectif.";
+}
+async function analyserQuestion(env,question,historique=[],langue="fr"){
+  const q=texte(question,LIMITS.question);
+  const history=texte(JSON.stringify(historique||[]),LIMITS.historique);
+  const c=detectContext(q);
+  const infos=extraireInformations(q);
+  const sources=selectSources(c);
+
+  const prompt=`
+${systemPrompt(langue)}
+
+QUESTION UTILISATEUR:
 ${q}
 
-CONTEXTE DÉTECTÉ :
-${JSON.stringify(context)}
+HISTORIQUE:
+${history}
 
-INFORMATIONS STRUCTURÉES :
-${infosToText(allInfos)}
+CONTEXTE DÉTECTÉ:
+${JSON.stringify(c)}
 
-HISTORIQUE :
-${texte(JSON.stringify(historique), LIMITS.historique)}
+INFORMATIONS EXPLICITES:
+${JSON.stringify(infos)}
 
-Réponds comme GouRare AI.
+SOURCES OFFICIELLES PERTINENTES:
+${JSON.stringify(sources)}
 
-Structure :
-1. Compréhension de la situation
-2. Orientation recommandée
-3. Prochaines étapes concrètes
-4. Points à vérifier si nécessaire
+RÈGLES DE RÉPONSE:
+- Répondre directement à la question.
+- Ne pas inventer de faits.
+- Ne pas présenter une hypothèse comme un fait.
+- Si une information importante manque, poser UNE seule question.
+- Ne jamais poser plusieurs questions dans la même réponse.
+- Ne pas redemander une information déjà fournie.
+- Pour une démarche administrative, expliquer la prochaine étape de façon simple.
+- Pour un emploi, aider concrètement à avancer vers une candidature.
+- Pour une entreprise, distinguer idée, activité, statut et formalités.
+- Pour une situation juridique, rester prudent et recommander une vérification professionnelle si nécessaire.
+- Si une source officielle est pertinente, la mentionner comme source à consulter.
+- Ne jamais prétendre avoir effectué une démarche à la place de l'utilisateur.
+- Ne jamais prétendre avoir contacté une administration ou une entreprise.
+- Ne jamais promettre un résultat.
+- ${langue==="ar"?"Répondre en arabe clair et naturel.":"Répondre en français clair et naturel."}
 
-Ne pose pas plusieurs questions.
-Si une seule information manque réellement pour continuer, termine par UNE question précise.
-`,
-      800
-    );
-  } catch (error) {
-    console.error("GouRare AI analyse:", error);
+Retourne une réponse utile et concise.
+`;
 
-    aiStatus = "indisponible";
+  try{
+    const answer=await askAI(env,prompt);
 
-    /*
-     * Fallback sûr si le modèle n'est momentanément pas disponible.
-     */
+    return {
+      ok:true,
+      version:VERSION,
+      answer:texte(answer,20000),
+      context:c,
+      informations:infos,
+      sources,
+      nextQuestion:prochaineQuestion(q,infos),
+      aiStatus:"disponible",
+      fallback:false
+    };
+  }catch(error){
+    console.error("GouRare AI analyse error:",error);
 
-    if (context.immigration) {
-      orientation =
-        "Votre demande semble concerner une démarche administrative liée à votre situation en France. Il faut d’abord identifier précisément la démarche et vérifier les informations officielles correspondant à votre situation.";
-    } else if (context.travail) {
-      orientation =
-        "Votre demande semble concerner l’emploi ou votre situation professionnelle. Il faut identifier le type de poste ou le problème rencontré afin de déterminer les prochaines étapes.";
-    } else if (context.entreprise) {
-      orientation =
-        "Votre demande semble concerner une activité professionnelle ou une entreprise. La première étape est de préciser l’activité et votre objectif.";
-    } else {
-      orientation =
-        "Votre demande a été reçue. Pour vous orienter correctement, il faut préciser le besoin principal et l’objectif recherché.";
-    }
+    return {
+      ok:true,
+      version:VERSION,
+      answer:safeFallback(q,c,langue),
+      context:c,
+      informations:infos,
+      sources,
+      nextQuestion:prochaineQuestion(q,infos),
+      aiStatus:"indisponible",
+      fallback:true
+    };
+  }
+}
+
+async function analyserImage(env,dataURL,question="",langue="fr"){
+  if(!isValidImageDataURL(dataURL)){
+    throw new Error("Format d'image non autorisé.");
   }
 
-  if (!orientation) {
-    aiStatus = "indisponible";
+  const b64=base64FromDataURL(dataURL);
 
-    orientation =
-      "Le service IA n’a pas pu produire une analyse complète. Vous pouvez réessayer dans quelques instants.";
+  if(!b64||approxBytesFromBase64(b64)>LIMITS.imageData){
+    throw new Error("Image trop volumineuse.");
   }
 
-  const next = prochaineQuestion(
-    context,
-    extracted,
-    baseInfos
-  );
+  const prompt=`
+Analyse cette image pour aider l'utilisateur dans son orientation.
 
-  const progress = progression(
-    context,
-    allInfos
-  );
+Question éventuelle:
+${texte(question,5000)}
+
+Consignes:
+- Décris uniquement ce qui est réellement visible.
+- Si c'est un document, identifie les éléments utiles sans inventer.
+- Si du texte est visible mais difficile à lire, indique clairement l'incertitude.
+- Ne donne pas de conseil juridique catégorique uniquement à partir de l'image.
+- Si une information doit être vérifiée, indique-le.
+- Réponds en ${langue==="ar"?"arabe clair":"français clair"}.
+`;
+
+  if(!env||!env.IA){
+    throw new Error("Binding IA indisponible.");
+  }
+
+  const result=await env.IA.run(MODEL_VISION,{
+    messages:[
+      {
+        role:"system",
+        content:systemPrompt(langue)
+      },
+      {
+        role:"user",
+        content:[
+          {
+            type:"text",
+            text:prompt
+          },
+          {
+            type:"image_url",
+            image_url:{
+              url:dataURL
+            }
+          }
+        ]
+      }
+    ]
+  });
+
+  const answer=
+    typeof result==="string"
+      ?result
+      :(result?.response||result?.result||"");
+
+  if(!answer){
+    throw new Error("Analyse image vide.");
+  }
 
   return {
-    version: VERSION,
-
-    question: q,
-
-    context,
-
-    infos: allInfos,
-
-    orientation,
-
-    prochaineQuestion: next,
-
-    prochaineAction: nextAction(
-      context,
-      allInfos
-    ),
-
-    actions: actions(context),
-
-    recommandations:
-      recommendations(context),
-
-    documents:
-      documents(allInfos),
-
-    progression: progress,
-
-    sources:
-      selectSources(context),
-
-    aiStatus
+    ok:true,
+    version:VERSION,
+    answer:String(answer),
+    aiStatus:"disponible"
   };
 }
 
-/* =========================================================
-   PAGE HTML
-   ========================================================= */
+async function transcrireAudio(env,dataURL,langue="fr"){
+  if(!isValidAudioDataURL(dataURL)){
+    throw new Error("Format audio non autorisé.");
+  }
 
-function pageHTML() {
-  return `<!DOCTYPE html>
+  const b64=base64FromDataURL(dataURL);
+
+  if(!b64||approxBytesFromBase64(b64)>LIMITS.audioData){
+    throw new Error("Audio trop volumineux.");
+  }
+
+  if(!env||!env.IA){
+    throw new Error("Binding IA indisponible.");
+  }
+
+  const result=await env.IA.run(MODEL_AUDIO,{
+    audio:b64
+  });
+
+  const text=
+    typeof result==="string"
+      ?result
+      :(result?.text||result?.response||result?.result||"");
+
+  if(!text){
+    throw new Error("Transcription audio vide.");
+  }
+
+  return {
+    ok:true,
+    version:VERSION,
+    text:texte(text,20000),
+    language:langue,
+    aiStatus:"disponible"
+  };
+}
+
+function healthResponse(){
+  return jsonResponse({
+    ok:true,
+    service:"GouRare AI",
+    version:VERSION,
+    modules:{
+      text:true,
+      vision:true,
+      audio:true,
+      orientation:true
+    },
+    region:"France-first"
+  },200,securityHeaders());
+}
+
+function sourceHTML(sources){
+  if(!sources||!sources.length){
+    return "";
+  }
+
+  return `
+    <section class="sources">
+      <h3>Sources officielles pertinentes</h3>
+      <div class="source-list">
+        ${sources.map(s=>`
+          <a
+            class="source"
+            href="${escapeHTML(s.url)}"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <strong>${escapeHTML(s.organisme)}</strong>
+            <span>${escapeHTML(s.titre)}</span>
+          </a>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function pageHTML(){
+  return `<!doctype html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#111827">
-
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="GouRare AI — Votre intelligence d'orientation en France.">
+<meta name="theme-color" content="#0b1020">
 <title>GouRare AI</title>
 
 <style>
-
 :root{
-  --bg:#f5f7fb;
-  --card:#ffffff;
-  --text:#111827;
-  --muted:#64748b;
-  --border:#e2e8f0;
-  --primary:#111827;
-  --primary2:#1f2937;
-  --accent:#2563eb;
-  --danger:#b91c1c;
-  --success:#166534;
+  --bg:#07101f;
+  --panel:#0e1729;
+  --panel2:#121e34;
+  --text:#f5f7fb;
+  --muted:#aeb8c9;
+  --accent:#8ab4ff;
+  --accent2:#b9d2ff;
+  --border:rgba(255,255,255,.1);
+  --danger:#ff8e8e;
+  --ok:#8be0ad;
 }
 
 *{
   box-sizing:border-box;
 }
 
+html{
+  scroll-behavior:smooth;
+}
+
 body{
   margin:0;
-  background:var(--bg);
+  min-height:100vh;
+  background:
+    radial-gradient(circle at top,#172a4c 0,#07101f 42%,#040812 100%);
   color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
 }
 
-main{
-  width:min(960px,calc(100% - 28px));
-  margin:28px auto 60px;
-}
-
-header{
-  background:linear-gradient(135deg,#111827,#263449);
-  color:white;
-  border-radius:24px;
-  padding:28px;
-  box-shadow:0 15px 40px rgba(15,23,42,.14);
-}
-
-.brand{
-  font-size:32px;
-  font-weight:800;
-  letter-spacing:-1px;
-}
-
-.subtitle{
-  margin-top:8px;
-  opacity:.85;
-  font-size:16px;
-}
-
-.card{
-  background:var(--card);
-  border:1px solid var(--border);
-  border-radius:20px;
-  padding:22px;
-  margin-top:18px;
-  box-shadow:0 8px 25px rgba(15,23,42,.05);
-}
-
-h2{
-  margin-top:0;
-}
-
-.profile-grid{
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
-  gap:12px;
+button,
+input,
+textarea{
+  font:inherit;
 }
 
 button{
-  border:0;
-  border-radius:14px;
-  padding:13px 16px;
   cursor:pointer;
-  font-size:15px;
-  font-weight:650;
-  background:var(--primary);
-  color:white;
 }
 
-button.secondary{
-  background:#e2e8f0;
-  color:#111827;
+.container{
+  width:min(1100px,calc(100% - 28px));
+  margin:auto;
 }
 
-button:disabled{
-  opacity:.55;
-  cursor:not-allowed;
+header{
+  padding:22px 0 12px;
 }
 
-textarea{
-  width:100%;
-  min-height:145px;
-  resize:vertical;
-  padding:15px;
-  border:1px solid var(--border);
+.brand{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:15px;
+}
+
+.logo{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+.logo-mark{
+  width:46px;
+  height:46px;
+  border:1px solid rgba(255,255,255,.22);
   border-radius:15px;
-  font:inherit;
+  display:grid;
+  place-items:center;
+  background:linear-gradient(145deg,#1c3158,#0a1324);
+  box-shadow:0 10px 30px rgba(0,0,0,.3);
+}
+
+.logo-text{
+  font-size:22px;
+  font-weight:800;
+  letter-spacing:-.5px;
+}
+
+.version{
+  color:var(--muted);
+  font-size:12px;
+}
+
+.hero{
+  padding:25px 0 18px;
+}
+
+.hero h1{
+  margin:0 0 10px;
+  font-size:clamp(30px,6vw,54px);
+  line-height:1.02;
+  letter-spacing:-1.8px;
+}
+
+.hero p{
+  color:var(--muted);
+  font-size:17px;
+  line-height:1.6;
+  max-width:760px;
+  margin:0;
+}
+
+.cancer{
+  margin:22px 0;
+  padding:15px 17px;
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:18px;
+  background:rgba(255,255,255,.045);
+}
+
+.cancer strong{
+  display:block;
+  margin-bottom:5px;
+}
+
+.cancer span{
+  color:var(--muted);
+  font-size:14px;
+}
+
+.panel{
+  background:rgba(14,23,41,.88);
+  border:1px solid var(--border);
+  border-radius:24px;
+  padding:20px;
+  box-shadow:0 18px 55px rgba(0,0,0,.25);
+  backdrop-filter:blur(15px);
+}
+
+.roles{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:10px;
+}
+
+.role{
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.035);
+  color:var(--text);
+  border-radius:17px;
+  padding:15px 12px;
+  text-align:left;
+  min-height:92px;
+  transition:.2s ease;
+}
+
+.role:hover{
+  transform:translateY(-2px);
+  border-color:rgba(138,180,255,.45);
+  background:rgba(138,180,255,.08);
+}
+
+.role strong{
+  display:block;
+  margin-bottom:6px;
+}
+
+.role span{
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.4;
+}
+
+.situations{
+  margin-top:20px;
+}
+
+.situations h2{
+  font-size:17px;
+  margin:0 0 12px;
+}
+
+.situation-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:9px;
+}
+
+.situation{
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.025);
+  color:var(--text);
+  padding:12px;
+  border-radius:14px;
+  text-align:left;
+}
+
+.chat{
+  margin-top:22px;
+}
+
+.messages{
+  min-height:190px;
+  max-height:52vh;
+  overflow:auto;
+  padding:3px;
+}
+
+.msg{
+  display:flex;
+  margin:10px 0;
+}
+
+.msg.user{
+  justify-content:flex-end;
+}
+
+.bubble{
+  max-width:min(780px,90%);
+  padding:12px 14px;
+  border-radius:17px;
+  line-height:1.55;
+  white-space:pre-wrap;
+}
+
+.msg.assistant .bubble{
+  background:#17243b;
+  border:1px solid rgba(255,255,255,.07);
+}
+
+.msg.user .bubble{
+  background:#24416d;
+}
+
+.composer{
+  display:flex;
+  gap:9px;
+  margin-top:12px;
+}
+
+.composer textarea{
+  flex:1;
+  min-height:54px;
+  max-height:180px;
+  resize:vertical;
+  color:var(--text);
+  background:#091326;
+  border:1px solid var(--border);
+  border-radius:17px;
+  padding:14px;
   outline:none;
 }
 
-textarea:focus{
-  border-color:#94a3b8;
+.composer textarea:focus{
+  border-color:rgba(138,180,255,.6);
 }
 
 .actions{
   display:flex;
   flex-wrap:wrap;
-  gap:10px;
-  margin-top:12px;
+  gap:8px;
+  margin-top:10px;
+}
+
+.btn{
+  border:1px solid var(--border);
+  background:#111d31;
+  color:var(--text);
+  border-radius:13px;
+  padding:10px 13px;
+}
+
+.btn.primary{
+  background:#315b95;
+  border-color:#4d7fbd;
+}
+
+.btn.recording{
+  background:#713333;
+  border-color:#b65a5a;
+}
+
+.btn:disabled{
+  opacity:.5;
+  cursor:not-allowed;
+}
+
+.file-info{
+  color:var(--muted);
+  font-size:12px;
+  margin-top:7px;
+}
+
+.sources{
+  margin-top:15px;
+  border-top:1px solid var(--border);
+  padding-top:15px;
+}
+
+.sources h3{
+  font-size:14px;
+  margin:0 0 9px;
+}
+
+.source-list{
+  display:grid;
+  gap:8px;
+}
+
+.source{
+  text-decoration:none;
+  color:var(--text);
+  background:rgba(255,255,255,.035);
+  border:1px solid var(--border);
+  padding:10px 12px;
+  border-radius:13px;
+}
+
+.source strong,
+.source span{
+  display:block;
+}
+
+.source span{
+  color:var(--muted);
+  font-size:12px;
+  margin-top:3px;
+}
+
+.status{
+  margin-top:10px;
+  min-height:20px;
+  color:var(--muted);
+  font-size:12px;
+}
+
+footer{
+  padding:25px 0 35px;
+  color:var(--muted);
+  text-align:center;
+  font-size:12px;
 }
 
 .hidden{
   display:none!important;
 }
 
-.situation{
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
-  gap:10px;
-}
-
-.situation button{
-  background:white;
-  color:#111827;
-  border:1px solid var(--border);
-  text-align:left;
-}
-
-.result-title{
-  font-size:20px;
-  font-weight:800;
-  margin-bottom:10px;
-}
-
-.result-text{
-  line-height:1.65;
-  white-space:pre-wrap;
-}
-
-.progress{
-  height:8px;
-  border-radius:99px;
-  background:#e2e8f0;
-  overflow:hidden;
-  margin-top:10px;
-}
-
-.progress > div{
-  height:100%;
-  background:#2563eb;
-  width:0;
-}
-
-.badge{
-  display:inline-block;
-  padding:6px 10px;
-  border-radius:99px;
-  background:#eef2ff;
-  color:#3730a3;
-  font-size:12px;
-  font-weight:700;
-}
-
-.warning{
-  background:#fff7ed;
-  color:#9a3412;
-  border:1px solid #fed7aa;
-  padding:12px;
-  border-radius:13px;
-  margin-top:12px;
-}
-
-.source{
-  display:block;
-  padding:12px;
-  border:1px solid var(--border);
-  border-radius:13px;
-  margin-top:8px;
-  color:#1d4ed8;
-  text-decoration:none;
-}
-
-.small{
-  color:var(--muted);
-  font-size:13px;
-}
-
-.voice-status{
-  margin-top:10px;
-  color:var(--muted);
-}
-
-.cancer{
-  text-align:center;
-  color:#64748b;
-  font-size:13px;
-  line-height:1.5;
-}
-
-footer{
-  margin-top:20px;
-}
-
-@media(max-width:600px){
-  main{
-    width:min(100% - 18px,960px);
-    margin-top:10px;
+@media(max-width:800px){
+  .roles{
+    grid-template-columns:repeat(2,1fr);
   }
 
-  header{
-    padding:22px;
-    border-radius:19px;
-  }
-
-  .brand{
-    font-size:27px;
-  }
-
-  .card{
-    padding:17px;
+  .situation-grid{
+    grid-template-columns:repeat(2,1fr);
   }
 }
 
+@media(max-width:520px){
+  .container{
+    width:min(100% - 18px,1100px);
+  }
+
+  .panel{
+    padding:14px;
+    border-radius:20px;
+  }
+
+  .roles,
+  .situation-grid{
+    grid-template-columns:1fr;
+  }
+
+  .composer{
+    flex-direction:column;
+  }
+
+  .composer .btn.primary{
+    width:100%;
+  }
+}
 </style>
 </head>
 
 <body>
 
-<main>
+<div class="container">
 
 <header>
-  <div class="brand">GouRare AI</div>
-  <div class="subtitle">
-    Votre intelligence d’orientation
+  <div class="brand">
+    <div class="logo">
+      <div class="logo-mark">G</div>
+      <div>
+        <div class="logo-text">GouRare AI</div>
+        <div class="version">Votre intelligence d'orientation</div>
+      </div>
+    </div>
+    <div class="version">Version ${VERSION}</div>
   </div>
 </header>
 
-<section class="card" id="profileCard">
+<main>
 
-<h2>Comment pouvons-nous vous aider ?</h2>
-
-<div class="profile-grid">
-
-<button onclick="chooseProfile('migrant')">
-  🇫🇷 Situation en France
-</button>
-
-<button onclick="chooseProfile('particulier')">
-  👤 Particulier
-</button>
-
-<button onclick="chooseProfile('emploi')">
-  💼 Emploi
-</button>
-
-<button onclick="chooseProfile('entreprise')">
-  🏢 Entreprise
-</button>
-
-</div>
-
+<section class="hero">
+  <h1>Votre intelligence d'orientation.</h1>
+  <p>
+    Un assistant France-first pour comprendre votre situation,
+    identifier les prochaines étapes et vous orienter vers les
+    informations pertinentes.
+  </p>
 </section>
 
-<section class="card hidden" id="situationCard">
-
-<h2>Choisissez votre situation</h2>
-
-<div class="situation" id="situations"></div>
-
+<section class="cancer">
+  <strong>🎗️ Avec vous contre le cancer</strong>
+  <span>🎗️ Notre soutien aux personnes touchées par le cancer.</span>
 </section>
 
-<section class="card hidden" id="questionCard">
+<section class="panel">
 
-<div class="badge" id="profileBadge"></div>
+  <div class="roles" id="roles">
+    ${Object.entries(PARCOURS).map(([key,value])=>`
+      <button class="role" data-role="${escapeHTML(key)}">
+        <strong>${escapeHTML(value.titre)}</strong>
+        <span>${escapeHTML(value.description)}</span>
+      </button>
+    `).join("")}
+  </div>
 
-<h2>Votre situation</h2>
+  <div class="situations hidden" id="situations">
+    <h2 id="situationTitle"></h2>
+    <div class="situation-grid" id="situationGrid"></div>
+  </div>
 
-<textarea
-  id="question"
-  maxlength="12000"
-  placeholder="Expliquez votre situation..."
-></textarea>
+  <div class="chat">
+    <div class="messages" id="messages"></div>
 
-<div class="actions">
+    <div class="composer">
+      <textarea
+        id="question"
+        maxlength="${LIMITS.question}"
+        placeholder="Décrivez votre situation ou votre question..."
+      ></textarea>
 
-<button id="analyzeBtn" onclick="analyze()">
-  Analyser
-</button>
+      <button class="btn primary" id="sendBtn">Envoyer</button>
+    </div>
 
-<button
-  class="secondary"
-  id="voiceBtn"
-  onclick="toggleVoice()"
->
-  🎙️ Parler
-</button>
+    <div class="actions">
+      <button class="btn" id="imageBtn">📷 Ajouter une image</button>
+      <button class="btn" id="voiceBtn">🎙️ Parler</button>
+      <button class="btn" id="clearBtn">Effacer</button>
+    </div>
 
-<button
-  class="secondary"
-  onclick="document.getElementById('imageInput').click()"
->
-  📷 Ajouter une image
-</button>
+    <input
+      id="imageInput"
+      class="hidden"
+      type="file"
+      accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+    >
 
-</div>
-
-<input
-  id="imageInput"
-  class="hidden"
-  type="file"
-  accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-  onchange="handleImage(this)"
->
-
-<div id="voiceStatus" class="voice-status"></div>
-
-</section>
-
-<section class="card hidden" id="resultCard">
-
-<div id="aiWarning"></div>
-
-<div class="result-title">
-  Orientation
-</div>
-
-<div
-  id="orientation"
-  class="result-text"
-></div>
-
-<div id="nextBox"></div>
-
-<div id="progressBox"></div>
-
-<div id="actionsBox"></div>
-
-<div id="recommendationsBox"></div>
-
-<div id="documentsBox"></div>
-
-<div id="sourcesBox"></div>
+    <div class="file-info" id="fileInfo"></div>
+    <div class="status" id="status"></div>
+    <div id="sources"></div>
+  </div>
 
 </section>
-
-<section class="card hidden" id="messageCard">
-
-<h2>Message / courrier</h2>
-
-<textarea
-  id="messageQuestion"
-  maxlength="12000"
-  placeholder="Écrivez votre demande..."
-></textarea>
-
-<div class="actions">
-
-<button onclick="generateMessage()">
-  Rédiger
-</button>
-
-</div>
-
-<div
-  id="messageResult"
-  class="result-text"
-  style="margin-top:15px"
-></div>
-
-</section>
-
-<footer>
-
-<div class="cancer">
-  🎗️ Avec vous contre le cancer<br>
-  🎗️ Notre soutien aux personnes touchées par le cancer.
-</div>
-
-<div class="cancer" style="margin-top:10px">
-  GouRare AI — Version ${VERSION}
-</div>
-
-</footer>
 
 </main>
 
+<footer>
+  GouRare AI — Version ${VERSION}
+</footer>
+
+</div>
+
 <script>
+(function(){
 
-const VERSION = "${VERSION}";
+const MAX_IMAGE_BYTES=${LIMITS.imageFile};
+const MAX_IMAGE_DATA=${LIMITS.imageData};
+const MAX_AUDIO_BYTES=${LIMITS.audioFile};
+const MAX_AUDIO_DATA=${LIMITS.audioData};
+const MAX_RECORDING_MS=120000;
 
-const LIMITS = {
-  imageFile: 5500000,
-  imageData: 8000000,
-  audioFile: 9000000,
-  audioData: 16000000,
-  maxRecordingMs: 120000
-};
+const messages=document.getElementById("messages");
+const question=document.getElementById("question");
+const sendBtn=document.getElementById("sendBtn");
+const imageBtn=document.getElementById("imageBtn");
+const voiceBtn=document.getElementById("voiceBtn");
+const clearBtn=document.getElementById("clearBtn");
+const imageInput=document.getElementById("imageInput");
+const status=document.getElementById("status");
+const fileInfo=document.getElementById("fileInfo");
+const sources=document.getElementById("sources");
+const situations=document.getElementById("situations");
+const situationTitle=document.getElementById("situationTitle");
+const situationGrid=document.getElementById("situationGrid");
 
-let profile = "";
-let situation = "";
-let historique = [];
+let historique=[];
+let selectedRole=null;
+let mediaRecorder=null;
+let mediaStream=null;
+let audioChunks=[];
+let recordingTimer=null;
+let recordingStarted=0;
 
-let mediaRecorder = null;
-let mediaStream = null;
-let audioChunks = [];
-let recordingStartedAt = 0;
-let recordTimer = null;
-let recordTimeout = null;
-let busy = false;
+function addMessage(role,text){
+  const row=document.createElement("div");
+  row.className="msg "+role;
 
-const parcours = ${JSON.stringify(PARCOURS)};
+  const bubble=document.createElement("div");
+  bubble.className="bubble";
+  bubble.textContent=text;
 
-function $(id){
-  return document.getElementById(id);
+  row.appendChild(bubble);
+  messages.appendChild(row);
+  messages.scrollTop=messages.scrollHeight;
 }
 
-function escapeHTML(value){
-  return String(value ?? "")
-    .replace(/&/g,"&amp;")
-    .replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;")
-    .replace(/"/g,"&quot;")
-    .replace(/'/g,"&#039;");
+function setStatus(text){
+  status.textContent=text||"";
 }
 
-function chooseProfile(value){
+function showSources(items){
+  sources.innerHTML="";
 
-  profile = value;
-  situation = "";
-
-  $("profileCard").classList.add("hidden");
-  $("situationCard").classList.remove("hidden");
-
-  const list = parcours[value] || [];
-
-  $("situations").innerHTML =
-    list.map(item =>
-      \`<button onclick="chooseSituation('\${escapeHTML(item[0])}')">
-        \${escapeHTML(item[1])}
-      </button>\`
-    ).join("");
-
-  if(value === "particulier"){
-    $("messageCard").classList.remove("hidden");
-  }else{
-    $("messageCard").classList.add("hidden");
-  }
-}
-
-function chooseSituation(value){
-
-  situation = value;
-
-  $("situationCard").classList.add("hidden");
-  $("questionCard").classList.remove("hidden");
-
-  $("profileBadge").textContent =
-    profile + " / " + situation;
-
-  $("question").placeholder =
-    "Expliquez votre situation. Par exemple : ce que vous cherchez, ce que vous avez déjà fait et ce qui vous bloque.";
-
-  $("question").focus();
-}
-
-async function analyze(){
-
-  if(busy) return;
-
-  const q = $("question").value.trim();
-
-  if(!q){
-    $("question").focus();
+  if(!Array.isArray(items)||!items.length){
     return;
   }
 
-  busy = true;
+  const section=document.createElement("section");
+  section.className="sources";
 
-  $("analyzeBtn").disabled = true;
-  $("analyzeBtn").textContent = "Analyse en cours...";
+  const h=document.createElement("h3");
+  h.textContent="Sources officielles pertinentes";
+  section.appendChild(h);
+
+  const list=document.createElement("div");
+  list.className="source-list";
+
+  items.forEach(item=>{
+    if(!item||!item.url)return;
+
+    const a=document.createElement("a");
+    a.className="source";
+    a.href=item.url;
+    a.target="_blank";
+    a.rel="noopener noreferrer";
+
+    const strong=document.createElement("strong");
+    strong.textContent=item.organisme||"Source officielle";
+
+    const span=document.createElement("span");
+    span.textContent=item.titre||"Consulter la source";
+
+    a.appendChild(strong);
+    a.appendChild(span);
+    list.appendChild(a);
+  });
+
+  section.appendChild(list);
+  sources.appendChild(section);
+}
+
+function showSituations(role){
+  selectedRole=role;
+  const data=${JSON.stringify(PARCOURS)};
+  const parcours=data[role];
+
+  if(!parcours){
+    situations.classList.add("hidden");
+    return;
+  }
+
+  situationTitle.textContent=parcours.titre;
+  situationGrid.innerHTML="";
+
+  parcours.situations.forEach(item=>{
+    const btn=document.createElement("button");
+    btn.className="situation";
+    btn.textContent=item[1];
+
+    btn.addEventListener("click",()=>{
+      question.value=item[1].replace(/^[^ ]+ /,"");
+      question.focus();
+    });
+
+    situationGrid.appendChild(btn);
+  });
+
+  situations.classList.remove("hidden");
+}
+
+async function sendQuestion(){
+  const q=question.value.trim();
+
+  if(!q){
+    return;
+  }
+
+  addMessage("user",q);
+  question.value="";
+  sendBtn.disabled=true;
+  setStatus("Analyse en cours...");
 
   try{
+    const response=await fetch("/api/analyze",{
+      method:"POST",
+      headers:{
+        "content-type":"application/json"
+      },
+      body:JSON.stringify({
+        question:q,
+        historique:historique,
+        langue:"fr"
+      })
+    });
 
-    const current = {
-      questionInitiale:
-        historique.length
-          ? historique[0].questionInitiale
-          : q,
+    const data=await response.json();
 
-      reponseUtilisateur:
-        historique.length
-          ? q
-          : "",
-
-      profile,
-      situation
-    };
-
-    const response = await fetch(
-      "/api/analyze",
-      {
-        method:"POST",
-        headers:{
-          "Content-Type":"application/json"
-        },
-        body:JSON.stringify({
-          question:q,
-          profile,
-          situation,
-          historique
-        })
-      }
-    );
-
-    const data = await response.json();
-
-    if(!response.ok){
-      throw new Error(
-        data?.error || "Erreur serveur"
-      );
+    if(!response.ok||!data.ok){
+      throw new Error(data.error||"Erreur serveur.");
     }
 
-    displayResult(data);
+    addMessage("assistant",data.answer||"Réponse indisponible.");
 
-    historique.push(current);
+    historique.push({
+      role:"user",
+      content:q
+    });
 
-    if(historique.length > 12){
-      historique = historique.slice(-12);
+    historique.push({
+      role:"assistant",
+      content:data.answer||""
+    });
+
+    while(JSON.stringify(historique).length>${LIMITS.historique}){
+      historique.shift();
+    }
+
+    showSources(data.sources||[]);
+
+    if(data.aiStatus==="indisponible"){
+      setStatus("Mode de secours actif.");
+    }else{
+      setStatus("");
     }
 
   }catch(error){
-
-    $("resultCard").classList.remove("hidden");
-
-    $("orientation").textContent =
-      "Une erreur est survenue. Vérifiez votre connexion puis réessayez.";
-
-    $("nextBox").innerHTML = "";
-    $("progressBox").innerHTML = "";
-    $("actionsBox").innerHTML = "";
-    $("recommendationsBox").innerHTML = "";
-    $("documentsBox").innerHTML = "";
-    $("sourcesBox").innerHTML = "";
-
+    console.error(error);
+    addMessage(
+      "assistant",
+      "Une erreur temporaire est survenue. Vérifiez votre connexion puis réessayez."
+    );
+    setStatus("Erreur temporaire.");
   }finally{
-
-    busy = false;
-
-    $("analyzeBtn").disabled = false;
-    $("analyzeBtn").textContent = "Analyser";
+    sendBtn.disabled=false;
   }
-}
-
-function displayResult(data){
-
-  $("resultCard").classList.remove("hidden");
-
-  $("orientation").textContent =
-    data.orientation || "";
-
-  if(data.aiStatus === "indisponible"){
-
-    $("aiWarning").innerHTML =
-      '<div class="warning">' +
-      'Le service IA est momentanément indisponible. ' +
-      'Une orientation de secours vous est affichée.' +
-      '</div>';
-
-  }else{
-    $("aiWarning").innerHTML = "";
-  }
-
-  if(data.prochaineQuestion){
-
-    $("nextBox").innerHTML =
-      '<div class="card" style="margin-top:15px">' +
-      '<strong>Prochaine question</strong>' +
-      '<p>' +
-      escapeHTML(data.prochaineQuestion.question) +
-      '</p>' +
-      '</div>';
-
-  }else{
-
-    $("nextBox").innerHTML =
-      '<div class="card" style="margin-top:15px">' +
-      '<strong>Prochaine étape</strong>' +
-      '<p>' +
-      escapeHTML(data.prochaineAction || "") +
-      '</p>' +
-      '</div>';
-  }
-
-  const p = data.progression || {};
-
-  $("progressBox").innerHTML =
-    '<div style="margin-top:18px">' +
-    '<strong>Progression</strong>' +
-    '<div class="progress">' +
-    '<div style="width:' +
-    Number(p.percent || 0) +
-    '%"></div>' +
-    '</div>' +
-    '<div class="small">' +
-    Number(p.percent || 0) +
-    '% de progression' +
-    '</div>' +
-    '</div>';
-
-  $("actionsBox").innerHTML =
-    data.actions?.length
-      ? '<h3>Actions recommandées</h3><ul>' +
-        data.actions.map(
-          x => '<li>' + escapeHTML(x) + '</li>'
-        ).join("") +
-        '</ul>'
-      : "";
-
-  $("recommendationsBox").innerHTML =
-    data.recommandations?.length
-      ? '<h3>Conseils</h3><ul>' +
-        data.recommandations.map(
-          x => '<li>' + escapeHTML(x) + '</li>'
-        ).join("") +
-        '</ul>'
-      : "";
-
-  $("documentsBox").innerHTML =
-    data.documents?.length
-      ? '<h3>Éléments détectés</h3><ul>' +
-        data.documents.map(
-          x => '<li>' + escapeHTML(x) + '</li>'
-        ).join("") +
-        '</ul>'
-      : "";
-
-  if(data.sources?.length){
-
-    $("sourcesBox").innerHTML =
-      '<h3>Sources officielles pertinentes</h3>' +
-      data.sources.map(
-        s =>
-          '<a class="source" href="' +
-          escapeHTML(s.url) +
-          '" target="_blank" rel="noopener noreferrer">' +
-          escapeHTML(s.title) +
-          '</a>'
-      ).join("");
-
-  }else{
-
-    $("sourcesBox").innerHTML = "";
-  }
-
-  $("resultCard").scrollIntoView({
-    behavior:"smooth",
-    block:"start"
-  });
-
-  $("question").placeholder =
-    data.prochaineQuestion?.question ||
-    "Ajoutez une précision si vous souhaitez continuer l’analyse.";
-}
-
-function dataURLSizeOK(data, max){
-  return typeof data === "string" &&
-    data.length <= max;
 }
 
 function readFileAsDataURL(file){
-
   return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
 
-    const reader = new FileReader();
+    reader.onload=()=>{
+      const result=String(reader.result||"");
 
-    reader.onload = () =>
-      resolve(reader.result);
+      if(result.length>${LIMITS.imageData}){
+        reject(new Error("Image trop volumineuse."));
+        return;
+      }
 
-    reader.onerror = () =>
-      reject(new Error("Lecture impossible"));
+      resolve(result);
+    };
+
+    reader.onerror=()=>{
+      reject(new Error("Lecture de l'image impossible."));
+    };
 
     reader.readAsDataURL(file);
   });
 }
 
-async function handleImage(input){
+async function analyzeImage(file){
+  if(!file){
+    return;
+  }
 
-  const file = input.files?.[0];
+  if(file.size>MAX_IMAGE_BYTES){
+    setStatus("Image trop volumineuse. Maximum 5,5 Mo.");
+    return;
+  }
 
-  if(!file) return;
-
-  const allowed = [
+  const allowed=[
     "image/jpeg",
     "image/png",
     "image/webp"
   ];
 
   if(!allowed.includes(file.type)){
-    alert("Format accepté : JPG, PNG ou WEBP.");
-    input.value = "";
-    return;
-  }
-
-  if(file.size > LIMITS.imageFile){
-    alert("L’image doit faire au maximum 5,5 Mo.");
-    input.value = "";
+    setStatus("Format d'image non autorisé.");
     return;
   }
 
   try{
+    setStatus("Analyse de l'image...");
+    fileInfo.textContent=file.name;
 
-    const dataURL =
-      await readFileAsDataURL(file);
+    const dataURL=await readFileAsDataURL(file);
 
-    if(!dataURLSizeOK(
-      dataURL,
-      LIMITS.imageData
-    )){
-      alert("L’image encodée est trop volumineuse.");
-      input.value = "";
-      return;
+    if(dataURL.length>MAX_IMAGE_DATA){
+      throw new Error("Image trop volumineuse.");
     }
 
-    $("questionCard").classList.remove("hidden");
-
-    const question =
-      $("question").value.trim() ||
-      "Analyse cette image et explique-moi ce qui est important.";
-
-    const response = await fetch(
-      "/api/image",
-      {
-        method:"POST",
-        headers:{
-          "Content-Type":"application/json"
-        },
-        body:JSON.stringify({
-          image:dataURL,
-          question
-        })
-      }
-    );
-
-    const data = await response.json();
-
-    if(!response.ok){
-      throw new Error(
-        data?.error || "Erreur image"
-      );
-    }
-
-    $("resultCard").classList.remove("hidden");
-
-    $("aiWarning").innerHTML = "";
-
-    $("orientation").textContent =
-      data.analysis || "";
-
-    $("nextBox").innerHTML = "";
-
-    $("progressBox").innerHTML = "";
-
-    $("actionsBox").innerHTML = "";
-
-    $("recommendationsBox").innerHTML = "";
-
-    $("documentsBox").innerHTML = "";
-
-    $("sourcesBox").innerHTML = "";
-
-    $("resultCard").scrollIntoView({
-      behavior:"smooth"
+    const response=await fetch("/api/image",{
+      method:"POST",
+      headers:{
+        "content-type":"application/json"
+      },
+      body:JSON.stringify({
+        image:dataURL,
+        question:question.value.trim(),
+        langue:"fr"
+      })
     });
 
-  }catch(error){
+    const data=await response.json();
 
-    alert(
-      "Impossible d’analyser cette image pour le moment."
+    if(!response.ok||!data.ok){
+      throw new Error(data.error||"Analyse impossible.");
+    }
+
+    addMessage(
+      "assistant",
+      data.answer||"Je n'ai pas pu extraire suffisamment d'informations de cette image."
     );
 
-  }finally{
+    setStatus("");
 
-    input.value = "";
+  }catch(error){
+    console.error(error);
+    setStatus(error.message||"Erreur pendant l'analyse.");
   }
 }
 
-/* =========================================================
-   VOICE
-   ========================================================= */
-
-function chooseRecorderMime(){
-
-  if(
-    typeof MediaRecorder === "undefined" ||
-    !MediaRecorder.isTypeSupported
-  ){
-    return "";
-  }
-
-  const candidates = [
+function chooseMimeType(){
+  const candidates=[
     "audio/webm;codecs=opus",
     "audio/webm",
     "audio/mp4",
     "audio/ogg"
   ];
 
-  return candidates.find(
-    x => MediaRecorder.isTypeSupported(x)
-  ) || "";
-}
-
-async function toggleVoice(){
-
-  if(mediaRecorder &&
-     mediaRecorder.state === "recording"){
-
-    stopRecording();
-    return;
+  if(!window.MediaRecorder){
+    return "";
   }
 
-  await startRecording();
+  return candidates.find(type=>{
+    try{
+      return MediaRecorder.isTypeSupported(type);
+    }catch(e){
+      return false;
+    }
+  })||"";
+}
+
+function stopRecording(){
+  if(mediaRecorder&&mediaRecorder.state!=="inactive"){
+    mediaRecorder.stop();
+  }
+
+  if(mediaStream){
+    mediaStream.getTracks().forEach(track=>track.stop());
+    mediaStream=null;
+  }
+
+  voiceBtn.classList.remove("recording");
+  voiceBtn.textContent="🎙️ Parler";
+
+  if(recordingTimer){
+    clearInterval(recordingTimer);
+    recordingTimer=null;
+  }
 }
 
 async function startRecording(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    setStatus("Votre navigateur ne permet pas l'enregistrement audio.");
+    return;
+  }
 
-  if(!navigator.mediaDevices ||
-     !navigator.mediaDevices.getUserMedia){
-
-    $("voiceStatus").textContent =
-      "La fonction vocale n’est pas disponible sur cet appareil.";
-
+  if(!window.MediaRecorder){
+    setStatus("MediaRecorder n'est pas disponible sur ce navigateur.");
     return;
   }
 
   try{
+    mediaStream=await navigator.mediaDevices.getUserMedia({
+      audio:true
+    });
 
-    mediaStream =
-      await navigator.mediaDevices.getUserMedia({
-        audio:true
-      });
+    audioChunks=[];
 
-    const mime = chooseRecorderMime();
+    const mime=chooseMimeType();
 
-    mediaRecorder =
-      mime
-        ? new MediaRecorder(
-            mediaStream,
-            {mimeType:mime}
-          )
-        : new MediaRecorder(
-            mediaStream
-          );
+    mediaRecorder=new MediaRecorder(
+      mediaStream,
+      mime?{mimeType:mime}:undefined
+    );
 
-    audioChunks = [];
-
-    mediaRecorder.ondataavailable = event => {
-
-      if(event.data &&
-         event.data.size > 0){
-
+    mediaRecorder.ondataavailable=event=>{
+      if(event.data&&event.data.size){
         audioChunks.push(event.data);
       }
     };
 
-    mediaRecorder.onstop =
-      processRecording;
+    mediaRecorder.onstop=async()=>{
+      const type=mediaRecorder?.mimeType||"audio/webm";
+      const blob=new Blob(audioChunks,{type});
 
-    mediaRecorder.start();
+      if(blob.size>MAX_AUDIO_BYTES){
+        setStatus("Audio trop volumineux. Maximum 9 Mo.");
+        return;
+      }
 
-    recordingStartedAt = Date.now();
+      try{
+        setStatus("Transcription en cours...");
 
-    $("voiceBtn").textContent =
-      "⏹️ Arrêter";
+        const reader=new FileReader();
 
-    $("voiceStatus").textContent =
-      "Enregistrement... 0 s / 120 s";
+        const dataURL=await new Promise((resolve,reject)=>{
+          reader.onload=()=>resolve(String(reader.result||""));
+          reader.onerror=()=>reject(new Error("Lecture audio impossible."));
+          reader.readAsDataURL(blob);
+        });
 
-    recordTimer = setInterval(()=>{
+        if(dataURL.length>MAX_AUDIO_DATA){
+          throw new Error("Audio trop volumineux.");
+        }
 
-      const seconds =
-        Math.floor(
-          (Date.now() - recordingStartedAt) /
-          1000
-        );
-
-      $("voiceStatus").textContent =
-        "Enregistrement... " +
-        seconds +
-        " s / 120 s";
-
-    },1000);
-
-    recordTimeout =
-      setTimeout(
-        stopRecording,
-        LIMITS.maxRecordingMs
-      );
-
-  }catch(error){
-
-    $("voiceStatus").textContent =
-      "Accès au microphone impossible.";
-  }
-}
-
-function stopRecording(){
-
-  if(mediaRecorder &&
-     mediaRecorder.state === "recording"){
-
-    mediaRecorder.stop();
-  }
-
-  if(recordTimer){
-    clearInterval(recordTimer);
-    recordTimer = null;
-  }
-
-  if(recordTimeout){
-    clearTimeout(recordTimeout);
-    recordTimeout = null;
-  }
-
-  if(mediaStream){
-
-    mediaStream
-      .getTracks()
-      .forEach(track => track.stop());
-
-    mediaStream = null;
-  }
-
-  $("voiceBtn").textContent =
-    "🎙️ Parler";
-}
-
-async function processRecording(){
-
-  try{
-
-    const type =
-      mediaRecorder?.mimeType ||
-      "audio/webm";
-
-    const blob =
-      new Blob(
-        audioChunks,
-        {type}
-      );
-
-    if(blob.size > LIMITS.audioFile){
-
-      $("voiceStatus").textContent =
-        "L’enregistrement dépasse 9 Mo.";
-
-      return;
-    }
-
-    $("voiceStatus").textContent =
-      "Transcription en cours...";
-
-    const dataURL =
-      await readFileAsDataURL(blob);
-
-    if(!dataURLSizeOK(
-      dataURL,
-      LIMITS.audioData
-    )){
-
-      $("voiceStatus").textContent =
-        "L’audio encodé est trop volumineux.";
-
-      return;
-    }
-
-    const response =
-      await fetch(
-        "/api/transcribe",
-        {
+        const response=await fetch("/api/transcribe",{
           method:"POST",
           headers:{
-            "Content-Type":"application/json"
+            "content-type":"application/json"
           },
           body:JSON.stringify({
-            audio:dataURL
+            audio:dataURL,
+            langue:"fr"
           })
+        });
+
+        const data=await response.json();
+
+        if(!response.ok||!data.ok){
+          throw new Error(data.error||"Transcription impossible.");
         }
-      );
 
-    const data =
-      await response.json();
+        if(data.text){
+          question.value=data.text;
+          question.focus();
+          setStatus("Transcription terminée.");
+        }else{
+          setStatus("Aucune parole détectée.");
+        }
 
-    if(!response.ok){
-      throw new Error(
-        data?.error || "Erreur transcription"
-      );
-    }
+      }catch(error){
+        console.error(error);
+        setStatus(error.message||"Erreur de transcription.");
+      }
+    };
 
-    if(data.text){
+    mediaRecorder.start(250);
 
-      $("question").value =
-        (
-          $("question").value.trim()
-            ? $("question").value.trim() + " "
-            : ""
-        ) +
-        data.text;
+    recordingStarted=Date.now();
+    voiceBtn.classList.add("recording");
+    voiceBtn.textContent="⏹️ Arrêter";
 
-      $("question").focus();
-    }
+    recordingTimer=setInterval(()=>{
+      const elapsed=Date.now()-recordingStarted;
 
-    $("voiceStatus").textContent =
-      "Transcription terminée.";
+      if(elapsed>=MAX_RECORDING_MS){
+        stopRecording();
+        return;
+      }
+
+      const seconds=Math.floor(elapsed/1000);
+      setStatus("Enregistrement : "+seconds+" s");
+    },250);
 
   }catch(error){
-
-    $("voiceStatus").textContent =
-      "Impossible de transcrire l’enregistrement.";
-
-  }finally{
-
-    audioChunks = [];
+    console.error(error);
+    setStatus("Accès au microphone refusé ou indisponible.");
+    stopRecording();
   }
 }
 
-/* =========================================================
-   MESSAGE
-   ========================================================= */
+sendBtn.addEventListener("click",sendQuestion);
 
-async function generateMessage(){
-
-  const q =
-    $("messageQuestion").value.trim();
-
-  if(!q) return;
-
-  $("messageResult").textContent =
-    "Rédaction en cours...";
-
-  try{
-
-    const response =
-      await fetch(
-        "/api/message",
-        {
-          method:"POST",
-          headers:{
-            "Content-Type":"application/json"
-          },
-          body:JSON.stringify({
-            question:q
-          })
-        }
-      );
-
-    const data =
-      await response.json();
-
-    if(!response.ok){
-      throw new Error(
-        data?.error || "Erreur"
-      );
-    }
-
-    $("messageResult").textContent =
-      data.message || "";
-
-  }catch(error){
-
-    $("messageResult").textContent =
-      "Impossible de rédiger le message pour le moment.";
+question.addEventListener("keydown",event=>{
+  if(event.key==="Enter"&&!event.shiftKey){
+    event.preventDefault();
+    sendQuestion();
   }
-}
+});
 
+imageBtn.addEventListener("click",()=>{
+  imageInput.click();
+});
+
+imageInput.addEventListener("change",()=>{
+  const file=imageInput.files&&imageInput.files[0];
+
+  if(file){
+    analyzeImage(file);
+  }
+
+  imageInput.value="";
+});
+
+voiceBtn.addEventListener("click",()=>{
+  if(mediaRecorder&&mediaRecorder.state==="recording"){
+    stopRecording();
+  }else{
+    startRecording();
+  }
+});
+
+clearBtn.addEventListener("click",()=>{
+  historique=[];
+  messages.innerHTML="";
+  sources.innerHTML="";
+  question.value="";
+  fileInfo.textContent="";
+  setStatus("");
+});
+
+document.querySelectorAll(".role").forEach(button=>{
+  button.addEventListener("click",()=>{
+    showSituations(button.dataset.role);
+  });
+});
+
+addMessage(
+  "assistant",
+  "Bonjour, je suis GouRare AI. Décrivez simplement votre situation ou choisissez une catégorie pour commencer."
+);
+
+})();
 </script>
 
 </body>
 </html>`;
 }
 
-/* =========================================================
-   HANDLER ANALYZE
-   ========================================================= */
+async function readJSON(request,maxBytes){
+  const contentLength=Number(request.headers.get("content-length")||0);
 
-async function handleAnalyze(request, env) {
-
-  const limit =
-    rateLimit(request, "analyze");
-
-  if(!limit.allowed){
-
-    return jsonResponse(
-      {
-        error:
-          "Trop de demandes. Réessayez plus tard."
-      },
-      429,
-      {
-        "Retry-After":
-          String(limit.retryAfter)
-      }
-    );
+  if(contentLength&&contentLength>maxBytes){
+    throw new Error("Requête trop volumineuse.");
   }
 
-  if(
-    contentLengthTooLarge(
-      request,
-      LIMITS.analyzeBody
-    )
-  ){
+  const text=await request.text();
 
-    return jsonResponse(
-      {
-        error:"Requête trop volumineuse."
-      },
-      413
-    );
+  if(new TextEncoder().encode(text).byteLength>maxBytes){
+    throw new Error("Requête trop volumineuse.");
   }
 
-  let body;
+  if(!text){
+    return {};
+  }
 
   try{
-
-    body =
-      await request.json();
-
-  }catch{
-
-    return jsonResponse(
-      {
-        error:"JSON invalide."
-      },
-      400
-    );
+    return JSON.parse(text);
+  }catch(error){
+    throw new Error("JSON invalide.");
   }
+}
 
-  const question =
-    texte(
-      body?.question,
-      LIMITS.question
-    );
-
-  if(!question){
-
-    return jsonResponse(
-      {
-        error:"Question vide."
-      },
-      400
-    );
-  }
-
-  const historique =
-    Array.isArray(body?.historique)
-      ? body.historique.slice(-12)
-      : [];
-
-  const result =
-    await analyserQuestion(
-      env,
-      question,
-      historique
-    );
-
+function methodNotAllowed(){
   return jsonResponse(
-    result
+    {
+      ok:false,
+      error:"Méthode non autorisée."
+    },
+    405,
+    {
+      ...securityHeaders(),
+      "Allow":"GET, POST"
+    }
   );
 }
 
-/* =========================================================
-   HANDLER MESSAGE
-   ========================================================= */
-
-async function handleMessage(request, env){
-
-  const limit =
-    rateLimit(request, "analyze");
-
-  if(!limit.allowed){
-
-    return jsonResponse(
-      {
-        error:"Trop de demandes."
-      },
-      429
-    );
-  }
-
-  if(
-    contentLengthTooLarge(
-      request,
-      LIMITS.analyzeBody
-    )
-  ){
-
-    return jsonResponse(
-      {
-        error:"Requête trop volumineuse."
-      },
-      413
-    );
-  }
-
-  let body;
-
-  try{
-    body = await request.json();
-  }catch{
-    return jsonResponse(
-      {
-        error:"JSON invalide."
-      },
-      400
-    );
-  }
-
-  const question =
-    texte(
-      body?.question,
-      LIMITS.question
-    );
-
-  if(!question){
-
-    return jsonResponse(
-      {
-        error:"Demande vide."
-      },
-      400
-    );
-  }
-
-  const message =
-    await messagePrompt(
-      env,
-      question
-    );
-
-  return jsonResponse({
-    version:VERSION,
-    message
-  });
+function notFound(){
+  return jsonResponse(
+    {
+      ok:false,
+      error:"Route introuvable."
+    },
+    404,
+    securityHeaders()
+  );
 }
-
-/* =========================================================
-   HANDLER IMAGE
-   ========================================================= */
-
-async function handleImage(request, env){
-
-  const limit =
-    rateLimit(request, "image");
-
-  if(!limit.allowed){
-
-    return jsonResponse(
-      {
-        error:
-          "Trop d’analyses d’images. Réessayez plus tard."
-      },
-      429,
-      {
-        "Retry-After":
-          String(limit.retryAfter)
-      }
-    );
-  }
-
-  if(
-    contentLengthTooLarge(
-      request,
-      LIMITS.imageBody
-    )
-  ){
-
-    return jsonResponse(
-      {
-        error:"Image trop volumineuse."
-      },
-      413
-    );
-  }
-
-  let body;
-
-  try{
-
-    body =
-      await request.json();
-
-  }catch{
-
-    return jsonResponse(
-      {
-        error:"JSON invalide."
-      },
-      400
-    );
-  }
-
-  const image =
-    String(body?.image || "");
-
-  const question =
-    texte(
-      body?.question ||
-      "Analyse cette image et explique-moi ce qui est important.",
-      5000
-    );
-
-  if(!isValidImageDataURL(image)){
-
-    return jsonResponse(
-      {
-        error:
-          "Format d’image non accepté. Utilisez JPG, PNG ou WEBP."
-      },
-      400
-    );
-  }
-
-  if(image.length > LIMITS.imageData){
-
-    return jsonResponse(
-      {
-        error:"Image trop volumineuse."
-      },
-      413
-    );
-  }
-
-  try{
-
-    const analysis =
-      await analyserImage(
-        env,
-        image,
-        question
-      );
-
-    return jsonResponse({
-      version:VERSION,
-      analysis:
-        analysis ||
-        "Aucune analyse disponible."
-    });
-
-  }catch(error){
-
-    console.error(
-      "GouRare AI image:",
-      error
-    );
-
-    return jsonResponse(
-      {
-        error:
-          "Impossible d’analyser cette image pour le moment."
-      },
-      503
-    );
-  }
-}
-
-/* =========================================================
-   HANDLER AUDIO
-   ========================================================= */
-
-async function handleTranscribe(
-  request,
-  env
-){
-
-  const limit =
-    rateLimit(
-      request,
-      "transcribe"
-    );
-
-  if(!limit.allowed){
-
-    return jsonResponse(
-      {
-        error:
-          "Trop de transcriptions. Réessayez plus tard."
-      },
-      429,
-      {
-        "Retry-After":
-          String(limit.retryAfter)
-      }
-    );
-  }
-
-  if(
-    contentLengthTooLarge(
-      request,
-      LIMITS.audioBody
-    )
-  ){
-
-    return jsonResponse(
-      {
-        error:"Audio trop volumineux."
-      },
-      413
-    );
-  }
-
-  let body;
-
-  try{
-
-    body =
-      await request.json();
-
-  }catch{
-
-    return jsonResponse(
-      {
-        error:"JSON invalide."
-      },
-      400
-    );
-  }
-
-  const audio =
-    String(body?.audio || "");
-
-  if(!isValidAudioDataURL(audio)){
-
-    return jsonResponse(
-      {
-        error:
-          "Format audio non accepté."
-      },
-      400
-    );
-  }
-
-  if(audio.length > LIMITS.audioData){
-
-    return jsonResponse(
-      {
-        error:"Audio trop volumineux."
-      },
-      413
-    );
-  }
-
-  try{
-
-    const text =
-      await transcrireAudio(
-        env,
-        audio
-      );
-
-    return jsonResponse({
-      version:VERSION,
-      text:
-        text ||
-        ""
-    });
-
-  }catch(error){
-
-    console.error(
-      "GouRare AI transcription:",
-      error
-    );
-
-    return jsonResponse(
-      {
-        error:
-          "Impossible de transcrire cet audio pour le moment."
-      },
-      503
-    );
-  }
-}
-
-/* =========================================================
-   HEALTH
-   ========================================================= */
-
-function healthResponse() {
-
-  return jsonResponse({
-    ok:true,
-    service:"GouRare AI",
-    version:VERSION,
-    country:"France",
-    modules:{
-      orientation:true,
-      image:true,
-      voice:true,
-      message:true,
-      officialSources:true
-    }
-  });
-}
-
-/* =========================================================
-   FETCH
-   ========================================================= */
 
 export default {
+  async fetch(request,env){
+    const url=new URL(request.url);
+    const path=url.pathname;
+    const method=request.method.toUpperCase();
 
-  async fetch(request, env) {
+    try{
 
-    const url =
-      new URL(request.url);
-
-    if(
-      request.method === "OPTIONS"
-    ){
-
-      return new Response(
-        null,
-        {
-          status:204,
-          headers:securityHeaders({
-            "Access-Control-Allow-Origin":"*",
-            "Access-Control-Allow-Methods":
-              "GET,POST,OPTIONS",
-            "Access-Control-Allow-Headers":
-              "Content-Type"
-          })
+      if(path==="/health"){
+        if(method!=="GET"){
+          return methodNotAllowed();
         }
-      );
-    }
 
-    if(
-      request.method === "GET" &&
-      url.pathname === "/"
-    ){
+        return healthResponse();
+      }
 
-      return new Response(
-        pageHTML(),
-        {
+      if(path==="/"){
+        if(method!=="GET"){
+          return methodNotAllowed();
+        }
+
+        return new Response(pageHTML(),{
           status:200,
-          headers:securityHeaders({
-            "Content-Type":
-              "text/html; charset=utf-8",
-            "Cache-Control":
-              "no-store"
-          })
+          headers:{
+            "content-type":"text/html; charset=utf-8",
+            ...securityHeaders()
+          }
+        });
+      }
+
+      if(path==="/api/analyze"){
+        if(method!=="POST"){
+          return methodNotAllowed();
         }
+
+        if(!rateLimit(request,"analyze")){
+          return jsonResponse(
+            {
+              ok:false,
+              error:"Trop de requêtes. Réessayez dans quelques instants."
+            },
+            429,
+            {
+              ...securityHeaders(),
+              "Retry-After":"60"
+            }
+          );
+        }
+
+        const body=await readJSON(request,LIMITS.analyzeBody);
+
+        const question=texte(body.question,LIMITS.question);
+
+        if(!question){
+          return jsonResponse(
+            {
+              ok:false,
+              error:"Question vide."
+            },
+            400,
+            securityHeaders()
+          );
+        }
+
+        const historique=Array.isArray(body.historique)
+          ?body.historique.slice(-40)
+          :[];
+
+        const langue=normalizeLang(body.langue);
+
+        const result=await analyserQuestion(
+          env,
+          question,
+          historique,
+          langue
+        );
+
+        return jsonResponse(
+          result,
+          200,
+          securityHeaders()
+        );
+      }
+
+      if(path==="/api/message"){
+        if(method!=="POST"){
+          return methodNotAllowed();
+        }
+
+        if(!rateLimit(request,"analyze")){
+          return jsonResponse(
+            {
+              ok:false,
+              error:"Trop de requêtes. Réessayez plus tard."
+            },
+            429,
+            {
+              ...securityHeaders(),
+              "Retry-After":"60"
+            }
+          );
+        }
+
+        const body=await readJSON(request,LIMITS.analyzeBody);
+        const q=texte(body.question,LIMITS.question);
+
+        if(!q){
+          return jsonResponse(
+            {
+              ok:false,
+              error:"Message vide."
+            },
+            400,
+            securityHeaders()
+          );
+        }
+
+        const langue=normalizeLang(body.langue);
+
+        try{
+          const answer=await askAI(
+            env,
+            `${systemPrompt(langue)}
+
+Réponds simplement au message suivant:
+
+${q}`
+          );
+
+          return jsonResponse(
+            {
+              ok:true,
+              version:VERSION,
+              answer:texte(answer,20000),
+              aiStatus:"disponible"
+            },
+            200,
+            securityHeaders()
+          );
+
+        }catch(error){
+          console.error("GouRare AI message error:",error);
+
+          return jsonResponse(
+            {
+              ok:true,
+              version:VERSION,
+              answer:
+                langue==="ar"
+                  ?"تعذر تشغيل الذكاء الاصطناعي مؤقتًا. يرجى إعادة المحاولة."
+                  :"Le service IA est momentanément indisponible. Veuillez réessayer.",
+              aiStatus:"indisponible"
+            },
+            200,
+            securityHeaders()
+          );
+        }
+      }
+
+      if(path==="/api/image"){
+        if(method!=="POST"){
+          return methodNotAllowed();
+        }
+
+        if(!rateLimit(request,"image")){
+          return jsonResponse(
+            {
+              ok:false,
+              error:"Trop de requêtes image. Réessayez plus tard."
+            },
+            429,
+            {
+              ...securityHeaders(),
+              "Retry-After":"60"
+            }
+          );
+        }
+
+        const body=await readJSON(request,LIMITS.imageBody);
+
+        const image=texte(body.image,LIMITS.imageData);
+
+        if(!image){
+          return jsonResponse(
+            {
+              ok:false,
+              error:"Aucune image fournie."
+            },
+            400,
+            securityHeaders()
+          );
+        }
+
+        if(!isValidImageDataURL(image)){
+          return jsonResponse(
+            {
+              ok:false,
+              error:"Format d'image non autorisé."
+            },
+            400,
+            securityHeaders()
+          );
+        }
+
+        if(
+          approxBytesFromBase64(base64FromDataURL(image))>
+          LIMITS.imageData
+        ){
+          return jsonResponse(
+            {
+              ok:false,
+              error:"Image trop volumineuse."
+            },
+            413,
+            securityHeaders()
+          );
+        }
+
+        const result=await analyserImage(
+          env,
+          image,
+          texte(body.question,5000),
+          normalizeLang(body.langue)
+        );
+
+        return jsonResponse(
+          result,
+          200,
+          securityHeaders()
+        );
+      }
+
+      if(path==="/api/transcribe"){
+        if(method!=="POST"){
+          return methodNotAllowed();
+        }
+
+        if(!rateLimit(request,"transcribe")){
+          return jsonResponse(
+            {
+              ok:false,
+              error:"Trop de requêtes audio. Réessayez plus tard."
+            },
+            429,
+            {
+              ...securityHeaders(),
+              "Retry-After":"60"
+            }
+          );
+        }
+
+        const body=await readJSON(request,LIMITS.audioBody);
+
+        const audio=texte(body.audio,LIMITS.audioData);
+
+        if(!audio){
+          return jsonResponse(
+            {
+              ok:false,
+              error:"Aucun audio fourni."
+            },
+            400,
+            securityHeaders()
+          );
+        }
+
+        if(!isValidAudioDataURL(audio)){
+          return jsonResponse(
+            {
+              ok:false,
+              error:"Format audio non autorisé."
+            },
+            400,
+            securityHeaders()
+          );
+        }
+
+        if(
+          approxBytesFromBase64(base64FromDataURL(audio))>
+          LIMITS.audioData
+        ){
+          return jsonResponse(
+            {
+              ok:false,
+              error:"Audio trop volumineux."
+            },
+            413,
+            securityHeaders()
+          );
+        }
+
+        const result=await transcrireAudio(
+          env,
+          audio,
+          normalizeLang(body.langue)
+        );
+
+        return jsonResponse(
+          result,
+          200,
+          securityHeaders()
+        );
+      }
+
+      return notFound();
+
+    }catch(error){
+      console.error("GouRare AI request error:",error);
+
+      const message=
+        error?.message||
+        "Erreur interne.";
+
+      const status=
+        /volumineuse|trop volumineux/i.test(message)
+          ?413
+          :400;
+
+      return jsonResponse(
+        {
+          ok:false,
+          version:VERSION,
+          error:message
+        },
+        status,
+        securityHeaders()
       );
     }
-
-    if(
-      request.method === "GET" &&
-      url.pathname === "/health"
-    ){
-
-      return healthResponse();
-    }
-
-    if(
-      request.method === "POST" &&
-      url.pathname === "/api/analyze"
-    ){
-
-      return handleAnalyze(
-        request,
-        env
-      );
-    }
-
-    if(
-      request.method === "POST" &&
-      url.pathname === "/api/message"
-    ){
-
-      return handleMessage(
-        request,
-        env
-      );
-    }
-
-    if(
-      request.method === "POST" &&
-      url.pathname === "/api/image"
-    ){
-
-      return handleImage(
-        request,
-        env
-      );
-    }
-
-    if(
-      request.method === "POST" &&
-      url.pathname === "/api/transcribe"
-    ){
-
-      return handleTranscribe(
-        request,
-        env
-      );
-    }
-
-    return jsonResponse(
-      {
-        error:"Not Found"
-      },
-      404
-    );
   }
 };
