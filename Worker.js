@@ -1,29 +1,34 @@
 const MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
 const MODEL_VISION = "@cf/meta/llama-3.2-11b-vision-instruct";
 const MODEL_AUDIO = "@cf/openai/whisper-large-v3-turbo";
-const VERSION = "8.3";
+const VERSION = "8.4";
 
 const SOURCES = {
   france_statut: {
     title: "Trouver le statut juridique adapté à son activité",
     url: "https://entreprendre.service-public.fr/vosdroits/R18323"
   },
+
   france_creation_ei: {
     title: "Création d'une entreprise individuelle",
     url: "https://entreprendre.service-public.fr/vosdroits/F36763"
   },
+
   france_guichet: {
     title: "Formalités d'immatriculation des entreprises",
     url: "https://entreprendre.service-public.fr/vosdroits/F23571"
   },
+
   service_public: {
     title: "Service-Public.fr",
     url: "https://www.service-public.fr/"
   },
+
   france_anef: {
     title: "Administration numérique pour les étrangers en France",
     url: "https://administration-etrangers-en-france.interieur.gouv.fr/"
   },
+
   france_travail: {
     title: "France Travail",
     url: "https://www.francetravail.fr/"
@@ -33,11 +38,14 @@ const SOURCES = {
 const PARCOURS = {
   migrant: {
     titre: "🌍 Migrant / Nouveau arrivant",
+
     description:
       "Situation administrative, travail, logement, droits et démarches.",
+
     etapes: [
       {
         titre: "Dans quel pays êtes-vous ?",
+
         options: [
           "🇫🇷 France",
           "🇩🇪 Allemagne",
@@ -47,8 +55,10 @@ const PARCOURS = {
           "🌍 Autre pays"
         ]
       },
+
       {
         titre: "Quelle est votre situation ?",
+
         options: [
           "Je viens d'arriver",
           "Je cherche du travail",
@@ -61,8 +71,10 @@ const PARCOURS = {
           "Autre"
         ]
       },
+
       {
         titre: "Quel est votre objectif ?",
+
         options: [
           "Comprendre ma situation",
           "Trouver une solution",
@@ -79,11 +91,14 @@ const PARCOURS = {
 
   particulier: {
     titre: "👤 Particulier / Résident",
+
     description:
       "Vie quotidienne, démarches, droits et problèmes.",
+
     etapes: [
       {
         titre: "De quoi avez-vous besoin ?",
+
         options: [
           "Démarches administratives",
           "Droits",
@@ -96,8 +111,10 @@ const PARCOURS = {
           "Autre"
         ]
       },
+
       {
         titre: "Quel est votre objectif ?",
+
         options: [
           "Comprendre",
           "Trouver une solution",
@@ -113,11 +130,14 @@ const PARCOURS = {
 
   emploi: {
     titre: "💼 Chercheur d'emploi",
+
     description:
       "Offres, CV, candidatures, entretiens et emploi.",
+
     etapes: [
       {
         titre: "Que recherchez-vous ?",
+
         options: [
           "Un emploi",
           "Une mission d'intérim",
@@ -128,8 +148,10 @@ const PARCOURS = {
           "Autre"
         ]
       },
+
       {
         titre: "Quel est votre objectif ?",
+
         options: [
           "Trouver des offres",
           "Améliorer mon CV",
@@ -145,11 +167,14 @@ const PARCOURS = {
 
   entreprise: {
     titre: "🏢 Entreprise / Entrepreneur",
+
     description:
       "Création, gestion, développement et opportunités.",
+
     etapes: [
       {
         titre: "Que souhaitez-vous faire ?",
+
         options: [
           "Créer une entreprise",
           "Développer mon activité",
@@ -161,8 +186,10 @@ const PARCOURS = {
           "Autre"
         ]
       },
+
       {
         titre: "Quel est votre objectif ?",
+
         options: [
           "Comprendre",
           "Trouver une solution",
@@ -178,7 +205,10 @@ const PARCOURS = {
 };
 
 function clean(value, max = 5000) {
-  if (value === undefined || value === null) return "";
+  if (value === undefined || value === null) {
+    return "";
+  }
+
   return String(value)
     .replace(/\u0000/g, "")
     .trim()
@@ -197,12 +227,19 @@ function escapeHTML(value) {
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
+
     headers: {
       "Content-Type": "application/json; charset=UTF-8",
+
       "X-Content-Type-Options": "nosniff",
+
       "X-Frame-Options": "DENY",
-      "Referrer-Policy": "strict-origin-when-cross-origin",
+
+      "Referrer-Policy":
+        "strict-origin-when-cross-origin",
+
       "Cache-Control": "no-store",
+
       "Permissions-Policy":
         "camera=(self), microphone=(self), geolocation=()"
     }
@@ -210,7 +247,7 @@ function jsonResponse(data, status = 200) {
 }
 
 function detectContext(question) {
-  const q = question.toLowerCase();
+  const q = clean(question, 5000).toLowerCase();
 
   return {
     migrant:
@@ -237,19 +274,32 @@ function selectSources(context) {
   const ids = [];
 
   if (context.entreprise || context.nettoyage) {
-    ids.push("france_statut", "france_guichet");
+    ids.push(
+      "france_statut",
+      "france_guichet"
+    );
   }
 
   if (context.migrant) {
-    ids.push("service_public", "france_anef");
+    ids.push(
+      "service_public",
+      "france_anef"
+    );
   }
 
   if (context.emploi) {
-    ids.push("france_travail");
+    ids.push(
+      "france_travail"
+    );
   }
 
-  if (context.administratif && !context.migrant) {
-    ids.push("service_public");
+  if (
+    context.administratif &&
+    !context.migrant
+  ) {
+    ids.push(
+      "service_public"
+    );
   }
 
   return [...new Set(ids)];
@@ -258,7 +308,10 @@ function selectSources(context) {
 function buildConfirmedFacts(context) {
   const facts = [];
 
-  if (context.entreprise || context.nettoyage) {
+  if (
+    context.entreprise ||
+    context.nettoyage
+  ) {
     facts.push(
       "Le choix de la forme juridique peut être étudié en fonction de l'activité envisagée, du chiffre d'affaires estimé, des revenus, de la couverture sociale et de la gestion."
     );
@@ -275,6 +328,7 @@ function buildDocuments(context) {
   return [
     {
       statut: "à vérifier",
+
       texte:
         "Les documents nécessaires dépendent de la forme juridique et de l'activité choisies."
     }
@@ -285,7 +339,9 @@ function buildActions(context) {
   if (context.nettoyage) {
     return [
       "Décrire précisément les prestations de nettoyage proposées.",
+
       "Comparer les formes juridiques possibles.",
+
       "Vérifier les formalités correspondant à la forme juridique et à l'activité choisies."
     ];
   }
@@ -293,7 +349,9 @@ function buildActions(context) {
   if (context.entreprise) {
     return [
       "Décrire précisément l'activité envisagée.",
+
       "Identifier les options juridiques adaptées.",
+
       "Vérifier les formalités correspondant à l'activité et au statut choisi."
     ];
   }
@@ -301,7 +359,9 @@ function buildActions(context) {
   if (context.emploi) {
     return [
       "Préciser le métier recherché.",
+
       "Définir les critères importants pour l'emploi recherché.",
+
       "Rechercher puis comparer les offres correspondant au profil."
     ];
   }
@@ -309,14 +369,18 @@ function buildActions(context) {
   if (context.migrant) {
     return [
       "Préciser le pays concerné.",
+
       "Préciser votre situation actuelle.",
+
       "Préciser exactement votre objectif afin d'identifier la démarche ou l'orientation adaptée."
     ];
   }
 
   return [
     "Préciser votre situation.",
+
     "Définir votre objectif.",
+
     "Identifier la prochaine démarche utile."
   ];
 }
@@ -325,7 +389,9 @@ function buildRecommendations(context) {
   if (context.nettoyage) {
     return [
       "Décrire précisément les prestations que vous souhaitez vendre.",
+
       "Comparer les formes juridiques avant de choisir.",
+
       "Vérifier les formalités après avoir déterminé la forme juridique."
     ];
   }
@@ -333,6 +399,7 @@ function buildRecommendations(context) {
   if (context.migrant) {
     return [
       "Préciser votre situation avant de choisir une démarche.",
+
       "Vérifier les informations auprès des autorités officielles du pays concerné."
     ];
   }
@@ -340,6 +407,7 @@ function buildRecommendations(context) {
   if (context.emploi) {
     return [
       "Définir clairement le métier et le type de contrat recherchés.",
+
       "Comparer plusieurs offres avant de candidater."
     ];
   }
@@ -347,12 +415,14 @@ function buildRecommendations(context) {
   if (context.entreprise) {
     return [
       "Décrire précisément l'activité avant de prendre une décision.",
+
       "Comparer les options adaptées à votre projet."
     ];
   }
 
   return [
     "Préciser le besoin avant de choisir une démarche.",
+
     "Vérifier les informations importantes auprès de la source officielle concernée."
   ];
 }
@@ -385,7 +455,7 @@ function buildNextAction(context) {
   return "Préciser votre situation et votre objectif afin de déterminer la prochaine action utile.";
 }
 
-function buildOrientation(context, question) {
+function buildOrientation(context) {
   if (context.nettoyage) {
     return (
       "Pour votre projet de nettoyage, il faut d'abord préciser exactement " +
@@ -422,42 +492,61 @@ function buildOrientation(context, question) {
   );
 }
 
-async function askAI(env, question, context) {
+async function askAI(
+  env,
+  question,
+  context
+) {
   const prompt =
     "Explique brièvement la situation de l'utilisateur. " +
     "Tu es uniquement chargé de l'explication générale. " +
     "N'invente aucune loi, obligation, chiffre, délai, prix, sanction ou document. " +
-    "Ne crée aucune recommandation juridique présentée comme certaine. " +
-    "Ne donne pas de source URL. " +
-    "Si une information doit être vérifiée, dis-le clairement.\n\n" +
+    "Ne présente jamais une hypothèse juridique comme une certitude. " +
+    "Ne donne aucune URL. " +
+    "Si une information doit être vérifiée, dis-le clairement. " +
+    "Réponds en français clair et simple.\n\n" +
+
     "Question utilisateur : " +
     clean(question, 4000) +
+
     "\n\nContexte : " +
     JSON.stringify(context);
 
   try {
-    const response = await env.IA.run(MODEL, {
-      messages: [
-        {
-          role: "system",
-          content:
-            "Tu es le moteur d'explication de GouRare AI. " +
-            "Tu ne dois jamais inventer de faits."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      max_tokens: 900,
-      temperature: 0.1
-    });
+    const response = await env.IA.run(
+      MODEL,
+      {
+        messages: [
+          {
+            role: "system",
 
-    if (typeof response === "string") {
+            content:
+              "Tu es le moteur d'explication de GouRare AI. " +
+              "Tu dois être prudent, clair et ne jamais inventer de faits."
+          },
+
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+
+        max_tokens: 900,
+
+        temperature: 0.1
+      }
+    );
+
+    if (
+      typeof response === "string"
+    ) {
       return response;
     }
 
-    if (response && typeof response.response === "string") {
+    if (
+      response &&
+      typeof response.response === "string"
+    ) {
       return response.response;
     }
 
@@ -470,57 +559,117 @@ async function askAI(env, question, context) {
     }
 
     return "";
+
   } catch (error) {
     return "";
   }
 }
 
-async function analyserQuestion(env, question, parcours = null) {
-  const contexte = detectContext(question);
-  const sourceIds = selectSources(contexte);
-  const confirmed = buildConfirmedFacts(contexte);
-  const documents = buildDocuments(contexte);
-  const actions = buildActions(contexte);
-  const recommendations = buildRecommendations(contexte);
-  const risks = buildRisks();
-  const professional = buildProfessional();
-  const nextAction = buildNextAction(contexte);
-  const orientation = buildOrientation(contexte, question);
+async function analyserQuestion(
+  env,
+  question,
+  parcours = null
+) {
+  const contexte =
+    detectContext(question);
+
+  const sourceIds =
+    selectSources(contexte);
+
+  const confirmed =
+    buildConfirmedFacts(contexte);
+
+  const documents =
+    buildDocuments(contexte);
+
+  const actions =
+    buildActions(contexte);
+
+  const recommendations =
+    buildRecommendations(contexte);
+
+  const risks =
+    buildRisks();
+
+  const professional =
+    buildProfessional();
+
+  const nextAction =
+    buildNextAction(contexte);
+
+  const orientation =
+    buildOrientation(contexte);
 
   let explication = "";
 
   if (!contexte.nettoyage) {
-    explication = await askAI(env, question, contexte);
+    explication =
+      await askAI(
+        env,
+        question,
+        contexte
+      );
   }
 
   if (explication) {
-    explication = clean(explication, 5000)
-      .replace(/https?:\/\/\S+/gi, "")
-      .trim();
+    explication =
+      clean(explication, 5000)
+        .replace(
+          /https?:\/\/\S+/gi,
+          ""
+        )
+        .trim();
   }
 
   if (!explication) {
-    explication = orientation;
+    explication =
+      orientation;
   }
 
   return {
     success: true,
+
     version: VERSION,
-    compris: clean(question, 1000),
-    orientation: orientation + (explication !== orientation ? "\n\n" + explication : ""),
+
+    compris:
+      clean(question, 1000),
+
+    orientation:
+      orientation +
+      (
+        explication !== orientation
+          ? "\n\n" + explication
+          : ""
+      ),
+
     confirmed,
-    aVerifier: buildAverifier(contexte),
+
+    aVerifier:
+      buildAverifier(contexte),
+
     recommendations,
+
     actions,
+
     documents,
+
     risks,
+
     professional,
+
     nextAction,
-    sources: sourceIds.map((id) => ({
-      id,
-      title: SOURCES[id].title,
-      url: SOURCES[id].url
-    })),
+
+    sources:
+      sourceIds.map(
+        function(id) {
+          return {
+            id: id,
+            title: SOURCES[id].title,
+            url: SOURCES[id].url
+          };
+        }
+      ),
+
     parcours
   };
 }
@@ -529,7 +678,9 @@ function buildAverifier(context) {
   if (context.nettoyage) {
     return [
       "La forme juridique la plus adaptée à votre projet.",
+
       "La nature exacte de l'activité et des prestations.",
+
       "Les formalités spécifiques correspondant à la forme juridique et à l'activité choisies."
     ];
   }
@@ -537,7 +688,9 @@ function buildAverifier(context) {
   if (context.migrant) {
     return [
       "Le pays concerné.",
+
       "Votre situation administrative exacte.",
+
       "La procédure correspondant à votre objectif."
     ];
   }
@@ -545,7 +698,9 @@ function buildAverifier(context) {
   if (context.emploi) {
     return [
       "Les critères exacts du poste recherché.",
+
       "Les conditions de chaque offre.",
+
       "La compatibilité de l'offre avec votre situation."
     ];
   }
@@ -553,45 +708,71 @@ function buildAverifier(context) {
   if (context.entreprise) {
     return [
       "La forme juridique adaptée.",
+
       "Les obligations propres à l'activité.",
+
       "Les formalités applicables au projet."
     ];
   }
 
   return [
     "Les éléments particuliers de votre situation.",
+
     "Les démarches exactes applicables à votre cas."
   ];
 }
 
-async function analyserImage(env, image) {
-  if (!image || image.length > 8000000) {
-    throw new Error("Image absente ou trop volumineuse.");
+async function analyserImage(
+  env,
+  image
+) {
+  if (
+    !image ||
+    image.length > 8000000
+  ) {
+    throw new Error(
+      "Image absente ou trop volumineuse."
+    );
   }
 
-  const response = await env.IA.run(MODEL_VISION, {
-    messages: [
+  const response =
+    await env.IA.run(
+      MODEL_VISION,
       {
-        role: "system",
-        content:
-          "Analyse uniquement ce qui est réellement visible. " +
-          "Ne devine jamais un texte illisible. " +
-          "Si un document contient des informations importantes, " +
-          "indique clairement ce qui est lisible et ce qui ne l'est pas. " +
-          "Explique ensuite ce que l'image semble montrer."
-      },
-      {
-        role: "user",
-        content:
-          "Analyse cette image avec précision et explique les éléments visibles."
+        messages: [
+          {
+            role: "system",
+
+            content:
+              "Analyse uniquement ce qui est réellement visible. " +
+              "Ne devine jamais un texte illisible. " +
+              "Si un document contient des informations importantes, " +
+              "indique clairement ce qui est lisible et ce qui ne l'est pas. " +
+              "N'invente aucune information."
+          },
+
+          {
+            role: "user",
+
+            content:
+              "Analyse cette image avec précision et explique uniquement les éléments visibles."
+          }
+        ],
+
+        image
       }
-    ],
-    image
-  });
+    );
 
-  if (typeof response === "string") return response;
+  if (
+    typeof response === "string"
+  ) {
+    return response;
+  }
 
-  if (response && typeof response.response === "string") {
+  if (
+    response &&
+    typeof response.response === "string"
+  ) {
     return response.response;
   }
 
@@ -606,16 +787,31 @@ async function analyserImage(env, image) {
   return JSON.stringify(response);
 }
 
-async function transcrireAudio(env, audio) {
-  if (!audio || audio.length > 10000000) {
-    throw new Error("Audio absent ou trop volumineux.");
+async function transcrireAudio(
+  env,
+  audio
+) {
+  if (
+    !audio ||
+    audio.length > 10000000
+  ) {
+    throw new Error(
+      "Audio absent ou trop volumineux."
+    );
   }
 
-  const response = await env.IA.run(MODEL_AUDIO, {
-    audio
-  });
+  const response =
+    await env.IA.run(
+      MODEL_AUDIO,
+      {
+        audio
+      }
+    );
 
-  if (response && typeof response.text === "string") {
+  if (
+    response &&
+    typeof response.text === "string"
+  ) {
     return response.text;
   }
 
@@ -631,16 +827,26 @@ async function transcrireAudio(env, audio) {
 }
 
 function pageHTML() {
-  const parcoursJSON = JSON.stringify(PARCOURS).replace(/</g, "\\u003c");
+  const parcoursJSON =
+    JSON.stringify(PARCOURS)
+      .replace(/</g, "\\u003c");
 
   return `<!DOCTYPE html>
 <html lang="fr">
+
 <head>
+
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0"
+>
+
 <title>GouRare AI</title>
 
 <style>
+
 * {
   box-sizing: border-box;
 }
@@ -801,6 +1007,11 @@ textarea {
   resize: vertical;
 }
 
+.status {
+  margin-top: 15px;
+  color: #4d5965;
+}
+
 .result {
   margin-top: 25px;
 }
@@ -818,11 +1029,20 @@ textarea {
   font-size: 18px;
 }
 
+.result-card p {
+  line-height: 1.6;
+}
+
 .source {
   display: block;
   margin-top: 9px;
   color: #2257a5;
   text-decoration: none;
+  word-break: break-word;
+}
+
+.source:hover {
+  text-decoration: underline;
 }
 
 .badge {
@@ -844,7 +1064,12 @@ footer {
   padding: 20px;
 }
 
+.hidden {
+  display: none;
+}
+
 @media (max-width: 650px) {
+
   .cards {
     grid-template-columns: 1fr;
   }
@@ -852,329 +1077,642 @@ footer {
   .logo {
     font-size: 26px;
   }
+
+  .badge {
+    right: 10px;
+    bottom: 10px;
+    font-size: 12px;
+  }
+
 }
+
 </style>
+
 </head>
 
 <body>
 
 <header>
-  <div class="logo">GouRare AI</div>
-  <div class="subtitle">Intelligence, orientation et solutions</div>
+
+  <div class="logo">
+    GouRare AI
+  </div>
+
+  <div class="subtitle">
+    Intelligence, orientation et solutions
+  </div>
+
 </header>
 
 <main class="container">
 
 <section id="home">
+
   <div class="welcome">
-    <h1>👋 Bienvenue sur GouRare AI</h1>
-    <p>Choisissez directement votre situation.</p>
+
+    <h1>
+      👋 Bienvenue sur GouRare AI
+    </h1>
+
+    <p>
+      Choisissez directement votre situation.
+    </p>
+
   </div>
 
   <div class="cards">
 
-    <div class="card" onclick="startParcours('migrant')">
-      <div class="card-icon">🌍</div>
-      <h2>Migrant / Nouveau arrivant</h2>
-      <p>Situation administrative, travail, logement, droits et démarches.</p>
+    <div
+      class="card"
+      onclick="startParcours('migrant')"
+    >
+
+      <div class="card-icon">
+        🌍
+      </div>
+
+      <h2>
+        Migrant / Nouveau arrivant
+      </h2>
+
+      <p>
+        Situation administrative, travail,
+        logement, droits et démarches.
+      </p>
+
     </div>
 
-    <div class="card" onclick="startParcours('particulier')">
-      <div class="card-icon">👤</div>
-      <h2>Particulier / Résident</h2>
-      <p>Vie quotidienne, démarches, droits et problèmes.</p>
+    <div
+      class="card"
+      onclick="startParcours('particulier')"
+    >
+
+      <div class="card-icon">
+        👤
+      </div>
+
+      <h2>
+        Particulier / Résident
+      </h2>
+
+      <p>
+        Vie quotidienne, démarches,
+        droits et problèmes.
+      </p>
+
     </div>
 
-    <div class="card" onclick="startParcours('emploi')">
-      <div class="card-icon">💼</div>
-      <h2>Chercheur d'emploi</h2>
-      <p>Offres, CV, candidatures, entretiens et emploi.</p>
+    <div
+      class="card"
+      onclick="startParcours('emploi')"
+    >
+
+      <div class="card-icon">
+        💼
+      </div>
+
+      <h2>
+        Chercheur d'emploi
+      </h2>
+
+      <p>
+        Offres, CV, candidatures,
+        entretiens et emploi.
+      </p>
+
     </div>
 
-    <div class="card" onclick="startParcours('entreprise')">
-      <div class="card-icon">🏢</div>
-      <h2>Entreprise / Entrepreneur</h2>
-      <p>Création, gestion, développement et opportunités.</p>
+    <div
+      class="card"
+      onclick="startParcours('entreprise')"
+    >
+
+      <div class="card-icon">
+        🏢
+      </div>
+
+      <h2>
+        Entreprise / Entrepreneur
+      </h2>
+
+      <p>
+        Création, gestion,
+        développement et opportunités.
+      </p>
+
     </div>
 
   </div>
 
-  <div class="orienter" onclick="startOrientation()">
-    ✨ Je ne sais pas où aller — GouRare AI m'oriente
+  <div
+    class="orienter"
+    onclick="startOrientation()"
+  >
+    ✨ Je ne sais pas où aller —
+    GouRare AI m'oriente
   </div>
+
 </section>
 
-<section id="parcours" class="step">
+<section
+  id="parcours"
+  class="step"
+>
+
   <h2 id="parcoursTitle"></h2>
+
   <p id="parcoursQuestion"></p>
 
-  <div id="options" class="options"></div>
+  <div
+    id="options"
+    class="options"
+  ></div>
 
   <div class="actions">
-    <button class="secondary" onclick="previousStep()">← Retour</button>
-    <button class="secondary" onclick="goHome()">Accueil</button>
+
+    <button
+      class="secondary"
+      onclick="previousStep()"
+    >
+      ← Retour
+    </button>
+
+    <button
+      class="secondary"
+      onclick="goHome()"
+    >
+      Accueil
+    </button>
+
   </div>
+
 </section>
 
-<section id="questionSection" class="step">
+<section
+  id="questionSection"
+  class="step"
+>
 
-  <h2>🧠 Décrivez votre besoin</h2>
+  <h2>
+    🧠 Décrivez votre besoin
+  </h2>
 
-  <textarea id="question"
-    placeholder="Expliquez votre situation ou votre question..."></textarea>
+  <textarea
+    id="question"
+    placeholder="Expliquez votre situation ou votre question..."
+  ></textarea>
 
   <div class="actions">
 
-    <button class="primary" onclick="analyser()">
+    <button
+      class="primary"
+      onclick="analyser()"
+    >
       Analyser
     </button>
 
-    <button class="secondary" onclick="startVoice()">
+    <button
+      class="secondary"
+      onclick="startVoice()"
+    >
       🎙️ Parler
     </button>
 
-    <label class="secondary" style="display:inline-block">
+    <label
+      class="secondary"
+      style="display:inline-block"
+    >
+
       📷 Analyser une image
+
       <input
         id="imageInput"
         type="file"
         accept="image/*"
         capture="environment"
         style="display:none"
-        onchange="analyserImage()">
+        onchange="analyserImage()"
+      >
+
     </label>
 
   </div>
 
-  <div id="status"></div>
-  <div id="result" class="result"></div>
+  <div
+    id="status"
+    class="status"
+  ></div>
+
+  <div
+    id="result"
+    class="result"
+  ></div>
 
   <div class="actions">
-    <button class="secondary" onclick="goHome()">← Accueil</button>
+
+    <button
+      class="secondary"
+      onclick="goHome()"
+    >
+      ← Accueil
+    </button>
+
   </div>
 
 </section>
 
 </main>
 
-<div class="badge">🎗️ Avec vous contre le cancer</div>
+<div class="badge">
+  🎗️ Avec vous contre le cancer
+</div>
 
 <footer>
+
   🎗️ Notre soutien aux personnes touchées par le cancer.
+
   <br><br>
+
   GouRare AI — Version ${VERSION}
+
 </footer>
 
-  if (response && typeof response.text === "string") {
-    return response.text;
-  }
+<script>
 
-  if (
-    response &&
-    response.transcription_info &&
-    typeof response.transcription_info.text === "string"
-  ) {
-    return response.transcription_info.text;
-  }
+function escapeHTML(value) {
 
-  return "";
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
 }
 
-function pageHTML() {
-  const parcoursJSON = JSON.stringify(PARCOURS).replace(/</g, "\\u003c");
-
-  return `<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GouRare AI</title>
-
-<style>
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  font-family: Arial, sans-serif;
-  background: #f5f7fa;
-  color: #17202a;
-}
-
-header {
-  background: #ffffff;
-  padding: 28px 18px 18px;
-  text-align: center;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.logo {
-  font-size: 30px;
-  font-weight: 800;
-  letter-spacing: 1px;
-}
-
-.subtitle {
-  margin-top: 8px;
-  color: #68707a;
-}
-
-.container {
-  max-width: 900px;
-
+const parcours = ${parcoursJSON};
 
 let parcoursActuel = null;
+
 let etapeActuelle = 0;
+
 let reponses = [];
 
+let enregistrementActif = false;
+
 function goHome() {
+
   document.getElementById("home").style.display = "block";
-  document.getElementById("parcours").classList.remove("active");
-  document.getElementById("questionSection").classList.remove("active");
-  window.scrollTo({top: 0, behavior: "smooth"});
+
+  document
+    .getElementById("parcours")
+    .classList.remove("active");
+
+  document
+    .getElementById("questionSection")
+    .classList.remove("active");
+
+  document.getElementById("result").innerHTML = "";
+
+  document.getElementById("status").textContent = "";
+
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth"
+  });
+
 }
 
 function startParcours(type) {
-  parcoursActuel = type;
-  etapeActuelle = 0;
-  reponses = [];
 
-  document.getElementById("home").style.display = "none";
-  document.getElementById("questionSection").classList.remove("active");
-  document.getElementById("parcours").classList.add("active");
-
-  afficherEtape();
-}
-
-function afficherEtape() {
-  const data = parcours[parcoursActuel];
-  const etape = data.etapes[etapeActuelle];
-
-  document.getElementById("parcoursTitle").textContent = data.titre;
-  document.getElementById("parcoursQuestion").textContent = etape.titre;
-
-  const options = document.getElementById("options");
-  options.innerHTML = "";
-
-  etape.options.forEach(function(option) {
-    const div = document.createElement("div");
-    div.className = "option";
-    div.textContent = option;
-
-    div.onclick = function() {
-      reponses.push(option);
-
-      if (etapeActuelle < data.etapes.length - 1) {
-        etapeActuelle++;
-        afficherEtape();
-      } else {
-        ouvrirQuestion();
-      }
-    };
-
-    options.appendChild(div);
-  });
-}
-
-function previousStep() {
-  if (etapeActuelle > 0) {
-    etapeActuelle--;
-    reponses.pop();
-    afficherEtape();
-  } else {
-    goHome();
-  }
-}
-
-function ouvrirQuestion() {
-  document.getElementById("parcours").classList.remove("active");
-  document.getElementById("questionSection").classList.add("active");
-
-  let contexte = reponses.join(" — ");
-
-  document.getElementById("question").value =
-    contexte + "\\n\\n";
-
-  window.scrollTo({top: 0, behavior: "smooth"});
-}
-
-function startOrientation() {
-  document.getElementById("home").style.display = "none";
-  document.getElementById("parcours").classList.remove("active");
-  document.getElementById("questionSection").classList.add("active");
-
-  document.getElementById("question").value = "";
-  document.getElementById("question").focus();
-}
-
-async function analyser() {
-  const question = document.getElementById("question").value.trim();
-  const status = document.getElementById("status");
-  const result = document.getElementById("result");
-
-  if (!question) {
-    status.textContent = "Veuillez écrire votre question.";
+  if (!parcours[type]) {
     return;
   }
 
-  status.textContent = "Analyse en cours...";
+  parcoursActuel = type;
+
+  etapeActuelle = 0;
+
+  reponses = [];
+
+  document.getElementById("home").style.display = "none";
+
+  document
+    .getElementById("questionSection")
+    .classList.remove("active");
+
+  document
+    .getElementById("parcours")
+    .classList.add("active");
+
+  document.getElementById("result").innerHTML = "";
+
+  document.getElementById("status").textContent = "";
+
+  afficherEtape();
+
+}
+
+function afficherEtape() {
+
+  const data =
+    parcours[parcoursActuel];
+
+  if (!data || !data.etapes) {
+    goHome();
+    return;
+  }
+
+  const etape =
+    data.etapes[etapeActuelle];
+
+  if (!etape) {
+    ouvrirQuestion();
+    return;
+  }
+
+  document.getElementById(
+    "parcoursTitle"
+  ).textContent = data.titre;
+
+  document.getElementById(
+    "parcoursQuestion"
+  ).textContent = etape.titre;
+
+  const options =
+    document.getElementById("options");
+
+  options.innerHTML = "";
+
+  etape.options.forEach(
+    function(option) {
+
+      const div =
+        document.createElement("div");
+
+      div.className = "option";
+
+      div.textContent = option;
+
+      div.onclick = function() {
+
+        reponses.push(option);
+
+        if (
+          etapeActuelle <
+          data.etapes.length - 1
+        ) {
+
+          etapeActuelle++;
+
+          afficherEtape();
+
+        } else {
+
+          ouvrirQuestion();
+
+        }
+
+      };
+
+      options.appendChild(div);
+
+    }
+  );
+
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth"
+  });
+
+}
+
+function previousStep() {
+
+  if (etapeActuelle > 0) {
+
+    etapeActuelle--;
+
+    reponses.pop();
+
+    afficherEtape();
+
+  } else {
+
+    goHome();
+
+  }
+
+}
+
+function ouvrirQuestion() {
+
+  document
+    .getElementById("parcours")
+    .classList.remove("active");
+
+  document
+    .getElementById("questionSection")
+    .classList.add("active");
+
+  const contexte =
+    reponses.join(" — ");
+
+  document.getElementById(
+    "question"
+  ).value =
+    contexte
+      ? contexte + "\\n\\n"
+      : "";
+
+  document.getElementById(
+    "question"
+  ).focus();
+
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth"
+  });
+
+}
+
+function startOrientation() {
+
+  parcoursActuel = null;
+
+  etapeActuelle = 0;
+
+  reponses = [];
+
+  document.getElementById(
+    "home"
+  ).style.display = "none";
+
+  document
+    .getElementById("parcours")
+    .classList.remove("active");
+
+  document
+    .getElementById("questionSection")
+    .classList.add("active");
+
+  document.getElementById(
+    "question"
+  ).value = "";
+
+  document.getElementById(
+    "result"
+  ).innerHTML = "";
+
+  document.getElementById(
+    "status"
+  ).textContent = "";
+
+  document.getElementById(
+    "question"
+  ).focus();
+
+}
+
+async function analyser() {
+
+  const question =
+    document
+      .getElementById("question")
+      .value
+      .trim();
+
+  const status =
+    document.getElementById("status");
+
+  const result =
+    document.getElementById("result");
+
+  if (!question) {
+
+    status.textContent =
+      "Veuillez écrire votre question.";
+
+    return;
+  }
+
+  status.textContent =
+    "🧠 Analyse en cours...";
+
   result.innerHTML = "";
 
   try {
-    const response = await fetch("/api/analyze", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        question: question,
-        parcours: reponses
-      })
-    });
 
-    const data = await response.json();
+    const response =
+      await fetch(
+        "/api/analyze",
+        {
+          method: "POST",
 
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || "Erreur pendant l'analyse.");
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            JSON.stringify({
+              question: question,
+              parcours: reponses
+            })
+        }
+      );
+
+    const data =
+      await response.json();
+
+    if (
+      !response.ok ||
+      !data.success
+    ) {
+
+      throw new Error(
+        data.error ||
+        "Erreur pendant l'analyse."
+      );
+
     }
 
-    status.textContent = "Analyse terminée.";
+    status.textContent =
+      "✅ Analyse terminée.";
 
     afficherResultat(data);
 
   } catch (error) {
-    status.textContent = error.message;
+
+    status.textContent =
+      "❌ " +
+      (
+        error.message ||
+        "Erreur inconnue."
+      );
+
   }
+
 }
 
-function afficherListe(titre, items) {
-  if (!items || !items.length) {
+function afficherListe(
+  titre,
+  items
+) {
+
+  if (
+    !items ||
+    !items.length
+  ) {
     return "";
   }
 
   let html =
     '<div class="result-card">' +
-    '<h2>' + titre + '</h2>';
+    "<h2>" +
+    escapeHTML(titre) +
+    "</h2>";
 
-  items.forEach(function(item) {
+  items.forEach(
+    function(item) {
 
-    if (typeof item === "object") {
-      html +=
-        '<p>' +
-        escapeHTML(item.statut || "") +
-        ' — ' +
-        escapeHTML(item.texte || "") +
-        '</p>';
-    } else {
-      html += '<p>' + escapeHTML(item) + '</p>';
+      if (
+        item &&
+        typeof item === "object"
+      ) {
+
+        html +=
+          "<p>" +
+          escapeHTML(
+            item.statut || ""
+          ) +
+          (
+            item.statut &&
+            item.texte
+              ? " — "
+              : ""
+          ) +
+          escapeHTML(
+            item.texte || ""
+          ) +
+          "</p>";
+
+      } else {
+
+        html +=
+          "<p>" +
+          escapeHTML(item) +
+          "</p>";
+
+      }
+
     }
-
-  });
+  );
 
   html += "</div>";
 
   return html;
+
 }
 
 function afficherResultat(data) {
@@ -1183,269 +1721,524 @@ function afficherResultat(data) {
 
   html +=
     '<div class="result-card">' +
-    '<h2>🧭 Ce que j\\'ai compris</h2>' +
-    '<p>' + escapeHTML(data.compris) + '</p>' +
-    '</div>';
+
+    "<h2>🧭 Ce que j'ai compris</h2>" +
+
+    "<p>" +
+
+    escapeHTML(
+      data.compris
+    ) +
+
+    "</p>" +
+
+    "</div>";
 
   html +=
     '<div class="result-card">' +
-    '<h2>💡 Orientation</h2>' +
-    '<p>' +
-    escapeHTML(data.orientation).replace(/\\n/g, "<br>") +
-    '</p>' +
-    '</div>';
 
-  html += afficherListe(
-    "✅ Informations confirmées",
-    data.confirmed
-  );
+    "<h2>💡 Orientation</h2>" +
 
-  html += afficherListe(
-    "🔎 À vérifier",
-    data.aVerifier
-  );
+    "<p>" +
 
-  html += afficherListe(
-    "💭 Recommandations",
-    data.recommendations
-  );
+    escapeHTML(
+      data.orientation
+    ).replace(
+      /\\n/g,
+      "<br>"
+    ) +
 
-  html += afficherListe(
-    "📋 Actions concrètes",
-    data.actions
-  );
+    "</p>" +
 
-  html += afficherListe(
-    "📄 Documents",
-    data.documents
-  );
+    "</div>";
 
-  html += afficherListe(
-    "⚠️ Points de vigilance",
-    data.risks
-  );
-
-  if (data.professional && data.professional.length) {
-    html += afficherListe(
-      "👤 Professionnel",
-      data.professional
+  html +=
+    afficherListe(
+      "✅ Informations confirmées",
+      data.confirmed
     );
+
+  html +=
+    afficherListe(
+      "🔎 À vérifier",
+      data.aVerifier
+    );
+
+  html +=
+    afficherListe(
+      "💭 Recommandations",
+      data.recommendations
+    );
+
+  html +=
+    afficherListe(
+      "📋 Actions concrètes",
+      data.actions
+    );
+
+  html +=
+    afficherListe(
+      "📄 Documents",
+      data.documents
+    );
+
+  html +=
+    afficherListe(
+      "⚠️ Points de vigilance",
+      data.risks
+    );
+
+  if (
+    data.professional &&
+    data.professional.length
+  ) {
+
+    html +=
+      afficherListe(
+        "👤 Professionnel",
+        data.professional
+      );
+
   }
 
   html +=
     '<div class="result-card">' +
-    '<h2>🚀 Prochaine action</h2>' +
-    '<p>' +
-    escapeHTML(data.nextAction) +
-    '</p>' +
-    '</div>';
 
-  if (data.sources && data.sources.length) {
+    "<h2>🚀 Prochaine action</h2>" +
+
+    "<p>" +
+
+    escapeHTML(
+      data.nextAction
+    ) +
+
+    "</p>" +
+
+    "</div>";
+
+  if (
+    data.sources &&
+    data.sources.length
+  ) {
 
     html +=
       '<div class="result-card">' +
-      '<h2>📚 Sources consultées</h2>';
 
-    data.sources.forEach(function(source) {
-      html +=
-        '<a class="source" target="_blank" rel="noopener noreferrer" href="' +
-        escapeHTML(source.url) +
-        '">' +
-        escapeHTML(source.title) +
-        ' ↗️' +
-        '</a>';
-    });
+      "<h2>📚 Sources officielles</h2>";
+
+    data.sources.forEach(
+      function(source) {
+
+        if (
+          !source ||
+          !source.url
+        ) {
+          return;
+        }
+
+        html +=
+          '<a class="source" ' +
+          'target="_blank" ' +
+          'rel="noopener noreferrer" ' +
+          'href="' +
+          escapeHTML(source.url) +
+          '">' +
+          escapeHTML(
+            source.title
+          ) +
+          " ↗️" +
+          "</a>";
+
+      }
+    );
 
     html += "</div>";
+
   }
 
-  document.getElementById("result").innerHTML = html;
+  document.getElementById(
+    "result"
+  ).innerHTML = html;
+
+  document.getElementById(
+    "result"
+  ).scrollIntoView({
+    behavior: "smooth",
+    block: "start"
+  });
+
 }
 
-function startVoice() {
+async function startVoice() {
 
-  if (!navigator.mediaDevices ||
-      !navigator.mediaDevices.getUserMedia) {
+  if (
+    enregistrementActif
+  ) {
 
-    alert("La fonction microphone n'est pas disponible sur cet appareil ou ce navigateur.");
+    return;
+
+  }
+
+  if (
+    !navigator.mediaDevices ||
+    !navigator.mediaDevices.getUserMedia
+  ) {
+
+    alert(
+      "La fonction microphone n'est pas disponible sur cet appareil ou ce navigateur."
+    );
+
     return;
   }
 
-  alert(
-    "La fonction vocale est prête. Autorisez le microphone puis parlez."
-  );
+  try {
 
-  navigator.mediaDevices.getUserMedia({
-    audio: true
-  })
-  .then(function(stream) {
+    const stream =
+      await navigator.mediaDevices.getUserMedia({
+        audio: true
+      });
 
-    const recorder = new MediaRecorder(stream);
+    const recorder =
+      new MediaRecorder(stream);
+
     const chunks = [];
 
-    recorder.ondataavailable = function(event) {
-      if (event.data.size > 0) {
-        chunks.push(event.data);
-      }
-    };
+    enregistrementActif = true;
 
-    recorder.onstop = async function() {
+    document.getElementById(
+      "status"
+    ).textContent =
+      "🎙️ Enregistrement en cours...";
 
-      stream.getTracks().forEach(function(track) {
-        track.stop();
-      });
+    recorder.ondataavailable =
+      function(event) {
 
-      const blob = new Blob(chunks, {
-        type: "audio/webm"
-      });
+        if (
+          event.data &&
+          event.data.size > 0
+        ) {
 
-      const reader = new FileReader();
+          chunks.push(
+            event.data
+          );
 
-      reader.onloadend = async function() {
-
-        const base64 = reader.result;
-
-        try {
-
-          document.getElementById("status").textContent =
-            "Transcription en cours...";
-
-          const response = await fetch("/api/transcribe", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-              audio: base64
-            })
-          });
-
-          const data = await response.json();
-
-          if (!response.ok || !data.success) {
-            throw new Error(
-              data.error || "Erreur de transcription."
-            );
-          }
-
-          document.getElementById("question").value =
-            data.text || "";
-
-          document.getElementById("status").textContent =
-            "Transcription terminée.";
-
-        } catch (error) {
-
-          document.getElementById("status").textContent =
-            error.message;
         }
+
       };
 
-      reader.readAsDataURL(blob);
-    };
+    recorder.onstop =
+      async function() {
+
+        enregistrementActif = false;
+
+        stream
+          .getTracks()
+          .forEach(
+            function(track) {
+              track.stop();
+            }
+          );
+
+        const blob =
+          new Blob(
+            chunks,
+            {
+              type: "audio/webm"
+            }
+          );
+
+        const reader =
+          new FileReader();
+
+        reader.onloadend =
+          async function() {
+
+            try {
+
+              document.getElementById(
+                "status"
+              ).textContent =
+                "🔊 Transcription en cours...";
+
+              const response =
+                await fetch(
+                  "/api/transcribe",
+                  {
+                    method: "POST",
+
+                    headers: {
+                      "Content-Type":
+                        "application/json"
+                    },
+
+                    body:
+                      JSON.stringify({
+                        audio:
+                          reader.result
+                      })
+                  }
+                );
+
+              const data =
+                await response.json();
+
+              if (
+                !response.ok ||
+                !data.success
+              ) {
+
+                throw new Error(
+                  data.error ||
+                  "Erreur de transcription."
+                );
+
+              }
+
+              document.getElementById(
+                "question"
+              ).value =
+                data.text || "";
+
+              document.getElementById(
+                "status"
+              ).textContent =
+                "✅ Transcription terminée.";
+
+            } catch (error) {
+
+              document.getElementById(
+                "status"
+              ).textContent =
+                "❌ " +
+                (
+                  error.message ||
+                  "Erreur de transcription."
+                );
+
+            }
+
+          };
+
+        reader.readAsDataURL(
+          blob
+        );
+
+      };
 
     recorder.start();
 
-    setTimeout(function() {
-      if (recorder.state === "recording") {
-        recorder.stop();
-      }
-    }, 10000);
+    setTimeout(
+      function() {
 
-  })
-  .catch(function(error) {
+        if (
+          recorder.state ===
+          "recording"
+        ) {
+
+          recorder.stop();
+
+        }
+
+      },
+      10000
+    );
+
+  } catch (error) {
+
+    enregistrementActif = false;
 
     alert(
       "Impossible d'accéder au microphone : " +
-      error.message
+      (
+        error.message ||
+        "permission refusée"
+      )
     );
-  });
+
+  }
+
 }
 
 async function analyserImage() {
 
-  const input = document.getElementById("imageInput");
+  const input =
+    document.getElementById(
+      "imageInput"
+    );
 
-  if (!input.files || !input.files[0]) {
+  if (
+    !input.files ||
+    !input.files[0]
+  ) {
+
     return;
+
   }
 
-  const file = input.files[0];
-  const reader = new FileReader();
+  const file =
+    input.files[0];
 
-  document.getElementById("status").textContent =
-    "Analyse de l'image en cours...";
+  if (
+    file.size >
+    8000000
+  ) {
 
-  reader.onloadend = async function() {
+    document.getElementById(
+      "status"
+    ).textContent =
+      "❌ Image trop volumineuse.";
 
-    try {
+    return;
 
-      const response = await fetch("/api/image", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          image: reader.result
-        })
-      });
+  }
 
-      const data = await response.json();
+  const reader =
+    new FileReader();
 
-      if (!response.ok || !data.success) {
-        throw new Error(
-          data.error || "Erreur d'analyse de l'image."
-        );
+  document.getElementById(
+    "status"
+  ).textContent =
+    "📷 Analyse de l'image en cours...";
+
+  reader.onloadend =
+    async function() {
+
+      try {
+
+        const response =
+          await fetch(
+            "/api/image",
+            {
+              method: "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json"
+              },
+
+              body:
+                JSON.stringify({
+                  image:
+                    reader.result
+                })
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (
+          !response.ok ||
+          !data.success
+        ) {
+
+          throw new Error(
+            data.error ||
+            "Erreur d'analyse de l'image."
+          );
+
+        }
+
+        document.getElementById(
+          "question"
+        ).value =
+          data.text || "";
+
+        document.getElementById(
+          "status"
+        ).textContent =
+          "✅ Analyse de l'image terminée. Vous pouvez maintenant lancer l'analyse GouRare AI.";
+
+      } catch (error) {
+
+        document.getElementById(
+          "status"
+        ).textContent =
+          "❌ " +
+          (
+            error.message ||
+            "Erreur d'analyse de l'image."
+          );
+
       }
 
-      document.getElementById("question").value =
-        data.text || "";
+    };
 
-      document.getElementById("status").textContent =
-        "Analyse de l'image terminée.";
+  reader.readAsDataURL(
+    file
+  );
 
-    } catch (error) {
-
-      document.getElementById("status").textContent =
-        error.message;
-    }
-  };
-
-  reader.readAsDataURL(file);
 }
+
 </script>
 
 </body>
+
 </html>`;
 }
 
 export default {
-  async fetch(request, env) {
 
-    const url = new URL(request.url);
+  async fetch(
+    request,
+    env
+  ) {
 
-    if (request.method === "GET" && url.pathname === "/") {
-      return new Response(pageHTML(), {
-        headers: {
-          "Content-Type": "text/html; charset=UTF-8",
-          "X-Content-Type-Options": "nosniff",
-          "X-Frame-Options": "DENY",
-          "Referrer-Policy":
-            "strict-origin-when-cross-origin",
-          "Cache-Control": "no-store",
-          "Permissions-Policy":
-            "camera=(self), microphone=(self), geolocation=()"
+    const url =
+      new URL(request.url);
+
+    if (
+      request.method === "GET" &&
+      url.pathname === "/"
+    ) {
+
+      return new Response(
+        pageHTML(),
+        {
+          headers: {
+            "Content-Type":
+              "text/html; charset=UTF-8",
+
+            "X-Content-Type-Options":
+              "nosniff",
+
+            "X-Frame-Options":
+              "DENY",
+
+            "Referrer-Policy":
+              "strict-origin-when-cross-origin",
+
+            "Cache-Control":
+              "no-store",
+
+            "Permissions-Policy":
+              "camera=(self), microphone=(self), geolocation=()"
+          }
         }
-      });
+      );
+
     }
 
-    if (request.method === "GET" && url.pathname === "/health") {
-      return jsonResponse({
-        success: true,
-        service: "GouRare AI",
-        status: "OK",
-        version: VERSION
-      });
+    if (
+      request.method === "GET" &&
+      url.pathname === "/health"
+    ) {
+
+      return jsonResponse(
+        {
+          success: true,
+
+          service:
+            "GouRare AI",
+
+          status:
+            "OK",
+
+          version:
+            VERSION
+        }
+      );
+
     }
 
     if (
@@ -1456,59 +2249,92 @@ export default {
       try {
 
         const contentType =
-          request.headers.get("content-type") || "";
+          request.headers.get(
+            "content-type"
+          ) || "";
 
-        if (!contentType.includes("application/json")) {
+        if (
+          !contentType.includes(
+            "application/json"
+          )
+        ) {
+
           return jsonResponse(
             {
               success: false,
-              error: "Content-Type JSON requis."
+
+              error:
+                "Content-Type JSON requis."
             },
             415
           );
+
         }
 
-        const body = await request.json();
+        const body =
+          await request.json();
 
-        const question = clean(
-          body.question,
-          5000
-        );
+        const question =
+          clean(
+            body.question,
+            5000
+          );
 
         if (!question) {
+
           return jsonResponse(
             {
               success: false,
-              error: "Question vide."
+
+              error:
+                "Question vide."
             },
             400
           );
+
         }
 
-        const parcours = Array.isArray(body.parcours)
-          ? body.parcours
-              .slice(0, 10)
-              .map((item) => clean(item, 300))
-          : [];
+        const parcours =
+          Array.isArray(
+            body.parcours
+          )
+            ? body.parcours
+                .slice(0, 10)
+                .map(
+                  function(item) {
+                    return clean(
+                      item,
+                      300
+                    );
+                  }
+                )
+            : [];
 
-        const result = await analyserQuestion(
-          env,
-          question,
-          parcours
+        const result =
+          await analyserQuestion(
+            env,
+            question,
+            parcours
+          );
+
+        return jsonResponse(
+          result
         );
-
-        return jsonResponse(result);
 
       } catch (error) {
 
         return jsonResponse(
           {
             success: false,
-            error: "Erreur pendant l'analyse."
+
+            error:
+              "Erreur pendant l'analyse."
           },
           500
         );
+
       }
+
     }
 
     if (
@@ -1518,39 +2344,61 @@ export default {
 
       try {
 
-        const body = await request.json();
-        const image = clean(body.image, 8000000);
+        const body =
+          await request.json();
+
+        const image =
+          clean(
+            body.image,
+            8000000
+          );
 
         if (!image) {
+
           return jsonResponse(
             {
               success: false,
-              error: "Image absente."
+
+              error:
+                "Image absente."
             },
             400
           );
+
         }
 
-        const text = await analyserImage(
-          env,
-          image
-        );
+        const text =
+          await analyserImage(
+            env,
+            image
+          );
 
-        return jsonResponse({
-          success: true,
-          text: clean(text, 7000)
-        });
+        return jsonResponse(
+          {
+            success: true,
+
+            text:
+              clean(
+                text,
+                7000
+              )
+          }
+        );
 
       } catch (error) {
 
         return jsonResponse(
           {
             success: false,
-            error: "Impossible d'analyser l'image."
+
+            error:
+              "Impossible d'analyser l'image."
           },
           500
         );
+
       }
+
     }
 
     if (
@@ -1560,47 +2408,73 @@ export default {
 
       try {
 
-        const body = await request.json();
-        const audio = clean(body.audio, 10000000);
+        const body =
+          await request.json();
+
+        const audio =
+          clean(
+            body.audio,
+            10000000
+          );
 
         if (!audio) {
+
           return jsonResponse(
             {
               success: false,
-              error: "Audio absent."
+
+              error:
+                "Audio absent."
             },
             400
           );
+
         }
 
-        const text = await transcrireAudio(
-          env,
-          audio
-        );
+        const text =
+          await transcrireAudio(
+            env,
+            audio
+          );
 
-        return jsonResponse({
-          success: true,
-          text: clean(text, 5000)
-        });
+        return jsonResponse(
+          {
+            success: true,
+
+            text:
+              clean(
+                text,
+                5000
+              )
+          }
+        );
 
       } catch (error) {
 
         return jsonResponse(
           {
             success: false,
-            error: "Impossible de transcrire l'audio."
+
+            error:
+              "Impossible de transcrire l'audio."
           },
           500
         );
+
       }
+
     }
 
     return jsonResponse(
       {
         success: false,
-        error: "Route introuvable."
+
+        error:
+          "Route introuvable."
       },
       404
     );
+
   }
+
 };
