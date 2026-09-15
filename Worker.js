@@ -1,7 +1,7 @@
 const MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
 const MODEL_VISION = "@cf/meta/llama-3.2-11b-vision-instruct";
 const MODEL_AUDIO = "@cf/openai/whisper-large-v3-turbo";
-const VERSION = "8.3";
+const VERSION = "8.4";
 
 const LIMITS = {
   question: 12000,
@@ -36,8 +36,6 @@ const SOURCES = {
       "La création d'une entreprise individuelle comporte notamment une formalité d'immatriculation et une déclaration d'activité.",
       "La demande d'immatriculation d'une entreprise individuelle se fait sur le Guichet des formalités des entreprises.",
       "Après son immatriculation, l'entreprise individuelle est inscrite au Registre national des entreprises.",
-      "Le registre d'inscription dépend de la nature de l'activité exercée.",
-      "Pour une entreprise individuelle commerciale, l'inscription concerne notamment le Registre national des entreprises et le Registre du commerce et des sociétés.",
       "Une activité réglementée peut nécessiter des justificatifs particuliers, notamment une autorisation, un diplôme ou un titre."
     ]
   },
@@ -58,7 +56,7 @@ const SOURCES = {
     organisme: "Service-Public.fr",
     url: "https://www.service-public.fr/",
     preuves: [
-      "Service-Public.fr est le site officiel d'information administrative de l'administration française."
+      "Service-Public.fr est le site officiel d'information administrative."
     ]
   },
 
@@ -68,7 +66,7 @@ const SOURCES = {
     organisme: "Ministère de l'Intérieur",
     url: "https://administration-etrangers-en-france.interieur.gouv.fr/",
     preuves: [
-      "Le portail permet d'effectuer ou de suivre certaines démarches administratives concernant les étrangers en France."
+      "Le portail officiel permet d'effectuer certaines démarches concernant les étrangers en France."
     ]
   },
 
@@ -78,7 +76,7 @@ const SOURCES = {
     organisme: "France Travail",
     url: "https://www.francetravail.fr/",
     preuves: [
-      "France Travail propose des services liés à la recherche d'emploi, aux offres et à l'accompagnement des demandeurs d'emploi."
+      "France Travail propose des informations et services liés à la recherche d'emploi."
     ]
   }
 };
@@ -140,7 +138,9 @@ function securityHeaders() {
 const PARCOURS = {
   migrant: {
     titre: "🌍 Migrant / Nouveau arrivant",
-    description: "Situation administrative, travail, logement, droits et démarches.",
+    description:
+      "Situation administrative, travail, logement, droits et démarches.",
+
     situations: [
       ["arrive", "🆕 Je viens d'arriver"],
       ["administratif", "🪪 Ma situation administrative"],
@@ -159,7 +159,9 @@ const PARCOURS = {
 
   particulier: {
     titre: "👤 Particulier / Résident",
-    description: "Vie quotidienne, droits, démarches et problèmes personnels.",
+    description:
+      "Vie quotidienne, droits, démarches et problèmes personnels.",
+
     situations: [
       ["administratif", "🧾 Démarches administratives"],
       ["emploi", "💼 Travail / emploi"],
@@ -176,7 +178,9 @@ const PARCOURS = {
 
   emploi: {
     titre: "💼 Chercheur d'emploi",
-    description: "Recherche d'emploi, candidature, CV et entretien.",
+    description:
+      "Recherche d'emploi, candidature, CV et entretien.",
+
     situations: [
       ["offres", "🔎 Trouver des offres"],
       ["cv", "📄 Créer / améliorer mon CV"],
@@ -192,7 +196,9 @@ const PARCOURS = {
 
   entreprise: {
     titre: "🏢 Entreprise / Entrepreneur",
-    description: "Créer, gérer, développer et trouver des opportunités.",
+    description:
+      "Créer, gérer, développer et trouver des opportunités.",
+
     situations: [
       ["creation", "🚀 Créer mon entreprise"],
       ["developpement", "📈 Développer mon activité"],
@@ -210,30 +216,39 @@ const PARCOURS = {
 };
 
 /* =========================
-   DETECTION
+   CONTEXTE
 ========================= */
 
 function detectContext(q) {
   const s = texte(q, 12000).toLowerCase();
 
   return {
-    nettoyage: /nettoyage|ménage|menage|propreté|proprete|cleaning/.test(s),
+    nettoyage:
+      /nettoyage|ménage|menage|propreté|proprete|cleaning/.test(s),
 
-    entreprise: /créer|creer|création|creation|lancer|ouvrir|entreprise|société|societe|activité|activite/.test(s),
+    entreprise:
+      /créer|creer|création|creation|lancer|ouvrir|entreprise|société|societe|activité|activite/.test(s),
 
-    statut: /statut|forme juridique|micro|micro-entreprise|microentreprise|indépendant|independant|ei|entreprise individuelle/.test(s),
+    statut:
+      /statut|forme juridique|micro|micro-entreprise|microentreprise|indépendant|independant|ei|entreprise individuelle/.test(s),
 
-    travail: /travail|emploi|salarié|salarie|contrat|employeur|licenciement|salaire/.test(s),
+    travail:
+      /travail|emploi|salarié|salarie|contrat|employeur|licenciement|salaire/.test(s),
 
-    social: /caf|rsa|aide|social|allocation|droits sociaux/.test(s),
+    social:
+      /caf|rsa|aide|social|allocation|droits sociaux/.test(s),
 
-    administratif: /démarche|demarche|administratif|administrative|préfecture|prefecture|mairie|document officiel/.test(s),
+    administratif:
+      /démarche|demarche|administratif|administrative|préfecture|prefecture|mairie|document officiel/.test(s),
 
-    juridique: /avocat|juridique|justice|tribunal|loi|légal|legal|mise en demeure/.test(s),
+    juridique:
+      /avocat|juridique|justice|tribunal|loi|légal|legal|mise en demeure/.test(s),
 
-    fiscalite: /impôt|impot|fiscal|fiscalité|fiscalite|urssaf|tva|cfe|cotisation/.test(s),
+    fiscalite:
+      /impôt|impot|fiscal|fiscalité|fiscalite|urssaf|tva|cfe|cotisation/.test(s),
 
-    migrant: /migrant|nouveau arrivant|étranger|etranger|titre de séjour|titre de sejour|asile|préfecture|prefecture|irrégulière|irreguliere/.test(s),
+    migrant:
+      /migrant|étranger|etranger|titre de séjour|titre de sejour|visa|asile|préfecture|prefecture|arrivée|arrive/.test(s),
 
     message: false
   };
@@ -263,13 +278,11 @@ function selectSources(c) {
     ids.push("france_travail");
   }
 
-  return unique(ids).map(function(id) {
-    return SOURCES[id];
-  });
+  return unique(ids).map(id => SOURCES[id]);
 }
 
 /* =========================
-   MOTEUR DE VERITE
+   MOTEUR DE VÉRITÉ
 ========================= */
 
 function confirmed(q, c, sources) {
@@ -277,9 +290,7 @@ function confirmed(q, c, sources) {
 
   if (
     c.entreprise &&
-    sources.some(function(s) {
-      return s.id === "statut";
-    })
+    sources.some(s => s.id === "statut")
   ) {
     out.push(
       "Le choix de la forme juridique peut être étudié en fonction de l'activité envisagée, du chiffre d'affaires estimé, des revenus, de la couverture sociale et de la gestion."
@@ -291,9 +302,7 @@ function confirmed(q, c, sources) {
     /entreprise individuelle|\bei\b|micro|micro-entreprise|microentreprise/.test(
       q.toLowerCase()
     ) &&
-    sources.some(function(s) {
-      return s.id === "creation_ei";
-    })
+    sources.some(s => s.id === "creation_ei")
   ) {
     out.push(
       "Pour une entreprise individuelle, certaines formalités d'immatriculation et de déclaration d'activité sont prévues."
@@ -317,11 +326,13 @@ function documents(q, c) {
     return [
       {
         statut: "à vérifier",
-        texte: "Vérifier les justificatifs demandés pour la forme juridique choisie."
+        texte:
+          "Vérifier les justificatifs demandés pour la forme juridique choisie."
       },
       {
         statut: "conditionnel",
-        texte: "Si l'activité est réglementée, vérifier les éventuels justificatifs d'autorisation, diplôme ou titre."
+        texte:
+          "Si l'activité est réglementée, vérifier les éventuels justificatifs d'autorisation, diplôme ou titre."
       }
     ];
   }
@@ -333,11 +344,15 @@ function actions(q, c) {
   const a = [];
 
   if (c.entreprise) {
-    a.push("Décrire précisément les prestations ou produits proposés.");
+    a.push(
+      "Décrire précisément les prestations ou produits proposés."
+    );
   }
 
   if (c.entreprise && !c.statut) {
-    a.push("Comparer les formes juridiques possibles avant de choisir un statut.");
+    a.push(
+      "Comparer les formes juridiques possibles avant de choisir un statut."
+    );
   }
 
   if (c.entreprise && c.statut) {
@@ -348,13 +363,13 @@ function actions(q, c) {
 
   if (c.migrant) {
     a.push(
-      "Préciser le pays, la situation administrative et l'objectif afin d'identifier la démarche adaptée."
+      "Préciser le pays, la situation actuelle et l'objectif recherché avant de déterminer la démarche adaptée."
     );
   }
 
   if (c.travail) {
     a.push(
-      "Préciser le métier recherché, la situation actuelle et les contraintes éventuelles."
+      "Préciser le métier recherché ou la situation professionnelle afin d'identifier la prochaine étape utile."
     );
   }
 
@@ -384,7 +399,13 @@ function recommendations(q, c) {
 
   if (c.migrant) {
     a.push(
-      "Ne pas déduire votre situation juridique à partir d'informations générales : vérifier les règles correspondant exactement à votre situation."
+      "Ne pas déduire votre statut ou vos droits uniquement à partir de votre parcours sélectionné. Vérifiez les éléments correspondant à votre situation réelle."
+    );
+  }
+
+  if (c.travail) {
+    a.push(
+      "Préciser le métier, la localisation et les contraintes éventuelles avant de rechercher une solution."
     );
   }
 
@@ -393,26 +414,38 @@ function recommendations(q, c) {
 
 function nextAction(q, c) {
   if (c.entreprise && !c.statut) {
-    return "Préciser exactement l'activité et les prestations envisagées, puis comparer les formes juridiques adaptées.";
+    return (
+      "Préciser exactement l'activité et les prestations envisagées, puis comparer les formes juridiques adaptées."
+    );
   }
 
   if (c.entreprise && c.statut) {
-    return "Vérifier les formalités officielles correspondant exactement à la forme juridique et à l'activité choisies.";
-  }
-
-  if (c.message) {
-    return "Vérifier que le projet de réponse correspond bien au contenu et au contexte du message reçu.";
+    return (
+      "Vérifier les formalités officielles correspondant exactement à la forme juridique et à l'activité choisies."
+    );
   }
 
   if (c.migrant) {
-    return "Préciser votre pays, votre situation actuelle et votre objectif afin d'identifier la prochaine démarche utile.";
+    return (
+      "Préciser votre pays, votre situation actuelle et votre objectif afin d'identifier la prochaine démarche utile."
+    );
+  }
+
+  if (c.message) {
+    return (
+      "Vérifier que le projet de réponse correspond bien au contenu et au contexte du message reçu."
+    );
   }
 
   if (c.travail) {
-    return "Préciser le métier ou le type d'emploi recherché afin d'identifier les prochaines possibilités.";
+    return (
+      "Préciser le métier ou l'objectif professionnel afin de déterminer la prochaine action utile."
+    );
   }
 
-  return "Préciser votre situation et votre objectif afin de déterminer la prochaine action utile.";
+  return (
+    "Préciser votre situation et votre objectif afin de déterminer la prochaine action utile."
+  );
 }
 
 /* =========================
@@ -421,27 +454,66 @@ function nextAction(q, c) {
 
 function systemPrompt() {
   return `
-Tu es GouRare AI, un assistant intelligent d'orientation et d'analyse.
+Tu es GouRare AI, une plateforme intelligente d'orientation multidisciplinaire.
 
-Tu n'es pas avocat, expert-comptable, médecin, administration ou travailleur social.
+TON RÔLE :
+Tu aides l'utilisateur à comprendre une situation, rechercher les informations pertinentes, vérifier les éléments importants, comparer les options lorsque cela est possible et déterminer la prochaine action utile.
 
-Ton rôle est d'aider l'utilisateur à comprendre sa situation, identifier les informations utiles, vérifier les points importants et déterminer une prochaine action.
+Tu n'es PAS :
+- un avocat ;
+- un expert-comptable ;
+- un médecin ;
+- une administration ;
+- un travailleur social ;
+- une autorité de l'immigration.
 
-REGLES ABSOLUES :
+RÈGLES ABSOLUES :
 
-1. Ne jamais inventer de fait concernant l'utilisateur.
-2. Ne jamais supposer son statut administratif, son droit au séjour, sa nationalité, son emploi, son logement, son revenu ou sa situation familiale.
-3. Ne jamais transformer une hypothèse en fait.
-4. Ne jamais inventer de loi, article, taux, montant, seuil, délai, sanction, obligation, autorisation, diplôme, document, statistique ou prix.
-5. Les informations officielles fournies par le moteur de vérité sont prioritaires.
-6. Si une information n'est pas confirmée, indique clairement qu'elle doit être vérifiée.
-7. Pour une situation migratoire ou administrative, rester neutre et légal.
-8. Pour une situation irrégulière, fournir uniquement une orientation légale et sûre : droits, procédures officielles, organismes compétents et possibilités de conseil juridique.
-9. Ne jamais expliquer comment contourner une loi, falsifier un document, éviter un contrôle ou tromper une administration.
-10. Ne répète pas les URL dans ton texte : elles sont affichées séparément.
-11. Pour un message ou un email, respecte strictement son contenu.
-12. Pour une image, analyse uniquement ce qui est réellement visible ou lisible.
-13. Si l'utilisateur n'a pas fourni une information, dis qu'elle manque au lieu de la deviner.
+1. Ne jamais inventer une loi, un article, un taux, un montant, un seuil, un délai, une sanction, une obligation, une autorisation, un diplôme, un document, une statistique ou un prix.
+
+2. Les informations officielles fournies par le moteur de vérité sont prioritaires.
+
+3. Une sélection faite dans l'interface n'est PAS une preuve juridique.
+Ne déduis jamais le statut légal, le droit au séjour, le droit au travail, la nationalité, les ressources, les droits sociaux ou toute autre situation personnelle uniquement parce que l'utilisateur a choisi :
+- "Migrant"
+- "Nouveau arrivant"
+- "Situation irrégulière"
+- "Je viens d'arriver"
+- ou toute autre catégorie de navigation.
+
+4. En matière d'immigration, de séjour, d'asile ou de droits sociaux :
+- ne fais aucune supposition ;
+- indique clairement les informations manquantes ;
+- oriente vers les sources officielles pertinentes ;
+- distingue les informations confirmées des informations à vérifier.
+
+5. Ne dis jamais à une personne qu'elle peut rester, travailler, voyager, obtenir un titre, recevoir une aide ou bénéficier d'un droit si cette conclusion n'est pas établie par les informations disponibles.
+
+6. Ne donne aucune instruction permettant de contourner la loi, falsifier des documents, tromper une administration, contourner un contrôle ou faciliter une activité illégale.
+
+7. Pour une image :
+analyse uniquement ce qui est réellement visible ou lisible.
+Si quelque chose est illisible, indique qu'il est illisible.
+
+8. Pour un message :
+respecte strictement son contenu et n'invente aucun fait.
+
+9. Si une information importante manque :
+dis-le clairement et indique quelle information permettrait de poursuivre l'analyse.
+
+10. Ne répète pas inutilement les URL dans ton texte.
+Les sources officielles sont affichées séparément par l'application.
+
+11. Utilise un langage simple, clair et concret.
+
+12. Lorsque la question concerne un domaine réglementé, présente ton résultat comme une orientation et une aide à la compréhension, pas comme une décision professionnelle ou administrative.
+
+13. La réponse doit toujours distinguer :
+- ce qui est confirmé ;
+- ce qui est à vérifier ;
+- ce que l'utilisateur peut faire maintenant.
+
+14. Ne transforme jamais une hypothèse en fait.
 `;
 }
 
@@ -465,9 +537,17 @@ async function askAI(env, prompt, maxTokens = 900) {
       }
     );
 
-    if (typeof r === "string") return r;
-    if (r?.response) return r.response;
-    if (r?.result?.response) return r.result.response;
+    if (typeof r === "string") {
+      return r;
+    }
+
+    if (r?.response) {
+      return r.response;
+    }
+
+    if (r?.result?.response) {
+      return r.result.response;
+    }
 
     return "";
   } catch (e) {
@@ -497,14 +577,15 @@ function messagePrompt(contenu, mode, langue) {
       "Traduis fidèlement le contenu dans la langue demandée."
   };
 
-  return (
-    "Langue : " +
-    (langue || "français") +
-    "\nMode : " +
-    (instructions[mode] || instructions.analyse) +
-    "\nCONTENU :\n" +
-    texte(contenu, 18000)
-  );
+  return `
+Langue : ${langue || "français"}
+
+Mode :
+${instructions[mode] || instructions.analyse}
+
+CONTENU :
+${texte(contenu, 18000)}
+`;
 }
 
 /* =========================
@@ -527,7 +608,7 @@ async function analyserImage(env, image, demande = "") {
         {
           role: "system",
           content:
-            "Analyse uniquement ce qui est réellement visible ou lisible. Ne devine jamais un texte illisible. Si un document est visible, distingue clairement ce qui est lisible de ce qui ne l'est pas."
+            "Analyse uniquement ce qui est réellement visible ou lisible. Ne devine jamais un texte illisible. Si une information n'est pas lisible, indique-le clairement."
         },
         {
           role: "user",
@@ -542,14 +623,26 @@ async function analyserImage(env, image, demande = "") {
     }
   );
 
-  if (typeof r === "string") return r;
-  if (r?.response) return r.response;
-  if (r?.result?.response) return r.result.response;
+  if (typeof r === "string") {
+    return r;
+  }
+
+  if (r?.response) {
+    return r.response;
+  }
+
+  if (r?.result?.response) {
+    return r.result.response;
+  }
 
   return typeof r?.result === "string"
     ? r.result
     : JSON.stringify(r);
 }
+
+/* =========================
+   AUDIO
+========================= */
 
 function base64FromDataURL(v) {
   const s = texte(v, LIMITS.audio);
@@ -597,7 +690,7 @@ async function analyserQuestion(env, q, options = {}) {
 
   const sources = selectSources(contexte);
 
-  let orientation = "";
+  let orientation;
 
   if (contexte.message) {
     orientation = await askAI(
@@ -610,50 +703,51 @@ async function analyserQuestion(env, q, options = {}) {
       1200
     );
   } else {
-    if (contexte.entreprise && contexte.nettoyage) {
+    if (contexte.migrant) {
+      orientation =
+        "Votre demande concerne une situation liée à l'arrivée, au séjour ou à la vie en France. Pour éviter toute supposition, GouRare AI doit d'abord distinguer les informations réellement connues des éléments qui doivent être vérifiés.";
+    } else if (
+      contexte.entreprise &&
+      contexte.nettoyage
+    ) {
       orientation =
         "Pour un projet de nettoyage, il faut d'abord préciser les prestations envisagées et déterminer la forme juridique adaptée. Les formalités doivent ensuite être vérifiées en fonction de ces éléments.";
     } else if (contexte.entreprise) {
       orientation =
         "Pour un projet d'entreprise, il faut d'abord préciser l'activité et déterminer la forme juridique adaptée. Les formalités dépendent ensuite de la situation exacte.";
-    } else if (contexte.migrant) {
-      orientation =
-        "Pour une situation concernant un migrant ou un nouvel arrivant, GouRare AI commence par identifier le pays, la situation actuelle et l'objectif avant d'orienter vers les informations ou démarches pertinentes.";
-    } else if (contexte.travail) {
-      orientation =
-        "Pour une recherche d'emploi, GouRare AI commence par identifier le type d'emploi recherché, la situation actuelle et les éventuelles contraintes afin de proposer une orientation adaptée.";
     } else {
       orientation =
         "GouRare AI analyse votre situation afin d'identifier les informations utiles, les éléments à vérifier et la prochaine action.";
     }
 
-    /*
-      L'IA complète uniquement l'orientation.
-      Elle ne remplace jamais les faits déterministes
-      produits par le moteur de vérité.
-    */
-
     const ai = await askAI(
       env,
-      "Question utilisateur :\n" +
-        q +
-        "\n\nContexte détecté :\n" +
-        JSON.stringify(contexte) +
-        "\n\nInformations officielles disponibles :\n" +
-        JSON.stringify(
-          sources.map(function(s) {
-            return {
-              titre: s.titre,
-              organisme: s.organisme,
-              preuves: s.preuves
-            };
-          })
-        ) +
-        "\n\nDonne une explication courte et prudente. " +
-        "Ne suppose aucune information absente. " +
-        "N'ajoute aucune obligation ou fait nouveau. " +
-        "Si les informations manquent, indique ce qui doit être précisé.",
-      700
+      `
+Question de l'utilisateur :
+${q}
+
+Contexte détecté :
+${JSON.stringify(contexte)}
+
+Sources officielles disponibles :
+${JSON.stringify(
+  sources.map(s => ({
+    titre: s.titre,
+    organisme: s.organisme,
+    preuves: s.preuves
+  }))
+)}
+
+Explique brièvement la situation.
+
+IMPORTANT :
+- ne transforme aucune sélection d'interface en fait juridique ;
+- ne suppose pas le statut administratif de l'utilisateur ;
+- n'invente aucune règle ;
+- si une information manque, indique qu'elle doit être vérifiée ;
+- donne une orientation pratique.
+`,
+      850
     );
 
     if (ai) {
@@ -681,54 +775,47 @@ async function analyserQuestion(env, q, options = {}) {
       ? []
       : [
           ...(contexte.entreprise && !contexte.statut
-            ? ["La forme juridique la plus adaptée à votre projet."]
+            ? [
+                "La forme juridique la plus adaptée à votre projet."
+              ]
             : []),
 
           ...(contexte.entreprise
-            ? ["La nature exacte de l'activité et des prestations."]
+            ? [
+                "La nature exacte de l'activité et des prestations."
+              ]
             : []),
 
           ...(contexte.migrant
-            ? ["Les règles exactes correspondant à votre situation administrative."]
+            ? [
+                "Votre situation administrative réelle et les éléments permettant de déterminer les démarches applicables."
+              ]
             : [])
         ],
 
     recommendations:
-      recommendations(
-        q,
-        contexte
-      ),
+      recommendations(q, contexte),
 
     actions:
-      actions(
-        q,
-        contexte
-      ),
+      actions(q, contexte),
 
     documents:
-      documents(
-        q,
-        contexte
-      ),
+      documents(q, contexte),
 
     risks: [],
 
     professional: [],
 
     nextAction:
-      nextAction(
-        q,
-        contexte
-      ),
+      nextAction(q, contexte),
 
-    sources: sources.map(function(s) {
-      return {
+    sources:
+      sources.map(s => ({
         id: s.id,
         titre: s.titre,
         organisme: s.organisme,
         url: s.url
-      };
-    })
+      }))
   };
 }
 
@@ -806,22 +893,16 @@ header p {
   border-radius: 18px;
   padding: 20px;
   margin-bottom: 18px;
-  box-shadow:
-    0 8px 30px rgba(0,0,0,.07);
+  box-shadow: 0 8px 30px rgba(0,0,0,.07);
 }
 
 .welcome {
   text-align: center;
 }
 
-h2 {
-  margin-top: 0;
-}
-
 .choices {
   display: grid;
-  grid-template-columns:
-    repeat(2, 1fr);
+  grid-template-columns: repeat(2,1fr);
   gap: 14px;
 }
 
@@ -836,9 +917,8 @@ h2 {
 }
 
 .choice:hover {
-  transform: translateY(-1px);
-  box-shadow:
-    0 5px 18px rgba(0,0,0,.06);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,.08);
 }
 
 .choice strong {
@@ -863,7 +943,7 @@ select {
 }
 
 textarea {
-  min-height: 130px;
+  min-height: 140px;
   resize: vertical;
 }
 
@@ -875,6 +955,10 @@ button {
   cursor: pointer;
   background: #111827;
   color: white;
+}
+
+button:active {
+  transform: scale(.98);
 }
 
 .secondary {
@@ -898,8 +982,7 @@ button {
 }
 
 .result-card {
-  border-left:
-    5px solid #111827;
+  border-left: 5px solid #111827;
 }
 
 .ai-result {
@@ -907,7 +990,7 @@ button {
   line-height: 1.65;
 }
 
-.result-card ul {
+.result-block ul {
   padding-left: 22px;
 }
 
@@ -940,8 +1023,7 @@ button {
   border: 1px solid #e5e7eb;
   padding: 10px 13px;
   border-radius: 999px;
-  box-shadow:
-    0 5px 20px rgba(0,0,0,.12);
+  box-shadow: 0 5px 20px rgba(0,0,0,.12);
   font-size: 13px;
   z-index: 20;
 }
@@ -965,6 +1047,10 @@ footer {
   .actions button {
     width: 100%;
     flex-basis: 100%;
+  }
+
+  .container {
+    padding-bottom: 130px;
   }
 
 }
@@ -1033,7 +1119,7 @@ Intelligence, orientation et solutions
 
 <textarea
   id="question"
-  placeholder="Expliquez votre situation..."
+  placeholder="Expliquez votre situation ou votre question..."
 ></textarea>
 
 <div class="actions">
@@ -1112,7 +1198,7 @@ Mode normal
 
 <input
   id="langue"
-  placeholder="Langue souhaitée pour une traduction (français, arabe, anglais)"
+  placeholder="Langue souhaitée pour une traduction"
   style="margin-top:10px"
 >
 
@@ -1137,8 +1223,6 @@ GouRare AI — Version ${VERSION}
 </footer>
 
 <script>
-
-const PARCOURS_DATA = ${parcoursJSON};
 
 const parcours =
   document.getElementById("parcours");
@@ -1179,6 +1263,9 @@ const langue =
 const imageInput =
   document.getElementById("imageInput");
 
+const parcoursData =
+  ${parcoursJSON};
+
 let profil = null;
 
 let mediaRecorder = null;
@@ -1187,13 +1274,11 @@ let audioChunks = [];
 
 let recording = false;
 
-/* =========================
-   SECURITE HTML
-========================= */
+/* Protection HTML côté navigateur */
 
-function esc(value) {
+function esc(v) {
 
-  return String(value || "")
+  return String(v || "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -1221,70 +1306,73 @@ function showHome() {
   result.innerHTML = "";
 
   parcours.innerHTML =
+
     "<h2>Comment pouvons-nous vous orienter ?</h2>" +
+
     "<p>Choisissez le parcours qui correspond le mieux à votre situation.</p>" +
+
     "<div class='choices' id='profils'></div>" +
+
     "<p style='margin-top:18px'>" +
+
     "<button id='inconnu' class='secondary'>" +
+
     "✨ Je ne sais pas où aller — GouRare AI m'oriente" +
+
     "</button>" +
+
     "</p>";
 
   const p =
     document.getElementById("profils");
 
-  Object.keys(PARCOURS_DATA)
-    .forEach(function(k) {
+  Object.keys(parcoursData).forEach(
+    function(k) {
 
       const x =
-        PARCOURS_DATA[k];
+        parcoursData[k];
 
-      p.innerHTML +=
-        "<div class='choice' data-p='" +
-        esc(k) +
-        "'>" +
+      const div =
+        document.createElement("div");
+
+      div.className = "choice";
+
+      div.dataset.p = k;
+
+      div.innerHTML =
         "<strong>" +
         esc(x.titre) +
         "</strong>" +
+
         "<span>" +
         esc(x.description) +
-        "</span>" +
-        "</div>";
+        "</span>";
 
-    });
+      div.onclick =
+        function() {
 
-  p.querySelectorAll(".choice")
-    .forEach(function(b) {
+          openProfil(k);
 
-      b.onclick = function() {
+        };
 
-        openProfil(
-          b.dataset.p
-        );
+      p.appendChild(div);
 
-      };
+    }
+  );
 
-    });
+  document.getElementById("inconnu").onclick =
+    function() {
 
-  document
-    .getElementById("inconnu")
-    .onclick = function() {
+      openProfil("particulier");
 
-      profil = "particulier";
-
-      parcours.classList.add("hidden");
-
-      assistant.classList.add("hidden");
+      question.value =
+        "Je ne sais pas quel parcours correspond à ma situation. Aidez-moi à m'orienter.";
 
       outil.classList.remove("hidden");
 
       messageCard.classList.add("hidden");
 
-      question.value =
-        "Je ne sais pas quel parcours correspond à ma situation. Aidez-moi à m'orienter.";
-
-      status.textContent =
-        "GouRare AI va vous orienter.";
+      assistant.classList.add("hidden");
 
     };
 
@@ -1299,15 +1387,7 @@ function openProfil(k) {
   profil = k;
 
   const x =
-    PARCOURS_DATA[k];
-
-  if (!x) {
-
-    showHome();
-
-    return;
-
-  }
+    parcoursData[k];
 
   parcours.classList.add("hidden");
 
@@ -1363,7 +1443,7 @@ function openProfil(k) {
 ========================= */
 
 function openSituation(
-  s,
+  situation,
   label
 ) {
 
@@ -1371,9 +1451,11 @@ function openSituation(
 
   outil.classList.remove("hidden");
 
-  result.innerHTML = "";
+  messageCard.classList.remove("hidden");
 
   question.value = "";
+
+  result.innerHTML = "";
 
   status.textContent =
     "Parcours sélectionné : " +
@@ -1381,14 +1463,10 @@ function openSituation(
 
   messageMode.value = "";
 
-  messageCard.classList.add("hidden");
-
   if (
-    s === "message" ||
-    s === "document"
+    situation === "message" ||
+    situation === "document"
   ) {
-
-    messageCard.classList.remove("hidden");
 
     messageMode.value =
       "analyse";
@@ -1401,13 +1479,11 @@ function openSituation(
    RETOUR
 ========================= */
 
-document
-  .getElementById("retour")
-  .onclick = showHome;
+document.getElementById("retour").onclick =
+  showHome;
 
-document
-  .getElementById("retourOutil")
-  .onclick = function() {
+document.getElementById("retourOutil").onclick =
+  function() {
 
     outil.classList.add("hidden");
 
@@ -1455,32 +1531,31 @@ async function analyserTexte() {
               "application/json"
           },
 
-          body:
-            JSON.stringify({
-              type:
-                messageMode.value
-                  ? "message"
-                  : "question",
+          body: JSON.stringify({
 
-              question: q,
+            type:
+              messageMode.value
+                ? "message"
+                : "question",
 
-              messageMode:
-                messageMode.value ||
-                null,
+            question: q,
 
-              langue:
-                langue.value.trim()
-            })
+            messageMode:
+              messageMode.value ||
+              null,
+
+            langue:
+              langue.value.trim()
+
+          })
+
         }
       );
 
     const d =
       await r.json();
 
-    if (
-      !r.ok ||
-      !d.success
-    ) {
+    if (!r.ok || !d.success) {
 
       throw new Error(
         d.error ||
@@ -1494,7 +1569,7 @@ async function analyserTexte() {
     status.textContent =
       "Analyse terminée.";
 
-  } catch (e) {
+  } catch(e) {
 
     status.textContent =
       e.message ||
@@ -1505,7 +1580,7 @@ async function analyserTexte() {
 }
 
 /* =========================
-   LISTE
+   LISTES
 ========================= */
 
 function liste(a) {
@@ -1516,37 +1591,43 @@ function liste(a) {
   ) {
 
     return (
-      "<p>Aucun élément précis à présenter à ce stade.</p>"
+      "<p>" +
+      "Aucun élément précis à présenter à ce stade." +
+      "</p>"
     );
 
   }
 
   return (
     "<ul>" +
-    a.map(function(x) {
 
-      const v =
-        typeof x === "string"
-          ? x
-          : (
-              x.texte ||
-              JSON.stringify(x)
-            );
+    a.map(
+      function(x) {
 
-      return (
-        "<li>" +
-        esc(v) +
-        "</li>"
-      );
+        const v =
+          typeof x === "string"
+            ? x
+            : (
+                x.texte ||
+                JSON.stringify(x)
+              );
 
-    }).join("") +
+        return (
+          "<li>" +
+          esc(v) +
+          "</li>"
+        );
+
+      }
+    ).join("") +
+
     "</ul>"
   );
 
 }
 
 /* =========================
-   AFFICHAGE RESULTAT
+   AFFICHAGE
 ========================= */
 
 function afficher(d) {
@@ -1596,12 +1677,14 @@ function afficher(d) {
   h +=
     "<div class='result-card'>" +
     "<h2>📄 Documents</h2>" +
+
     (
       d.documents &&
       d.documents.length
         ? liste(d.documents)
         : "<p>Aucun document précis à présenter à ce stade.</p>"
     ) +
+
     "</div>";
 
   h +=
@@ -1616,48 +1699,49 @@ function afficher(d) {
     "<div class='result-card'>" +
     "<h2>📚 Sources consultées</h2>";
 
-  (d.sources || [])
-    .forEach(function(s) {
+  (d.sources || []).forEach(
+    function(s) {
 
       h +=
         "<div class='source'>" +
+
         esc(s.organisme) +
         " — " +
         esc(s.titre) +
+
         "<br>" +
+
         "<a href='" +
         esc(s.url) +
         "' target='_blank' rel='noopener noreferrer'>" +
+
         "Consulter la source officielle ↗" +
+
         "</a>" +
+
         "</div>";
 
-    });
+    }
+  );
 
-  h +=
-    "</div>";
+  h += "</div>";
 
-  result.innerHTML =
-    h;
+  result.innerHTML = h;
 
 }
 
 /* =========================
-   ANALYSER
+   ANALYSE
 ========================= */
 
-document
-  .getElementById("analyser")
-  .onclick =
+document.getElementById("analyser").onclick =
   analyserTexte;
 
 /* =========================
    IMAGE
 ========================= */
 
-document
-  .getElementById("photo")
-  .onclick =
+document.getElementById("photo").onclick =
   function() {
 
     imageInput.click();
@@ -1684,9 +1768,7 @@ imageInput.onchange =
 
     }
 
-    if (
-      f.size > 5500000
-    ) {
+    if (f.size > 5500000) {
 
       status.textContent =
         "Image trop volumineuse.";
@@ -1717,14 +1799,15 @@ imageInput.onchange =
                     "application/json"
                 },
 
-                body:
-                  JSON.stringify({
-                    image:
-                      rd.result,
+                body: JSON.stringify({
 
-                    demande:
-                      question.value.trim()
-                  })
+                  image: rd.result,
+
+                  demande:
+                    question.value.trim()
+
+                })
+
               }
             );
 
@@ -1744,11 +1827,12 @@ imageInput.onchange =
           }
 
           question.value =
-            d.texte || "";
+            d.texte ||
+            "";
 
           await analyserTexte();
 
-        } catch (e) {
+        } catch(e) {
 
           status.textContent =
             e.message ||
@@ -1766,9 +1850,7 @@ imageInput.onchange =
    MICROPHONE
 ========================= */
 
-document
-  .getElementById("micro")
-  .onclick =
+document.getElementById("micro").onclick =
   async function() {
 
     if (
@@ -1797,17 +1879,16 @@ document
     try {
 
       const stream =
-        await navigator.mediaDevices
-          .getUserMedia({
+        await navigator.mediaDevices.getUserMedia(
+          {
             audio: true
-          });
+          }
+        );
 
       audioChunks = [];
 
       mediaRecorder =
-        new MediaRecorder(
-          stream
-        );
+        new MediaRecorder(stream);
 
       recording = true;
 
@@ -1821,11 +1902,7 @@ document
         function(e) {
 
           if (e.data.size) {
-
-            audioChunks.push(
-              e.data
-            );
-
+            audioChunks.push(e.data);
           }
 
         };
@@ -1835,10 +1912,9 @@ document
 
           recording = false;
 
-          document
-            .getElementById("micro")
+          document.getElementById("micro")
             .textContent =
-            "🎙️ Parler";
+              "🎙️ Parler";
 
           stream
             .getTracks()
@@ -1879,11 +1955,8 @@ document
 
                       body:
                         JSON.stringify({
-                          audio:
-                            rd.result,
-
-                          langue:
-                            "fr"
+                          audio: rd.result,
+                          langue: "fr"
                         })
                     }
                   );
@@ -1904,11 +1977,12 @@ document
                 }
 
                 question.value =
-                  d.text || "";
+                  d.text ||
+                  "";
 
                 await analyserTexte();
 
-              } catch (e) {
+              } catch(e) {
 
                 status.textContent =
                   e.message ||
@@ -1918,15 +1992,13 @@ document
 
             };
 
-          rd.readAsDataURL(
-            blob
-          );
+          rd.readAsDataURL(blob);
 
         };
 
       mediaRecorder.start();
 
-    } catch (e) {
+    } catch(e) {
 
       status.textContent =
         "L'accès au microphone a été refusé ou est indisponible.";
@@ -1935,16 +2007,11 @@ document
 
   };
 
-/* =========================
-   DEMARRAGE
-========================= */
-
 showHome();
 
 </script>
 
 </body>
-
 </html>`;
 }
 
@@ -1985,8 +2052,7 @@ async function handleAnalyze(
     return jsonResponse(
       {
         success: false,
-        error:
-          "JSON invalide."
+        error: "JSON invalide."
       },
       400
     );
@@ -2004,8 +2070,7 @@ async function handleAnalyze(
     return jsonResponse(
       {
         success: false,
-        error:
-          "Question vide."
+        error: "Question vide."
       },
       400
     );
@@ -2036,7 +2101,7 @@ async function handleAnalyze(
       )
     );
 
-  } catch (e) {
+  } catch(e) {
 
     return jsonResponse(
       {
@@ -2073,8 +2138,7 @@ async function handleTranscribe(
     return jsonResponse(
       {
         success: false,
-        error:
-          "JSON invalide."
+        error: "JSON invalide."
       },
       400
     );
@@ -2117,7 +2181,7 @@ async function handleTranscribe(
       }
     );
 
-  } catch (e) {
+  } catch(e) {
 
     return jsonResponse(
       {
@@ -2154,8 +2218,7 @@ async function handleImage(
     return jsonResponse(
       {
         success: false,
-        error:
-          "JSON invalide."
+        error: "JSON invalide."
       },
       400
     );
@@ -2175,8 +2238,7 @@ async function handleImage(
       return jsonResponse(
         {
           success: false,
-          error:
-            "Image absente."
+          error: "Image absente."
         },
         400
       );
@@ -2201,14 +2263,14 @@ async function handleImage(
       }
     );
 
-  } catch (e) {
+  } catch(e) {
 
     return jsonResponse(
       {
         success: false,
         error:
           e.message ||
-          "Erreur image."
+          "Erreur."
       },
       500
     );
@@ -2316,22 +2378,15 @@ export default {
       Object.entries(
         securityHeaders()
       ).forEach(
-        function(entry) {
-
-          h.set(
-            entry[0],
-            entry[1]
-          );
-
+        ([k, v]) => {
+          h.set(k, v);
         }
       );
 
       return new Response(
         r.body,
         {
-          status:
-            r.status,
-
+          status: r.status,
           headers: h
         }
       );
@@ -2395,8 +2450,7 @@ export default {
     }
 
     if (
-      url.pathname ===
-      "/"
+      url.pathname === "/"
     ) {
 
       return new Response(
