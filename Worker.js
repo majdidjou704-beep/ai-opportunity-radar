@@ -520,7 +520,7 @@ function buildNextAction(
     !context.statut
   ) {
 
-    return:
+    return
       "Préciser exactement l'activité et les prestations envisagées, puis comparer les formes juridiques adaptées.";
   }
 
@@ -529,23 +529,23 @@ function buildNextAction(
     context.statut
   ) {
 
-    return:
+    return
       "Vérifier les formalités officielles correspondant exactement à la forme juridique et à l'activité choisies.";
   }
 
   if (context.message) {
 
-    return:
+    return
       "Vérifier que la réponse préparée correspond bien au contenu et au contexte du message.";
   }
 
   if (context.migrant) {
 
-    return:
+    return
       "Préciser le pays, votre situation actuelle et votre objectif afin d'identifier la procédure ou l'orientation adaptée.";
   }
 
-  return:
+  return
     "Préciser votre situation et votre objectif afin de déterminer la prochaine action utile.";
 }
 
