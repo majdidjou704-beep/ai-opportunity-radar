@@ -1,272 +1,262 @@
-const MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
-const MODEL_VISION = "@cf/meta/llama-3.2-11b-vision-instruct";
-const MODEL_AUDIO = "@cf/openai/whisper-large-v3-turbo";
-const VERSION = "9.0";
+const MODEL="@cf/meta/llama-3.1-8b-instruct-fast";
+const MODEL_VISION="@cf/meta/llama-3.2-11b-vision-instruct";
+const MODEL_AUDIO="@cf/openai/whisper-large-v3-turbo";
+const VERSION="9.3";
 
-const LIMITS = {
-  question: 12000,
-  image: 5500000,
-  audio: 12000000,
-  historique: 24000
+const LIMITS={
+  question:12000,
+  image:5500000,
+  audio:12000000,
+  historique:24000
 };
 
-/* =========================
-   SOURCES OFFICIELLES
-========================= */
+const RATE_LIMITS={
+  analyze:{windowMs:60000,maxRequests:20},
+  image:{windowMs:60000,maxRequests:6},
+  transcribe:{windowMs:60000,maxRequests:6}
+};
 
-const SOURCES = {
-  statut: {
-    id: "statut",
-    titre: "Trouver le statut juridique adapté à son activité",
-    organisme: "Service Public Entreprendre",
-    url: "https://entreprendre.service-public.fr/vosdroits/R18323",
-    preuves: [
-      "Le simulateur permet de trouver le statut juridique adapté à son activité.",
-      "Pour utiliser le simulateur, il faut notamment renseigner l'activité envisagée et une estimation du chiffre d'affaires.",
-      "Le simulateur permet de connaître les formes juridiques possibles pour l'activité.",
-      "Le simulateur permet de comparer notamment les revenus, la couverture sociale ainsi que la gestion comptable et juridique."
-    ]
-  },
+const RATE_STORE_MAX_KEYS=5000;
+const rateStore=new Map();
 
-  creation_ei: {
-    id: "creation_ei",
-    titre: "Création d'une entreprise individuelle",
-    organisme: "Service Public Entreprendre",
-    url: "https://entreprendre.service-public.fr/vosdroits/F36763",
-    preuves: [
-      "La création d'une entreprise individuelle comporte notamment une formalité d'immatriculation et une déclaration d'activité.",
-      "La demande d'immatriculation d'une entreprise individuelle se fait sur le Guichet des formalités des entreprises.",
-      "Après son immatriculation, l'entreprise individuelle est inscrite au Registre national des entreprises.",
-      "Une activité réglementée peut nécessiter des justificatifs particuliers, notamment une autorisation, un diplôme ou un titre."
-    ]
-  },
-
-  guichet: {
-    id: "guichet",
-    titre: "Formalités d'immatriculation des entreprises",
-    organisme: "Service Public Entreprendre",
-    url: "https://entreprendre.service-public.fr/vosdroits/F23571",
-    preuves: [
-      "Les formalités de création d'une entreprise sont réalisées par l'intermédiaire du Guichet des formalités des entreprises."
-    ]
-  },
-
-  anef: {
-    id: "anef",
-    titre: "Faire une demande en ligne pour un titre de séjour ou un changement de situation",
-    organisme: "Service-Public.fr / ANEF",
-    url: "https://www.service-public.fr/particuliers/vosdroits/R59398",
-    preuves: [
-      "L'ANEF permet de réaliser certaines démarches concernant les titres de séjour et certains changements de situation.",
+const SOURCES={
+  anef:{
+    id:"anef",
+    titre:"Faire une demande en ligne pour un titre de séjour ou un changement de situation",
+    organisme:"Service-Public.fr / ANEF",
+    url:"https://www.service-public.fr/particuliers/vosdroits/R59398",
+    preuves:[
+      "L’ANEF permet de réaliser certaines démarches concernant les titres de séjour et certains changements de situation.",
       "La démarche applicable dépend du type de demande et de la situation de la personne."
     ]
   },
 
-  travail_etranger: {
-    id: "travail_etranger",
-    titre: "Autorisation de travail d'un salarié étranger en France",
-    organisme: "Service-Public.fr",
-    url: "https://www.service-public.fr/particuliers/vosdroits/F2728",
-    preuves: [
+  travail_etranger:{
+    id:"travail_etranger",
+    titre:"Autorisation de travail d'un salarié étranger en France",
+    organisme:"Service-Public.fr",
+    url:"https://www.service-public.fr/particuliers/vosdroits/F2728",
+    preuves:[
       "Les règles de travail dépendent notamment du document de séjour détenu et de la situation de la personne.",
       "Dans certaines situations, un récépissé peut comporter une mention relative à l'autorisation de travailler."
+    ]
+  },
+
+  statut:{
+    id:"statut",
+    titre:"Trouver le statut juridique adapté à son activité",
+    organisme:"Service Public Entreprendre",
+    url:"https://entreprendre.service-public.fr/vosdroits/R18323",
+    preuves:[
+      "Le simulateur permet de trouver le statut juridique adapté à son activité.",
+      "Il permet de comparer les formes juridiques possibles selon le projet."
+    ]
+  },
+
+  guichet:{
+    id:"guichet",
+    titre:"Formalités d'immatriculation des entreprises",
+    organisme:"Service Public Entreprendre",
+    url:"https://entreprendre.service-public.fr/vosdroits/F23571",
+    preuves:[
+      "Les formalités de création d'une entreprise sont réalisées par l'intermédiaire du Guichet des formalités des entreprises."
     ]
   }
 };
 
-/* =========================
-   OUTILS DE BASE
-========================= */
-
-function texte(v, max = 10000) {
-  if (v === null || v === undefined) return "";
-
-  return String(v)
-    .replace(/\u0000/g, "")
-    .replace(/\r/g, "")
-    .trim()
-    .slice(0, max);
+function texte(v,max=10000){
+  return v==null
+    ?""
+    :String(v)
+      .replace(/\u0000/g,"")
+      .replace(/\r/g,"")
+      .trim()
+      .slice(0,max);
 }
 
-function unique(a) {
-  return [...new Set((a || []).filter(Boolean))];
+function unique(a){
+  return [...new Set((a||[]).filter(Boolean))];
 }
 
-function escapeHTML(v) {
-  return texte(v, 50000)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+function escapeHTML(v){
+  return texte(v,50000)
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/\"/g,"&quot;")
+    .replace(/'/g,"&#039;");
 }
 
-function jsonResponse(data, status = 200) {
+function securityHeaders(){
+  return{
+    "X-Content-Type-Options":"nosniff",
+    "X-Frame-Options":"DENY",
+    "Referrer-Policy":"strict-origin-when-cross-origin",
+    "Permissions-Policy":"camera=(self), microphone=(self), geolocation=()",
+    "Cache-Control":"no-store",
+    "Content-Security-Policy":
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"
+  };
+}
+
+function jsonResponse(data,status=200){
   return new Response(
     JSON.stringify(data),
     {
       status,
-      headers: {
-        "content-type": "application/json; charset=utf-8",
-        "cache-control": "no-store"
+      headers:{
+        ...securityHeaders(),
+        "content-type":"application/json; charset=utf-8"
       }
     }
   );
 }
 
-function securityHeaders() {
-  return {
-    "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
-    "Referrer-Policy": "strict-origin-when-cross-origin",
-    "Permissions-Policy": "camera=(self), microphone=(self), geolocation=()",
-    "Cache-Control": "no-store"
-  };
+function contentLengthTooLarge(r,max){
+  const n=Number(r.headers.get("content-length")||0);
+  return Number.isFinite(n)&&n>max;
 }
 
-/* =========================
-   PROTECTION API
-   Protection légère par IP.
-   Elle protège contre les abus simples.
-   Pour le lancement public à grande échelle,
-   un système distribué devra être ajouté.
-========================= */
-
-const RATE_LIMIT = {
-  windowMs: 60 * 1000,
-  maxRequests: 30
-};
-
-const rateStore = new Map();
-
-function getClientKey(request) {
-  return (
-    request.headers.get("CF-Connecting-IP") ||
-    request.headers.get("x-forwarded-for") ||
-    "unknown"
-  ).split(",")[0].trim();
+function clientKey(r){
+  return r.headers.get("CF-Connecting-IP")||"anonymous";
 }
 
-function rateLimit(request) {
-  const key = getClientKey(request);
-  const now = Date.now();
+function cleanRateStore(now){
+  if(rateStore.size<=RATE_STORE_MAX_KEYS)return;
 
-  let entry = rateStore.get(key);
+  for(const [key,times] of rateStore){
+    const type=String(key).split(":")[0];
+    const config=RATE_LIMITS[type];
 
-  if (!entry || now - entry.start > RATE_LIMIT.windowMs) {
-    entry = {
-      start: now,
-      count: 0
-    };
+    if(!config){
+      rateStore.delete(key);
+      continue;
+    }
+
+    const recent=times.filter(
+      t=>now-t<config.windowMs
+    );
+
+    if(recent.length){
+      rateStore.set(key,recent);
+    }else{
+      rateStore.delete(key);
+    }
+
+    if(rateStore.size<=RATE_STORE_MAX_KEYS)break;
   }
+}
 
-  entry.count += 1;
-  rateStore.set(key, entry);
+function rateLimit(r,type){
+  const c=RATE_LIMITS[type];
+  if(!c)return true;
 
-  if (entry.count > RATE_LIMIT.maxRequests) {
+  const now=Date.now();
+  cleanRateStore(now);
+
+  const k=type+":"+clientKey(r);
+
+  const a=(rateStore.get(k)||[])
+    .filter(t=>now-t<c.windowMs);
+
+  if(a.length>=c.maxRequests){
+    rateStore.set(k,a);
     return false;
   }
+
+  a.push(now);
+  rateStore.set(k,a);
 
   return true;
 }
 
-/* =========================
-   PARCOURS
-========================= */
-
-const PARCOURS = {
-  migrant: {
-    titre: "🌍 Migrant / Nouveau arrivant",
-    description: "Situation administrative, travail, logement, droits et démarches.",
-    situations: [
-      ["arrive", "🆕 Je viens d'arriver"],
-      ["administratif", "🪪 Ma situation administrative"],
-      ["emploi", "💼 Je cherche un emploi"],
-      ["logement", "🏠 Je cherche un logement"],
-      ["document", "📄 Je ne comprends pas un document"],
-      ["droits", "⚖️ Je veux connaître mes droits"],
-      ["social", "🤝 Je cherche une aide sociale"],
-      ["etudes", "🎓 Je veux étudier"],
-      ["famille", "👨‍👩‍👧 Famille / regroupement familial"],
-      ["asile", "🛂 Asile / protection"],
-      ["irreguliere", "❓ Situation irrégulière"],
-      ["autre", "❓ Autre situation"]
+const PARCOURS={
+  migrant:{
+    titre:"🌍 Migrant / Nouveau arrivant",
+    description:"Situation administrative, travail, logement, droits et démarches.",
+    situations:[
+      ["arrive","🆕 Je viens d'arriver"],
+      ["administratif","🪪 Ma situation administrative"],
+      ["emploi","💼 Je cherche un emploi"],
+      ["logement","🏠 Je cherche un logement"],
+      ["document","📄 Je ne comprends pas un document"],
+      ["droits","⚖️ Je veux connaître mes droits"],
+      ["social","🤝 Je cherche une aide sociale"],
+      ["etudes","🎓 Je veux étudier"],
+      ["famille","👨‍👩‍👧 Famille / regroupement familial"],
+      ["asile","🛂 Asile / protection"],
+      ["irreguliere","❓ Situation irrégulière"],
+      ["autre","❓ Autre situation"]
     ]
   },
 
-  particulier: {
-    titre: "👤 Particulier / Résident",
-    description: "Vie quotidienne, droits, démarches et problèmes personnels.",
-    situations: [
-      ["administratif", "🧾 Démarches administratives"],
-      ["emploi", "💼 Travail / emploi"],
-      ["logement", "🏠 Logement"],
-      ["finance", "💰 Impôts / finances"],
-      ["social", "🤝 Aides sociales"],
-      ["juridique", "⚖️ Droits / problème juridique"],
-      ["message", "✉️ Lettre / email / message"],
-      ["document", "📷 Comprendre un document"],
-      ["opportunite", "🎯 Trouver une opportunité"],
-      ["autre", "❓ Autre"]
+  particulier:{
+    titre:"👤 Particulier / Résident",
+    description:"Vie quotidienne, droits, démarches et problèmes personnels.",
+    situations:[
+      ["administratif","🧾 Démarches administratives"],
+      ["emploi","💼 Travail / emploi"],
+      ["logement","🏠 Logement"],
+      ["finance","💰 Impôts / finances"],
+      ["social","🤝 Aides sociales"],
+      ["juridique","⚖️ Droits / problème juridique"],
+      ["message","✉️ Lettre / email / message"],
+      ["document","📷 Comprendre un document"],
+      ["opportunite","🎯 Trouver une opportunité"],
+      ["autre","❓ Autre"]
     ]
   },
 
-  emploi: {
-    titre: "💼 Chercheur d'emploi",
-    description: "Recherche d'emploi, candidature, CV et entretien.",
-    situations: [
-      ["offres", "🔎 Trouver des offres"],
-      ["cv", "📄 Créer / améliorer mon CV"],
-      ["candidature", "✉️ Candidature / lettre de motivation"],
-      ["annonce", "📩 Répondre à une annonce"],
-      ["entretien", "🎤 Préparer un entretien"],
-      ["entreprise", "🏢 Trouver une entreprise"],
-      ["adapte", "♿ Rechercher un emploi adapté à ma situation"],
-      ["comparaison", "🎯 Comparer plusieurs offres"],
-      ["autre", "❓ Autre"]
+  emploi:{
+    titre:"💼 Chercheur d'emploi",
+    description:"Recherche d'emploi, candidature, CV et entretien.",
+    situations:[
+      ["offres","🔎 Trouver des offres"],
+      ["cv","📄 Créer / améliorer mon CV"],
+      ["candidature","✉️ Candidature / lettre de motivation"],
+      ["annonce","📩 Répondre à une annonce"],
+      ["entretien","🎤 Préparer un entretien"],
+      ["entreprise","🏢 Trouver une entreprise"],
+      ["adapte","♿ Rechercher un emploi adapté à ma situation"],
+      ["comparaison","🎯 Comparer plusieurs offres"],
+      ["autre","❓ Autre"]
     ]
   },
 
-  entreprise: {
-    titre: "🏢 Entreprise / Entrepreneur",
-    description: "Créer, gérer, développer et trouver des opportunités.",
-    situations: [
-      ["creation", "🚀 Créer mon entreprise"],
-      ["developpement", "📈 Développer mon activité"],
-      ["fiscalite", "💰 Fiscalité"],
-      ["comptabilite", "🧾 Comptabilité / obligations"],
-      ["salaries", "👥 Salariés"],
-      ["juridique", "⚖️ Problème juridique"],
-      ["fournisseurs", "🔎 Trouver des fournisseurs"],
-      ["offres", "💶 Comparer des offres / prix"],
-      ["opportunite", "🎯 Trouver des opportunités"],
-      ["ia", "🤖 Trouver une solution IA"],
-      ["autre", "❓ Autre"]
+  entreprise:{
+    titre:"🏢 Entreprise / Entrepreneur",
+    description:"Créer, gérer, développer et trouver des opportunités.",
+    situations:[
+      ["creation","🚀 Créer mon entreprise"],
+      ["developpement","📈 Développer mon activité"],
+      ["fiscalite","💰 Fiscalité"],
+      ["comptabilite","🧾 Comptabilité / obligations"],
+      ["salaries","👥 Salariés"],
+      ["juridique","⚖️ Problème juridique"],
+      ["fournisseurs","🔎 Trouver des fournisseurs"],
+      ["offres","💶 Comparer des offres / prix"],
+      ["opportunite","🎯 Trouver des opportunités"],
+      ["ia","🤖 Trouver une solution IA"],
+      ["autre","❓ Autre"]
     ]
   }
 };
 
-/* =========================
-   DETECTION DU CONTEXTE
-========================= */
+function detectContext(q){
+  const s=texte(q,12000).toLowerCase();
 
-function detectContext(q) {
-  const s = texte(q, LIMITS.question).toLowerCase();
-
-  return {
-    nettoyage: /nettoyage|ménage|menage|propreté|proprete|cleaning/.test(s),
-
+  return{
     entreprise:
-      /créer|creer|création|creation|lancer|ouvrir|entreprise|société|societe|activité|activite/.test(s),
+      /créer (une )?entreprise|creer (une )?entreprise|création d.?entreprise|creation d.?entreprise|\bentreprise\b|société|societe|entrepreneur|micro.?entreprise|auto.?entrepreneur|indépendant|independant|lancer mon activité|lancer une activité|ouvrir mon entreprise|ouvrir une entreprise/.test(s),
 
     statut:
-      /statut|forme juridique|micro|micro-entreprise|microentreprise|indépendant|independant|\bei\b|entreprise individuelle/.test(s),
+      /statut juridique|forme juridique|micro.?entreprise|indépendant|independant|\bei\b|entreprise individuelle/.test(s),
 
     travail:
       /travail|emploi|salarié|salarie|contrat|employeur|licenciement|salaire/.test(s),
 
     social:
-      /caf|rsa|aide|social|allocation|droits sociaux/.test(s),
+      /caf|rsa|aide sociale|allocation|droits sociaux/.test(s),
 
     administratif:
       /démarche|demarche|administratif|administrative|préfecture|prefecture|mairie|document officiel/.test(s),
@@ -283,620 +273,560 @@ function detectContext(q) {
     recepisse:
       /récépissé|recepisse/.test(s),
 
-    titreSejour:
-      /titre de séjour|titre de sejour|carte de séjour|carte de sejour/.test(s),
-
-    anef:
-      /\banef\b/.test(s),
-
-    renouvellement:
-      /renouvellement|renouveler|expire|expiration|fin de validité|fin de validite/.test(s),
-
-    /*
-      IMPORTANT :
-      "je viens d'arriver" n'est PAS considéré comme
-      une première demande.
-    */
-    premiereDemande:
-      /première demande|premiere demande|premier titre|première carte|premiere carte/.test(s),
-
-    asile:
-      /asile|demandeur d'asile|demandeuse d'asile/.test(s),
-
-    message: false
+    message:false
   };
 }
 
-/* =========================
-   EXTRACTION DES INFORMATIONS
-========================= */
+function extraireInformations(q){
+  const l=texte(q,12000).toLowerCase();
+  const i=[];
 
-function extraireInformations(q) {
-  const s = texte(q, LIMITS.question);
-  const l = s.toLowerCase();
-
-  const informations = [];
-
-  const ajouter = (type, valeur) => {
-    if (
-      valeur &&
-      !informations.some(
-        x => x.type === type
-      )
-    ) {
-      informations.push({
-        type,
-        valeur
+  const add=(t,v)=>{
+    if(v&&!i.some(x=>x.type===t)){
+      i.push({
+        type:t,
+        valeur:v
       });
     }
   };
 
-  const nationalites = {
-    tunisien: "tunisienne",
-    tunisienne: "tunisienne",
-    algérien: "algérienne",
-    algerien: "algérienne",
-    algérienne: "algérienne",
-    marocain: "marocaine",
-    marocaine: "marocaine",
-    sénégalais: "sénégalaise",
-    senegalais: "sénégalaise",
-    ivoirien: "ivoirienne",
-    ivoirienne: "ivoirienne"
+  const nationalites={
+    tunisien:"tunisienne",
+    tunisienne:"tunisienne",
+    algérien:"algérienne",
+    algerien:"algérienne",
+    algérienne:"algérienne",
+    marocain:"marocaine",
+    marocaine:"marocaine",
+    sénégalais:"sénégalaise",
+    senegalais:"sénégalaise",
+    ivoirien:"ivoirienne",
+    ivoirienne:"ivoirienne",
+    malien:"malienne",
+    malienne:"malienne",
+    guinéen:"guinéenne",
+    guineen:"guinéenne",
+    congolais:"congolaise",
+    congolaise:"congolaise",
+    camerounais:"camerounaise",
+    camerounaise:"camerounaise",
+    comorien:"comorienne",
+    comorienne:"comorienne"
   };
 
-  for (const [mot, forme] of Object.entries(nationalites)) {
-    if (
-      new RegExp("\\b" + mot + "\\b", "i").test(l)
-    ) {
-      ajouter("nationalité", forme);
+  for(const[k,v]of Object.entries(nationalites)){
+    if(new RegExp("\\b"+k+"\\b","i").test(l)){
+      add("nationalité",v);
       break;
     }
   }
 
-  const dateMatch = l.match(
-    /(?:depuis|en|à partir de|a partir de)\s+(?:début|debut|fin|mi-)?\s*(20\d{2})/i
+  const dm=l.match(
+    /(?:je\s+)?(?:suis\s+)?(?:arrivé|arrive|arrivée|arrivee|entré|entree)\s+(?:en\s+france\s+)?(?:depuis\s+)?(?:le\s+)?(?:début|debut|fin|mi-)?\s*20\d{2}/i
   );
 
-  if (dateMatch) {
-    ajouter(
+  if(dm){
+    add(
       "arrivée en France",
-      dateMatch[0].trim()
+      dm[0].trim()
     );
   }
 
-  const mois = l.match(
+  const dm2=l.match(
+    /(?:depuis|à partir de|a partir de)\s+(?:le\s+)?(?:début|debut|fin|mi-)?\s*20\d{2}/i
+  );
+
+  if(dm2&&!i.some(x=>x.type==="arrivée en France")){
+    add(
+      "arrivée en France",
+      dm2[0].trim()
+    );
+  }
+
+  const mois=l.match(
     /(?:janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre)\s+20\d{2}/i
   );
 
-  if (mois) {
-    ajouter(
+  if(
+    mois&&
+    /arriv|entrée|entree|depuis/.test(l)
+  ){
+    add(
       "date d'arrivée",
       mois[0]
     );
   }
 
-  if (
-    /\b(visa|visa long séjour|visa long sejour)\b/.test(l)
-  ) {
-    ajouter(
+  if(/\bvisa\b/.test(l)){
+    add(
       "visa",
       "présence d'un visa mentionnée"
     );
   }
 
-  if (
-    /\b(je travaille|je travaille actuellement|je suis salarié|je suis salarie|j'ai un travail|j ai un travail|emploi actuel)\b/.test(l)
-  ) {
-    ajouter(
+  if(
+    /\b(je travaille|je suis salarié|je suis salarie|j'ai un travail|j ai un travail|je travaille actuellement)\b/.test(l)
+  ){
+    add(
       "travail",
       "travail actuel mentionné"
     );
   }
 
-  if (
-    /\b(hébergé|heberge|hébergée|hebergement|hébergement|chez mon frère|chez mon frere|chez ma sœur|chez ma soeur)\b/.test(l)
-  ) {
-    ajouter(
+  if(
+    /\b(hébergé|heberge|hébergement|hebergement|chez mon frère|chez mon frere|chez ma soeur|chez ma sœur)\b/.test(l)
+  ){
+    add(
       "logement",
       "hébergement mentionné"
     );
   }
 
-  /*
-    Détection explicite du dépôt.
-    On distingue :
-    - oui
-    - non
-    - incertain
-  */
-
-  const affirmationDepot =
-    /\b(oui|j'ai déjà déposé|j ai deja depose|déjà déposé|deja depose|demande déposée|demande deposee|j'ai déposé|j ai depose)\b/.test(l);
-
-  const negationDepot =
-    /\b(non|pas encore|jamais|je n'ai pas déposé|je n ai pas depose|aucune demande déposée|aucune demande deposee)\b/.test(l);
-
-  const incertitudeDepot =
-    /\b(je ne sais pas|je sais pas|je ne suis pas sûr|je ne suis pas sure|je ne suis pas certain|je ne suis pas certaine|je ne me souviens pas|peut-être|peut etre)\b/.test(l);
-
-  if (
-    incertitudeDepot &&
-    /\b(déposé|depose|demande|titre de séjour|titre de sejour|anef|préfecture|prefecture)\b/.test(l)
-  ) {
-    ajouter(
-      "dépôt",
-      "le dépôt de la demande n'est pas confirmé"
-    );
-  } else if (
-    affirmationDepot &&
-    /\b(anef|préfecture|prefecture|titre de séjour|titre de sejour|demande|dossier)\b/.test(l)
-  ) {
-    ajouter(
+  if(
+    /^\s*(oui|yes|ouais)\s*[.!?]*$/i.test(l)||
+    /\b(j'ai déjà déposé|j ai deja depose|déjà déposé|deja depose|demande déposée|demande deposee)\b/.test(l)
+  ){
+    add(
       "dépôt",
       "une demande déjà déposée est mentionnée"
     );
-  } else if (
-    negationDepot &&
-    /\b(déposé|depose|demande|titre de séjour|titre de sejour|anef|préfecture|prefecture)\b/.test(l)
-  ) {
-    ajouter(
+  }
+
+  if(
+    /^\s*(non|pas encore|jamais)\s*[.!?]*$/i.test(l)||
+    /\b(je n'ai pas déposé|je n ai pas depose|aucune demande|jamais déposé|jamais depose)\b/.test(l)
+  ){
+    add(
       "dépôt",
-      "aucun dépôt n'est confirmé"
+      "aucun dépôt n'est mentionné ou le dépôt est nié"
     );
   }
 
-  if (
-    /\b(travail|emploi|salarié|salarie)\b/.test(l) &&
-    /\b(titre de séjour|titre de sejour|séjour|sejour)\b/.test(l)
-  ) {
-    ajouter(
+  if(
+    /\b(première demande|premiere demande|premier titre|première carte|premiere carte|premier séjour|premier sejour)\b/.test(l)
+  ){
+    add(
+      "procédure",
+      "première demande"
+    );
+  }
+  else if(
+    /\b(renouvellement|renouveler|renouvelle)\b/.test(l)
+  ){
+    add(
+      "procédure",
+      "renouvellement"
+    );
+  }
+  else if(
+    /\b(changement de situation|changement de statut|changer de statut)\b/.test(l)
+  ){
+    add(
+      "procédure",
+      "changement de situation / statut"
+    );
+  }
+  else if(
+    /\b(demande d'asile|demande d asile|asile|protection internationale)\b/.test(l)
+  ){
+    add(
+      "procédure",
+      "demande d'asile / protection"
+    );
+  }
+
+  if(
+    /^\s*(travail|emploi|salarié|salarie)\s*[.!?]*$/i.test(l)||
+    (
+      /\b(travail|emploi|salarié|salarie)\b/.test(l)&&
+      /\b(titre de séjour|titre de sejour|séjour|sejour|visa|demande)\b/.test(l)
+    )
+  ){
+    add(
       "motif",
       "travail"
     );
   }
 
-  if (
+  if(
+    /^\s*(études|etudes|étudier|etudier|étudiant|etudiant)\s*[.!?]*$/i.test(l)||
     /\b(études|etudes|étudier|etudier|étudiant|etudiant)\b/.test(l)
-  ) {
-    ajouter(
+  ){
+    add(
       "motif",
       "études"
     );
   }
 
-  if (
+  if(
+    /^\s*(famille|conjoint|époux|epoux|épouse|epouse)\s*[.!?]*$/i.test(l)||
     /\b(famille|conjoint|époux|epoux|épouse|epouse|regroupement familial)\b/.test(l)
-  ) {
-    ajouter(
+  ){
+    add(
       "motif",
       "famille"
     );
   }
 
-  if (
-    /\b(asile|protection internationale)\b/.test(l)
-  ) {
-    ajouter(
+  if(
+    /^\s*(asile|protection internationale)\s*[.!?]*$/i.test(l)||
+    /\b(asile|protection internationale|demandeur d'asile|demandeuse d'asile)\b/.test(l)
+  ){
+    add(
       "motif",
       "asile / protection"
     );
   }
 
-  if (
+  if(
     /\b(démarches de séjour|demarches de sejour|démarche de séjour|demarche de sejour|titre de séjour|titre de sejour|carte de séjour|carte de sejour|récépissé|recepisse)\b/.test(l)
-  ) {
-    ajouter(
+  ){
+    add(
       "objectif",
       "démarches liées au séjour"
     );
   }
 
-  return informations;
+  return i;
 }
 
-/* =========================
-   RESUME
-========================= */
+function etatDepot(v){
+  const s=texte(v,12000)
+    .toLowerCase()
+    .trim()
+    .replace(/[.!?]+$/g,"");
 
-function resumeSituation(q, options = {}) {
-  const infos = extraireInformations(
-    [
-      q,
-      options.reponseUtilisateur,
-      options.historique
-    ]
+  if(
+    /^(oui|yes|ouais)$/.test(s)||
+    /\b(j'ai déjà déposé|j ai deja depose|déjà déposé|deja depose|demande déposée|demande deposee)\b/.test(s)
+  ){
+    return"oui";
+  }
+
+  if(
+    /^(non|pas encore|jamais)$/.test(s)||
+    /\b(je n'ai pas déposé|je n ai pas depose|aucune demande|jamais déposé|jamais depose)\b/.test(s)
+  ){
+    return"non";
+  }
+
+  return"inconnu";
+}
+
+function etatDepotDepuisContexte(base,rep,infos){
+  let depot=etatDepot(rep);
+
+  if(depot!=="inconnu"){
+    return depot;
+  }
+
+  depot=etatDepot(base);
+
+  if(depot!=="inconnu"){
+    return depot;
+  }
+
+  const info=infos.find(
+    x=>x.type==="dépôt"
+  );
+
+  if(info){
+    if(/aucun|nié|nie/.test(info.valeur)){
+      return"non";
+    }
+
+    if(/déjà|déposée|deposee/.test(info.valeur)){
+      return"oui";
+    }
+  }
+
+  return"inconnu";
+}
+
+function prochaineQuestion(q,c,o={}){
+  const base=texte(
+    o.questionInitiale||q,
+    12000
+  ).toLowerCase();
+
+  const rep=texte(
+    o.reponseUtilisateur||o.reponse,
+    12000
+  ).toLowerCase();
+
+  const hist=texte(
+    o.historique,
+    LIMITS.historique
+  );
+
+  const etape=Number(o.etape)||0;
+
+  const infos=extraireInformations(
+    [base,rep,hist]
       .filter(Boolean)
       .join("\n")
   );
 
-  if (!infos.length) {
-    return texte(q);
+  const depotInfo=infos.find(
+    x=>x.type==="dépôt"
+  );
+
+  const proc=infos.find(
+    x=>x.type==="procédure"
+  );
+
+  const motif=infos.find(
+    x=>x.type==="motif"
+  );
+
+  const depot=etatDepotDepuisContexte(
+    base,
+    rep,
+    infos
+  );
+
+  if(c.recepisse){
+
+    if(depot==="inconnu"){
+      return"Avez-vous déjà déposé une demande de titre de séjour auprès de l’ANEF ou de la préfecture ?";
+    }
+
+    if(depot==="oui"){
+
+      if(!proc){
+        return"Quel type de demande de titre de séjour avez-vous déposé : première demande, renouvellement, changement de situation, demande d’asile ou autre ?";
+      }
+
+      if(etape<=2){
+        return"Avez-vous reçu un document après votre démarche (récépissé, attestation, confirmation ANEF ou autre) ?";
+      }
+
+      return"Quel est votre objectif maintenant : suivre votre dossier, obtenir ou renouveler votre titre, pouvoir travailler, ou résoudre un problème administratif ?";
+    }
+
+    if(depot==="non"){
+
+      if(!motif){
+        return"Pour quel motif souhaitez-vous demander un titre de séjour : travail, famille, études, demande d’asile ou autre ?";
+      }
+
+      return"Quel document ou quelle situation avez-vous actuellement concernant votre séjour (visa, passeport, ancien titre, aucun document, autre) ?";
+    }
   }
 
-  const morceaux = infos.map(
-    x => x.type + " : " + x.valeur
-  );
+  if(c.immigration){
 
-  return (
-    "J'ai identifié les éléments suivants : " +
-    morceaux.join(" ; ") +
-    "."
-  );
+    if(depot==="inconnu"){
+      return"Avez-vous déjà déposé une demande de titre de séjour auprès de l’ANEF ou de la préfecture ?";
+    }
+
+    if(depot==="non"&&!motif){
+      return"Pour quel motif souhaitez-vous demander un titre de séjour : travail, famille, études, demande d’asile ou autre ?";
+    }
+
+    if(depot==="oui"&&!proc){
+      return"Quel type de demande de titre de séjour avez-vous déposé : première demande, renouvellement, changement de situation, demande d’asile ou autre ?";
+    }
+
+    if(depot==="non"&&motif){
+      return"Quel document ou quelle situation avez-vous actuellement concernant votre séjour (visa, passeport, ancien titre, aucun document, autre) ?";
+    }
+
+    if(depot==="oui"&&proc){
+      return"Quel est votre objectif maintenant : suivre votre dossier, obtenir ou renouveler votre titre, pouvoir travailler, ou résoudre un problème administratif ?";
+    }
+
+    return"Quelle est la prochaine démarche ou le principal problème que vous souhaitez résoudre concernant votre séjour ?";
+  }
+
+  if(c.entreprise&&!c.statut){
+    return etape===0
+      ?"Quelle activité ou quels services souhaitez-vous proposer ?"
+      :"Avez-vous déjà choisi une forme juridique ou souhaitez-vous que GouRare AI vous aide à la comparer ?";
+  }
+
+  if(c.entreprise&&c.statut){
+    return"Avez-vous déjà commencé les formalités de création de l’entreprise ?";
+  }
+
+  if(c.travail){
+    return etape===0
+      ?"Quel est votre objectif principal : trouver un emploi, comprendre votre contrat, ou résoudre un problème avec votre employeur ?"
+      :"Quel type de poste ou de situation professionnelle recherchez-vous exactement ?";
+  }
+
+  if(c.social){
+    return"Quelle aide ou quelle situation sociale souhaitez-vous comprendre exactement ?";
+  }
+
+  if(c.administratif){
+    return"Quelle démarche administrative devez-vous effectuer exactement ?";
+  }
+
+  return"Quel est le résultat que vous souhaitez obtenir exactement ?";
 }
 
-/* =========================
-   ETAT DU DEPOT
-========================= */
-
-function etatDepot(reponse) {
-  const l = texte(reponse, 12000).toLowerCase();
-
-  if (
-    /\b(je ne sais pas|je sais pas|je ne suis pas sûr|je ne suis pas sure|je ne suis pas certain|je ne suis pas certaine|je ne me souviens pas|peut-être|peut etre)\b/.test(l)
-  ) {
-    return "incertain";
-  }
-
-  if (
-    /\b(non|pas encore|jamais)\b/.test(l)
-  ) {
-    return "non";
-  }
-
-  if (
-    /\b(oui|j'ai déposé|j ai depose|j'ai déjà déposé|j ai deja depose|déjà déposé|deja depose)\b/.test(l)
-  ) {
-    return "oui";
-  }
-
-  return "inconnu";
-}
-
-/* =========================
-   QUESTION SUIVANTE
-========================= */
-
-function prochaineQuestion(q, c, options = {}) {
-  const base = texte(
-    options.questionInitiale || q,
-    LIMITS.question
-  ).toLowerCase();
-
-  const reponse = texte(
-    options.reponseUtilisateur || options.reponse,
-    12000
-  ).toLowerCase();
-
-  const etape = Number(options.etape) || 0;
-
-  if (c.recepisse) {
-    const depot = etatDepot(reponse);
-
-    if (etape === 0 && !reponse) {
-      return "Avez-vous déjà déposé une demande de titre de séjour auprès de l’ANEF ou de la préfecture ?";
-    }
-
-    if (
-      etape >= 1 &&
-      depot === "oui"
-    ) {
-      return "Quel type de demande de titre de séjour avez-vous déjà déposé : première demande, renouvellement, changement de situation, demande d’asile ou autre ?";
-    }
-
-    if (
-      etape >= 1 &&
-      depot === "non"
-    ) {
-      return "Pour quel motif souhaitez-vous demander un titre de séjour : travail, famille, études, autre motif, ou vous ne savez pas encore ?";
-    }
-
-    if (
-      etape >= 1 &&
-      depot === "incertain"
-    ) {
-      return "Pouvez-vous vérifier si vous avez reçu une confirmation, un récépissé, une attestation ou un message de l’ANEF ou de la préfecture concernant votre demande ?";
-    }
-
-    if (etape === 2) {
-      return "Avez-vous reçu un document après votre démarche : récépissé, attestation, confirmation ANEF ou autre ?";
-    }
-
-    if (etape >= 3) {
-      return "Quel est votre objectif maintenant : obtenir ou renouveler votre titre, pouvoir travailler, suivre votre dossier, ou résoudre un problème administratif ?";
-    }
-
-    return "Avez-vous déjà déposé une demande de titre de séjour auprès de l’ANEF ou de la préfecture ?";
-  }
-
-  if (c.immigration) {
-    const infos = extraireInformations(
-      [
-        base,
-        reponse,
-        options.historique || ""
-      ].join("\n")
-    );
-
-    const depot = infos.find(
-      x => x.type === "dépôt"
-    );
-
-    if (
-      etape === 0 &&
-      !depot
-    ) {
-      return "Avez-vous déjà déposé une demande de titre de séjour auprès de l’ANEF ou de la préfecture ?";
-    }
-
-    if (
-      etape === 0 &&
-      depot &&
-      depot.valeur.includes("aucun")
-    ) {
-      return "Pour quel motif souhaitez-vous demander un titre de séjour : travail, famille, études, autre motif, ou vous ne savez pas encore ?";
-    }
-
-    if (
-      etape === 0 &&
-      depot &&
-      depot.valeur.includes("déposée")
-    ) {
-      return "Quel type de demande de titre de séjour avez-vous déjà déposé ?";
-    }
-
-    if (
-      etape >= 1 &&
-      etatDepot(reponse) === "oui"
-    ) {
-      return "Quel type de demande de titre de séjour avez-vous déjà déposé ?";
-    }
-
-    return "Quelle est la prochaine démarche ou le principal problème que vous souhaitez résoudre concernant votre séjour ?";
-  }
-
-  if (
-    c.entreprise &&
-    !c.statut
-  ) {
-    return etape === 0
-      ? "Quelle activité ou quels services souhaitez-vous proposer ?"
-      : "Avez-vous déjà choisi une forme juridique ou souhaitez-vous que GouRare AI vous aide à la comparer ?";
-  }
-
-  if (
-    c.entreprise &&
-    c.statut
-  ) {
-    return "Avez-vous déjà commencé les formalités de création de l’entreprise ?";
-  }
-
-  if (c.travail) {
-    return etape === 0
-      ? "Quel est votre objectif principal : trouver un emploi, comprendre votre contrat, ou résoudre un problème avec votre employeur ?"
-      : "Quel type de poste ou de situation professionnelle recherchez-vous exactement ?";
-  }
-
-  if (c.social) {
-    return "Quelle aide ou quelle situation sociale souhaitez-vous comprendre exactement ?";
-  }
-
-  if (c.administratif) {
-    return "Quelle démarche administrative devez-vous effectuer exactement ?";
-  }
-
-  return "Quel est le résultat que vous souhaitez obtenir exactement ?";
-}
-
-/* =========================
-   PROGRESSION
-========================= */
-
-function progression(q, c, options = {}) {
-  const historique = texte(
-    options.historique,
-    LIMITS.historique
-  );
-
-  const reponse = texte(
-    options.reponse,
-    12000
-  );
-
-  const base = [
+function progression(q,o={}){
+  const base=[
     q,
-    reponse,
-    historique
+    texte(
+      o.reponseUtilisateur||o.reponse,
+      12000
+    ),
+    texte(
+      o.historique,
+      LIMITS.historique
+    )
   ]
     .filter(Boolean)
     .join("\n");
 
-  const nouveau = detectContext(base);
+  const c=detectContext(base);
 
-  nouveau.message = !!options.messageMode;
+  c.message=!!o.messageMode;
 
-  return {
-    contexte: nouveau,
-    historique: base
-  };
+  return c;
 }
 
-/* =========================
-   SOURCES
-========================= */
+function selectSources(c){
+  const ids=[];
 
-function selectSources(c) {
-  const ids = [];
-
-  if (c.immigration) {
+  if(c.immigration){
     ids.push("anef");
 
-    if (c.travail) {
+    if(c.travail){
       ids.push("travail_etranger");
     }
   }
 
-  if (
-    c.entreprise ||
-    c.statut
-  ) {
+  if(c.entreprise||c.statut){
     ids.push("statut");
   }
 
-  if (
-    c.entreprise &&
-    c.statut
-  ) {
-    ids.push("creation_ei");
-  }
-
-  if (c.entreprise) {
+  if(c.entreprise){
     ids.push("guichet");
   }
 
-  return unique(ids).map(
-    id => SOURCES[id]
-  );
+  return unique(ids)
+    .map(x=>SOURCES[x]);
 }
 
-/* =========================
-   INFORMATIONS CONFIRMEES
-========================= */
-
-function confirmed(
-  q,
-  c,
-  sources,
-  informations = []
-) {
-  const out = [];
-
-  for (const info of informations) {
-    if (
-      [
-        "nationalité",
-        "arrivée en France",
-        "date d'arrivée",
-        "objectif",
-        "motif",
-        "visa",
-        "travail",
-        "logement"
-      ].includes(info.type)
-    ) {
-      out.push(
-        info.type +
-        " : " +
-        info.valeur
-      );
-    }
-
-    if (info.type === "dépôt") {
-      out.push(
-        "État du dépôt : " +
-        info.valeur
-      );
-    }
+function infosToText(infos,q,c){
+  if(!infos.length){
+    return c.message
+      ?"Vous souhaitez analyser ou traiter un message ou un contenu fourni."
+      :texte(q);
   }
 
-  if (
-    c.immigration &&
-    sources.some(s => s.id === "anef")
-  ) {
-    out.push(
+  return infos
+    .map(x=>{
+
+      if(x.type==="nationalité"){
+        return"Vous indiquez être de nationalité "+x.valeur;
+      }
+
+      if(
+        x.type==="arrivée en France"||
+        x.type==="date d'arrivée"
+      ){
+        return"Vous indiquez être arrivé en France "+x.valeur.replace(/^depuis\s*/i,"");
+      }
+
+      if(x.type==="objectif"){
+        return"Votre objectif concerne "+x.valeur;
+      }
+
+      if(x.type==="motif"){
+        return"Le motif mentionné est "+x.valeur;
+      }
+
+      if(x.type==="procédure"){
+        return"La procédure mentionnée est "+x.valeur;
+      }
+
+      if(x.type==="visa"){
+        return"Vous mentionnez un visa";
+      }
+
+      if(x.type==="travail"){
+        return"Vous mentionnez un travail actuel";
+      }
+
+      if(x.type==="logement"){
+        return"Vous mentionnez un hébergement";
+      }
+
+      if(x.type==="dépôt"){
+        return x.valeur;
+      }
+
+      return x.type+" : "+x.valeur;
+    })
+    .join(". ")+"." ;
+}
+
+function confirmed(q,c,sources,infos){
+  const a=infos
+    .filter(x=>[
+      "nationalité",
+      "arrivée en France",
+      "date d'arrivée",
+      "objectif",
+      "motif",
+      "procédure",
+      "visa",
+      "travail",
+      "logement",
+      "dépôt"
+    ].includes(x.type))
+    .map(
+      x=>x.type+" : "+x.valeur
+    );
+
+  if(c.immigration){
+    a.push(
       "La demande concerne une démarche liée au séjour ou à la situation administrative d'un étranger en France."
     );
   }
 
-  if (c.recepisse) {
-    out.push(
-      "Le mot « récépissé » est bien identifié comme l'objet principal de la demande, mais son rôle exact dépend de la procédure engagée."
-    );
-  }
-
-  if (
-    c.entreprise &&
-    sources.some(s => s.id === "statut")
-  ) {
-    out.push(
-      "Le choix de la forme juridique peut être étudié en fonction de l'activité envisagée, du chiffre d'affaires estimé, des revenus, de la couverture sociale et de la gestion."
-    );
-  }
-
-  if (
-    c.statut &&
-    /entreprise individuelle|\bei\b|micro|micro-entreprise|microentreprise/.test(
-      q.toLowerCase()
-    ) &&
-    sources.some(s => s.id === "creation_ei")
-  ) {
-    out.push(
-      "Pour une entreprise individuelle, certaines formalités d'immatriculation et de déclaration d'activité sont prévues."
-    );
-
-    out.push(
-      "La demande d'immatriculation d'une entreprise individuelle se fait sur le Guichet des formalités des entreprises."
-    );
-  }
-
-  return unique(out);
-}
-
-/* =========================
-   DOCUMENTS
-========================= */
-
-function documents(q, c) {
-  const s = texte(q).toLowerCase();
-
-  if (
-    c.immigration &&
-    c.recepisse
-  ) {
-    return [
-      {
-        statut: "à vérifier",
-        texte: "Le document ou la preuve de dépôt déjà reçu, s'il existe."
-      },
-      {
-        statut: "à vérifier",
-        texte: "Le type exact de demande de séjour et les justificatifs demandés pour cette procédure."
-      }
-    ];
-  }
-
-  if (
-    c.statut &&
-    /entreprise individuelle|\bei\b|micro|micro-entreprise|microentreprise/.test(s)
-  ) {
-    return [
-      {
-        statut: "à vérifier",
-        texte: "Vérifier les justificatifs demandés pour la forme juridique choisie."
-      },
-      {
-        statut: "conditionnel",
-        texte: "Si l'activité est réglementée, vérifier les éventuels justificatifs d'autorisation, diplôme ou titre."
-      }
-    ];
-  }
-
-  return [];
-}
-
-/* =========================
-   ACTIONS
-========================= */
-
-function actions(q, c) {
-  const a = [];
-
-  if (
-    c.immigration &&
-    c.recepisse
-  ) {
+  if(c.recepisse){
     a.push(
-      "Identifier la procédure exacte : première demande, renouvellement, changement de situation, demande d'asile ou autre."
+      "Le mot « récépissé » est identifié comme l'objet de la demande, mais son rôle exact dépend de la procédure engagée."
+    );
+  }
+
+  if(c.entreprise){
+    a.push(
+      "Le projet concerne une activité ou une démarche d'entreprise."
+    );
+  }
+
+  return unique(a);
+}
+
+function documents(q,c){
+  if(c.immigration&&c.recepisse){
+    return[
+      {
+        statut:"à vérifier",
+        texte:"Le document ou la preuve de dépôt déjà reçu, s'il existe."
+      },
+      {
+        statut:"à vérifier",
+        texte:"Le type exact de demande de séjour et les justificatifs demandés pour cette procédure."
+      }
+    ];
+  }
+
+  return[];
+}
+
+function actions(q,c){
+  const a=[];
+
+  if(c.immigration&&c.recepisse){
+    a.push(
+      "Identifier la procédure exacte : première demande, renouvellement, changement de situation, demande d’asile ou autre."
     );
 
     a.push(
@@ -904,710 +834,365 @@ function actions(q, c) {
     );
 
     a.push(
-      "Consulter la procédure officielle correspondante sur l'ANEF ou auprès de la préfecture compétente."
+      "Consulter la procédure officielle correspondante sur l’ANEF ou auprès de la préfecture compétente."
     );
   }
 
-  if (c.entreprise) {
+  if(c.entreprise){
     a.push(
       "Décrire précisément les prestations ou produits proposés."
     );
-  }
 
-  if (
-    c.entreprise &&
-    !c.statut
-  ) {
-    a.push(
-      "Comparer les formes juridiques possibles avant de choisir un statut."
-    );
-  }
-
-  if (
-    c.entreprise &&
-    c.statut
-  ) {
-    a.push(
-      "Vérifier les formalités correspondant exactement à la forme juridique et à l'activité choisies."
-    );
+    if(!c.statut){
+      a.push(
+        "Comparer les formes juridiques possibles avant de choisir un statut."
+      );
+    }
   }
 
   return unique(a);
 }
 
-/* =========================
-   RECOMMANDATIONS
-========================= */
+function recommendations(q,c){
+  const a=[];
 
-function recommendations(q, c) {
-  const a = [];
-
-  if (
-    c.immigration &&
-    c.recepisse
-  ) {
+  if(c.immigration&&c.recepisse){
     a.push(
       "Ne pas supposer qu'un récépissé est automatiquement délivré dans toutes les situations : son rôle dépend de la procédure et de l'état du dossier."
     );
 
     a.push(
-      "Ne pas déduire votre droit au séjour ou au travail à partir du seul fait d'avoir demandé un récépissé."
+      "Ne pas déduire un droit au séjour ou au travail à partir du seul fait d'avoir demandé un récépissé."
     );
   }
 
-  if (c.entreprise) {
+  if(c.entreprise){
     a.push(
       "Décrire précisément l'activité avant de prendre une décision administrative ou juridique."
-    );
-  }
-
-  if (
-    c.entreprise &&
-    !c.statut
-  ) {
-    a.push(
-      "Comparer les formes juridiques avant de retenir celle qui correspond au projet."
-    );
-  }
-
-  if (
-    c.entreprise &&
-    c.statut
-  ) {
-    a.push(
-      "Vérifier les formalités officielles après avoir défini la forme juridique et la nature exacte de l'activité."
     );
   }
 
   return unique(a);
 }
 
-/* =========================
-   PROCHAINE ACTION
-========================= */
-
-function nextAction(q, c, options = {}) {
-  if (
-    c.immigration &&
-    c.recepisse
-  ) {
-    return prochaineQuestion(
-      q,
-      c,
-      options
-    );
+function nextAction(q,c,o={}){
+  if(c.message){
+    return"Vérifier que le projet de réponse correspond bien au contenu et au contexte du message reçu.";
   }
 
-  if (
-    c.entreprise &&
-    !c.statut
-  ) {
-    return prochaineQuestion(
-      q,
-      c,
-      options
-    );
-  }
-
-  if (
-    c.entreprise &&
-    c.statut
-  ) {
-    return prochaineQuestion(
-      q,
-      c,
-      options
-    );
-  }
-
-  if (c.message) {
-    return "Vérifier que le projet de réponse correspond bien au contenu et au contexte du message reçu.";
-  }
-
-  return prochaineQuestion(
-    q,
-    c,
-    options
-  );
+  return prochaineQuestion(q,c,o);
 }
 
-/* =========================
-   IA
-========================= */
-
-function systemPrompt() {
-  return `
-Tu es GouRare AI, un assistant d'orientation et d'analyse multi-domaines.
+function systemPrompt(){
+  return`Tu es GouRare AI, un assistant d'orientation multi-domaines.
 
 Tu n'es pas avocat, expert-comptable, médecin, administration ou travailleur social.
 
-Les choix de parcours, de situation ou de profil dans l'interface sont uniquement des éléments de navigation. Ils ne prouvent jamais un statut juridique, un titre de séjour, un droit, une nationalité, une situation irrégulière, une éligibilité ou une obligation.
-
-Pour les sujets d'immigration et de droits, ne déduis jamais la situation légale de l'utilisateur à partir de sa sélection.
-
 Ne transforme jamais une hypothèse en fait.
 
-Si une information manque, pose une question ciblée.
+Les choix de l'interface ne prouvent aucun statut juridique, droit, nationalité ou éligibilité.
 
-Quand l'intention est identifiable, nomme-la clairement et demande uniquement les informations nécessaires à l'étape suivante.
+Pour l'immigration, ne déduis jamais une situation légale non confirmée.
 
-Évite les listes génériques de questions.
+Pour un récépissé, distingue demande de titre, dépôt, procédure, document reçu et objectif.
 
-Pour une demande concernant un récépissé, distingue notamment :
-- première demande ;
-- renouvellement ;
-- changement de situation ;
-- demande d'asile ;
-- demande déjà déposée ;
-- absence de dépôt ;
-- dépôt incertain.
+Ne dis jamais qu'une personne peut séjourner ou travailler sans éléments confirmés.
 
-Ne dis jamais qu'une personne peut séjourner, travailler, rester ou qu'elle possède un droit particulier sans éléments confirmés.
+N'invente aucune loi, article, montant, délai, obligation ou document.
 
-N'invente jamais de loi, article, taux, montant, seuil, sanction, obligation, autorisation, diplôme, document, statistique, prix ou délai.
+Les sources officielles fournies sont prioritaires.
 
-Les informations officielles fournies par le moteur de sources sont prioritaires.
+Réponds en français.
 
-Ne répète pas les URL des sources dans ton explication : elles sont affichées séparément.
-
-Si une information n'est pas confirmée, indique qu'elle doit être vérifiée.
-
-Pour un message, respecte strictement son contenu.
-
-Pour une image, analyse uniquement ce qui est réellement visible ou lisible.
-
-Ton objectif est :
-
-Comprendre → Identifier l'intention → Vérifier → Orienter → Donner la prochaine action.
-
-Ne transforme jamais « je viens d'arriver en France » en « première demande ».
-
-Une première demande ne peut être affirmée que si l'utilisateur l'a explicitement dit ou confirmé.
-`;
+L'objectif est :
+Comprendre → Vérifier → Orienter → Donner la prochaine action.`;
 }
 
-async function askAI(
-  env,
-  prompt,
-  maxTokens = 900
-) {
-  try {
-    const r = await env.IA.run(
+async function askAI(env,prompt,maxTokens=700){
+  try{
+    const r=await env.IA.run(
       MODEL,
       {
-        messages: [
+        messages:[
           {
-            role: "system",
-            content: systemPrompt()
+            role:"system",
+            content:systemPrompt()
           },
           {
-            role: "user",
-            content: texte(
-              prompt,
-              60000
-            )
+            role:"user",
+            content:texte(prompt,60000)
           }
         ],
-        max_tokens: maxTokens,
-        temperature: 0.15
+        max_tokens:maxTokens,
+        temperature:.15
       }
     );
 
-    if (typeof r === "string") {
-      return r;
-    }
-
-    if (r?.response) {
-      return r.response;
-    }
-
-    if (r?.result?.response) {
-      return r.result.response;
-    }
-
-    return "";
-  } catch (e) {
-    return "";
+    return typeof r==="string"
+      ?r
+      :(r?.response||r?.result?.response||"");
+  }catch{
+    return"";
   }
 }
 
-/* =========================
-   MESSAGES
-========================= */
-
-function messagePrompt(
-  contenu,
-  mode,
-  langue
-) {
-  const instructions = {
-    analyse:
-      "Analyse le message : faits, demande, éléments importants, incertitudes et réponse possible.",
-
-    reponse:
-      "Prépare une réponse claire, polie et adaptée. N'invente aucun fait.",
-
-    reformulation:
-      "Réécris le message plus clairement sans changer son sens.",
-
-    correction:
-      "Corrige les fautes et améliore légèrement la formulation sans changer le sens.",
-
-    traduction:
-      "Traduis fidèlement le contenu dans la langue demandée."
+function messagePrompt(contenu,mode,langue){
+  const m={
+    analyse:"Analyse le message : faits, demande, incertitudes et réponse possible.",
+    reponse:"Prépare une réponse claire et polie sans inventer de faits.",
+    reformulation:"Réécris le message plus clairement sans changer son sens.",
+    correction:"Corrige les fautes sans changer le sens.",
+    traduction:"Traduis fidèlement le contenu dans la langue demandée."
   };
 
-  return `
-Langue : ${langue || "français"}
-
-Mode :
-${instructions[mode] || instructions.analyse}
+  return`Langue : ${langue||"français"}
+Mode : ${m[mode]||m.analyse}
 
 CONTENU :
-${texte(contenu, 18000)}
-`;
+${texte(contenu,18000)}`;
 }
 
-/* =========================
-   IMAGE
-========================= */
-
-async function analyserImage(
-  env,
-  image,
-  demande = ""
-) {
-  if (
-    !image ||
-    typeof image !== "string"
-  ) {
-    throw new Error(
-      "Image absente."
-    );
+async function analyserImage(env,image,demande=""){
+  if(!image||typeof image!=="string"){
+    throw Error("Image absente.");
   }
 
-  if (
-    image.length >
-    LIMITS.image
-  ) {
-    throw new Error(
-      "Image trop volumineuse."
-    );
+  if(image.length>LIMITS.image){
+    throw Error("Image trop volumineuse.");
   }
 
-  const r = await env.IA.run(
+  const r=await env.IA.run(
     MODEL_VISION,
     {
-      messages: [
+      messages:[
         {
-          role: "system",
-          content:
-            "Analyse uniquement ce qui est réellement visible ou lisible. Ne devine jamais un texte illisible."
+          role:"system",
+          content:"Analyse uniquement ce qui est réellement visible ou lisible. Ne devine jamais un texte illisible."
         },
         {
-          role: "user",
-          content:
-            demande ||
-            "Lis et analyse cette image. Identifie les éléments visibles, explique leur contenu et indique ce qui reste incertain."
+          role:"user",
+          content:demande||"Lis et analyse cette image. Explique uniquement ce qui est visible et indique les incertitudes."
         }
       ],
       image,
-      max_tokens: 2200,
-      temperature: 0.1
+      max_tokens:2200,
+      temperature:.1
     }
   );
 
-  if (typeof r === "string") {
-    return r;
-  }
-
-  if (r?.response) {
-    return r.response;
-  }
-
-  if (r?.result?.response) {
-    return r.result.response;
-  }
-
-  return typeof r?.result === "string"
-    ? r.result
-    : JSON.stringify(r);
+  return typeof r==="string"
+    ?r
+    :(r?.response||r?.result?.response||
+      (typeof r?.result==="string"
+        ?r.result
+        :JSON.stringify(r)));
 }
 
-/* =========================
-   AUDIO
-========================= */
-
-function base64FromDataURL(v) {
-  const s = texte(
-    v,
-    LIMITS.audio
-  );
-
-  const i = s.indexOf(",");
-
-  if (
-    s.startsWith("data:") &&
-    i >= 0
-  ) {
-    return s.slice(i + 1);
+function base64FromDataURL(v){
+  if(typeof v!=="string"){
+    return"";
   }
 
-  return s;
+  const i=v.indexOf(",");
+
+  if(
+    v.startsWith("data:")&&
+    i>=0
+  ){
+    return v.slice(i+1);
+  }
+
+  return v;
 }
 
-async function transcrireAudio(
-  env,
-  audio,
-  langue = "fr"
-) {
-  if (!audio) {
-    throw new Error(
-      "Audio absent."
-    );
+async function transcrireAudio(env,audio,langue="fr"){
+  if(!audio||typeof audio!=="string"){
+    throw Error("Audio absent.");
   }
 
-  if (
-    audio.length >
-    LIMITS.audio
-  ) {
-    throw new Error(
-      "Audio trop volumineux."
-    );
+  if(audio.length>LIMITS.audio){
+    throw Error("Audio trop volumineux.");
   }
 
-  const r = await env.IA.run(
+  const contenu=base64FromDataURL(audio);
+
+  if(!contenu){
+    throw Error("Données audio invalides.");
+  }
+
+  const r=await env.IA.run(
     MODEL_AUDIO,
     {
-      audio:
-        base64FromDataURL(audio),
-
-      task: "transcribe",
-
-      language: langue
+      audio:contenu,
+      task:"transcribe",
+      language:langue
     }
   );
 
   return texte(
-    r?.text ||
-    r?.transcription_info?.text ||
+    r?.text||
+    r?.transcription_info?.text||
     "",
     20000
   );
 }
-
-/* =========================
-   AFFICHAGE DU CONTEXTE
-========================= */
-
-function infosToText(
-  informations,
-  q,
-  c
-) {
-  if (!informations.length) {
-    if (c.message) {
-      return "Vous souhaitez analyser ou traiter un message ou un contenu fourni.";
-    }
-
-    return texte(q);
-  }
-
-  const parties =
-    informations.map(x => {
-      if (
-        x.type === "nationalité"
-      ) {
-        return (
-          "Vous indiquez être de nationalité " +
-          x.valeur
-        );
-      }
-
-      if (
-        x.type === "arrivée en France" ||
-        x.type === "date d'arrivée"
-      ) {
-        return (
-          "Vous indiquez être arrivé en France " +
-          x.valeur.replace(
-            /^depuis\s*/i,
-            ""
-          )
-        );
-      }
-
-      if (
-        x.type === "objectif"
-      ) {
-        return (
-          "Votre objectif concerne " +
-          x.valeur
-        );
-      }
-
-      if (
-        x.type === "motif"
-      ) {
-        return (
-          "Le motif mentionné est " +
-          x.valeur
-        );
-      }
-
-      if (
-        x.type === "visa"
-      ) {
-        return "Vous mentionnez un visa";
-      }
-
-      if (
-        x.type === "travail"
-      ) {
-        return "Vous mentionnez un travail actuel";
-      }
-
-      if (
-        x.type === "logement"
-      ) {
-        return "Vous mentionnez un hébergement";
-      }
-
-      if (
-        x.type === "dépôt"
-      ) {
-        return x.valeur;
-      }
-
-      return (
-        x.type +
-        " : " +
-        x.valeur
-      );
-    });
-
-  return (
-    parties.join(". ") +
-    "."
-  );
-}
-
-/* =========================
-   ANALYSE PRINCIPALE
-========================= */
-
-async function analyserQuestion(
-  env,
-  q,
-  options = {}
-) {
-  const baseQuestion = texte(
-    options.questionInitiale || q,
+async function analyserQuestion(env,q,o={}){
+  const base=texte(
+    o.questionInitiale||q,
     LIMITS.question
   );
 
-  const reponseUtilisateur =
-    texte(
-      options.reponseUtilisateur ||
-      options.reponse,
-      12000
-    );
+  const rep=texte(
+    o.reponseUtilisateur||o.reponse,
+    12000
+  );
 
-  const historique = texte(
-    options.historique,
+  const hist=texte(
+    o.historique,
     LIMITS.historique
   );
 
-  const contexte =
-    progression(
-      baseQuestion,
-      {},
-      {
-        ...options,
-        reponse:
-          reponseUtilisateur,
-        historique
-      }
+  const c=progression(
+    base,
+    {
+      ...o,
+      reponseUtilisateur:rep,
+      historique:hist
+    }
+  );
+
+  const infos=extraireInformations(
+    [base,rep,hist]
+      .filter(Boolean)
+      .join("\n")
+  );
+
+  const sources=selectSources(c);
+
+  let orientation="";
+
+  if(c.message){
+
+    orientation=await askAI(
+      env,
+      messagePrompt(
+        q,
+        o.messageMode,
+        o.langue
+      ),
+      1000
     );
 
-  const sources =
-    selectSources(
-      contexte.contexte
-    );
+  }else{
 
-  const c =
-    contexte.contexte;
-
-  const informations =
-    extraireInformations(
-      [
-        baseQuestion,
-        reponseUtilisateur,
-        historique
-      ]
-        .filter(Boolean)
-        .join("\n")
-    );
-
-  const resume =
-    resumeSituation(
-      baseQuestion,
-      {
-        reponseUtilisateur,
-        historique
-      }
-    );
-
-  let orientation;
-
-  if (c.message) {
-    orientation =
-      await askAI(
-        env,
-        messagePrompt(
-          q,
-          options.messageMode,
-          options.langue
-        ),
-        1200
-      );
-  } else {
-    const intention =
+    const intention=
       c.recepisse
-        ? "Récépissé / démarche de séjour"
-        : c.immigration
-          ? "Séjour / immigration"
-          : c.entreprise
-            ? "Projet d’entreprise"
-            : c.travail
-              ? "Emploi / travail"
-              : c.social
-                ? "Aides sociales"
-                : c.fiscalite
-                  ? "Fiscalité / cotisations"
-                  : c.juridique
-                    ? "Question juridique"
-                    : c.administratif
-                      ? "Démarche administrative"
-                      : "Orientation générale";
+        ?"Récépissé / séjour"
+        :c.immigration
+          ?"Séjour / immigration"
+          :c.entreprise
+            ?"Projet d'entreprise"
+            :c.travail
+              ?"Emploi / travail"
+              :c.social
+                ?"Aides sociales"
+                :c.fiscalite
+                  ?"Fiscalité"
+                  :c.juridique
+                    ?"Question juridique"
+                    :"Orientation générale";
 
-    const cadre =
-      c.recepisse
-        ? "Faire progresser l’utilisateur une étape à la fois. Ne pose qu’une seule question. Ne répète jamais une question déjà répondue."
-        : "Identifier l’intention réelle. Poser une seule question ciblée lorsque des informations essentielles manquent. Ne pas donner de conclusion non vérifiée.";
+    const prompt=
+      "Intention : "+intention+
+      "\nDemande initiale : "+base+
+      "\nRéponse actuelle : "+rep+
+      "\nHistorique : "+hist+
+      "\nInformations identifiées : "+JSON.stringify(infos)+
+      "\nSources : "+JSON.stringify(
+        sources.map(s=>({
+          titre:s.titre,
+          preuves:s.preuves
+        }))
+      )+
+      "\nDonne uniquement un court paragraphe d'orientation."+
+      " Ne pose aucune question dans ce paragraphe."+
+      " N'affirme jamais une première demande simplement parce que l'utilisateur vient d'arriver."+
+      " Ne donne aucune conclusion juridique non vérifiée.";
 
-    orientation =
-      await askAI(
-        env,
-        `
-Intention détectée :
-${intention}
+    orientation=await askAI(
+      env,
+      prompt,
+      450
+    );
 
-Cadre :
-${cadre}
-
-Demande initiale :
-${baseQuestion}
-
-Réponse actuelle :
-${reponseUtilisateur}
-
-Historique :
-${historique}
-
-Informations déjà identifiées :
-${JSON.stringify(informations)}
-
-Résumé factuel :
-${resume}
-
-Contexte :
-${JSON.stringify(c)}
-
-Preuves officielles :
-${JSON.stringify(
-  sources.map(s => ({
-    titre: s.titre,
-    organisme: s.organisme,
-    preuves: s.preuves
-  }))
-)}
-
-Réponds en français.
-
-Donne UNIQUEMENT un court paragraphe pour la section « Orientation ».
-
-N'écris aucun titre.
-N'écris aucune question.
-N'écris aucune liste.
-
-Décris seulement ce qui est établi et ce qui doit encore être déterminé.
-
-Ne transforme jamais « je viens d'arriver en France » en « première demande ».
-
-Une première demande ne peut être affirmée que si l'utilisateur l'a explicitement dit ou confirmé.
-
-Ne répète pas les informations déjà affichées dans « Ce que j'ai compris ».
-
-Ne donne aucune conclusion juridique non vérifiée.
-`,
-        450
-      );
-
-    if (!orientation) {
-      orientation =
-        c.recepisse
-          ? "Votre situation concerne une démarche liée au séjour. La procédure exacte reste à déterminer à partir des informations que vous confirmez."
-          : "Votre demande a été identifiée. Les éléments encore nécessaires seront précisés étape par étape.";
+    if(!orientation){
+      orientation=c.recepisse
+        ?"Votre situation concerne une démarche liée au séjour. La procédure exacte reste à déterminer à partir des informations confirmées."
+        :"Votre demande a été identifiée. Les éléments encore nécessaires seront précisés étape par étape.";
     }
   }
 
-  const optionsQuestion = {
-    reponse: reponseUtilisateur,
-    reponseUtilisateur,
-    historique,
-    etape: options.etape,
-    questionInitiale: baseQuestion
-  };
+  const next=nextAction(
+    base,
+    c,
+    {
+      reponse:rep,
+      reponseUtilisateur:rep,
+      historique:hist,
+      etape:o.etape,
+      questionInitiale:base
+    }
+  );
 
-  const questionSuivante =
-    nextAction(
-      baseQuestion,
-      c,
-      optionsQuestion
+  const verify=[];
+
+  if(c.recepisse){
+
+    const dep=etatDepotDepuisContexte(
+      base,
+      rep,
+      infos
     );
 
-  const aVerifier = [];
+    const hasDep=infos.some(
+      x=>x.type==="dépôt"
+    );
 
-  if (c.recepisse) {
-    if (
-      Number(options.etape) === 0
-    ) {
-      aVerifier.push(
+    const hasProc=infos.some(
+      x=>x.type==="procédure"
+    );
+
+    if(!hasDep){
+
+      verify.push(
         "Vérifier si une demande de titre de séjour a déjà été déposée."
       );
-    } else if (
-      Number(options.etape) === 1
-    ) {
-      aVerifier.push(
+
+    }else if(dep==="oui"&&!hasProc){
+
+      verify.push(
         "Vérifier le type exact de procédure de séjour."
       );
-    } else {
-      aVerifier.push(
+
+    }else{
+
+      verify.push(
         "Vérifier le document reçu et l'état réel du dossier."
       );
     }
   }
 
-  const compris =
-    infosToText(
-      informations,
-      baseQuestion,
-      c
-    );
+  return{
+    success:true,
+    version:VERSION,
 
-  const orientationPropre =
-    texte(
+    compris:infosToText(
+      infos,
+      base,
+      c
+    ),
+
+    orientation:texte(
       orientation,
       3000
     )
@@ -1615,73 +1200,51 @@ Ne donne aucune conclusion juridique non vérifiée.
         /^\s*(?:💡\s*)?Orientation\s*:?\s*/i,
         ""
       )
-      .trim();
+      .trim(),
 
-  return {
-    success: true,
-    version: VERSION,
+    confirmed:confirmed(
+      base,
+      c,
+      sources,
+      infos
+    ),
 
-    compris,
+    toVerify:verify,
 
-    orientation:
-      orientationPropre,
+    recommendations:recommendations(
+      base,
+      c
+    ),
 
-    confirmed:
-      confirmed(
-        baseQuestion,
-        c,
-        sources,
-        informations
-      ),
+    actions:actions(
+      base,
+      c
+    ),
 
-    toVerify:
-      aVerifier,
+    documents:documents(
+      base,
+      c
+    ),
 
-    recommendations:
-      recommendations(
-        baseQuestion,
-        c
-      ),
+    risks:[],
+    professional:[],
 
-    actions:
-      actions(
-        baseQuestion,
-        c
-      ),
+    nextAction:next,
+    questionSuivante:next,
 
-    documents:
-      documents(
-        baseQuestion,
-        c
-      ),
+    sources:sources.map(s=>({
+      id:s.id,
+      titre:s.titre,
+      organisme:s.organisme,
+      url:s.url
+    })),
 
-    risks: [],
-
-    professional: [],
-
-    nextAction:
-      questionSuivante,
-
-    questionSuivante,
-
-    sources:
-      sources.map(s => ({
-        id: s.id,
-        titre: s.titre,
-        organisme: s.organisme,
-        url: s.url
-      })),
-
-    informations
+    informations:infos
   };
 }
 
-/* =========================
-   PAGE
-========================= */
-
-function pageHTML() {
-  return `<!doctype html>
+function pageHTML(){
+  return`<!doctype html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -1701,7 +1264,7 @@ color:#111827
 
 header{
 background:#111827;
-color:white;
+color:#fff;
 padding:28px 18px;
 text-align:center
 }
@@ -1719,23 +1282,15 @@ opacity:.85
 .container{
 max-width:950px;
 margin:25px auto;
-padding:0 15px 80px
+padding:0 15px 90px
 }
 
 .card,.result-card{
-background:white;
+background:#fff;
 border-radius:18px;
 padding:20px;
 margin-bottom:18px;
 box-shadow:0 8px 30px rgba(0,0,0,.07)
-}
-
-h2{
-margin-top:0
-}
-
-.welcome{
-text-align:center
 }
 
 .choices{
@@ -1748,7 +1303,7 @@ gap:14px
 padding:22px 16px;
 border:1px solid #e5e7eb;
 border-radius:16px;
-background:white;
+background:#fff;
 text-align:left;
 cursor:pointer
 }
@@ -1769,7 +1324,7 @@ padding:13px;
 border:1px solid #d1d5db;
 border-radius:11px;
 font-size:16px;
-background:white
+background:#fff
 }
 
 textarea{
@@ -1784,16 +1339,12 @@ padding:12px 16px;
 font-size:15px;
 cursor:pointer;
 background:#111827;
-color:white
+color:#fff
 }
 
 .secondary{
 background:#e5e7eb;
 color:#111827
-}
-
-.back{
-margin-bottom:15px
 }
 
 .actions{
@@ -1807,17 +1358,9 @@ margin-top:12px
 flex:1
 }
 
-.result-card{
-border-left:5px solid #111827
-}
-
 .ai-result{
 white-space:pre-wrap;
 line-height:1.65
-}
-
-.result-block ul{
-padding-left:22px
 }
 
 .source{
@@ -1845,7 +1388,7 @@ display:none
 position:fixed;
 right:12px;
 bottom:12px;
-background:white;
+background:#fff;
 border:1px solid #e5e7eb;
 padding:10px 13px;
 border-radius:999px;
@@ -1889,38 +1432,24 @@ flex-basis:100%
 <div id="parcours" class="card welcome"></div>
 
 <div id="assistant" class="card hidden">
-
-<button
-class="secondary back"
-id="retour">
-← Retour
-</button>
+<button class="secondary" id="retour">← Retour</button>
 
 <h2 id="titreParcours"></h2>
-
 <p id="descriptionParcours"></p>
 
-<div
-id="situations"
-class="choices">
-</div>
-
+<div id="situations" class="choices"></div>
 </div>
 
 <div id="outil" class="card hidden">
 
-<button
-class="secondary back"
-id="retourOutil">
-← Retour
-</button>
+<button class="secondary" id="retourOutil">← Retour</button>
 
 <h2>🧠 Votre demande</h2>
 
 <textarea
 id="question"
-placeholder="Expliquez votre situation...">
-</textarea>
+placeholder="Expliquez votre situation..."
+></textarea>
 
 <div class="actions">
 
@@ -1928,37 +1457,29 @@ placeholder="Expliquez votre situation...">
 Analyser
 </button>
 
-<button
-id="micro"
-class="secondary">
+<button id="micro" class="secondary">
 🎙️ Parler
 </button>
 
-<button
-id="photo"
-class="secondary">
+<button id="photo" class="secondary">
 📷 Analyser une image
 </button>
 
 </div>
 
-<div
-id="status"
-class="status">
-</div>
+<div id="status" class="status"></div>
 
 <input
 id="imageInput"
 type="file"
 accept="image/*"
 capture="environment"
-class="hidden">
+class="hidden"
+>
 
 </div>
 
-<div
-id="messageCard"
-class="card hidden">
+<div id="messageCard" class="card hidden">
 
 <h2>✉️ Messages et emails</h2>
 
@@ -1992,8 +1513,9 @@ Mode normal
 
 <input
 id="langue"
-placeholder="Langue souhaitée pour une traduction (français, arabe, anglais)"
-style="margin-top:10px">
+placeholder="Langue souhaitée pour une traduction"
+style="margin-top:10px"
+>
 
 </div>
 
@@ -2006,67 +1528,71 @@ style="margin-top:10px">
 </div>
 
 <footer>
+
 🎗️ Notre soutien aux personnes touchées par le cancer.
+
 <br><br>
+
 GouRare AI — Version ${VERSION}
+
 </footer>
 
 <script>
 
-const parcours =
+const parcours=
 document.getElementById("parcours");
 
-const assistant =
+const assistant=
 document.getElementById("assistant");
 
-const outil =
+const outil=
 document.getElementById("outil");
 
-const messageCard =
+const messageCard=
 document.getElementById("messageCard");
 
-const situations =
+const situations=
 document.getElementById("situations");
 
-const titre =
+const titre=
 document.getElementById("titreParcours");
 
-const desc =
+const desc=
 document.getElementById("descriptionParcours");
 
-const question =
+const question=
 document.getElementById("question");
 
-const result =
+const result=
 document.getElementById("result");
 
-const status =
+const status=
 document.getElementById("status");
 
-const messageMode =
+const messageMode=
 document.getElementById("messageMode");
 
-const langue =
+const langue=
 document.getElementById("langue");
 
-const imageInput =
+const imageInput=
 document.getElementById("imageInput");
 
-let profil = null;
-let situation = null;
-let historique = [];
-let etape = 0;
-let mediaRecorder = null;
-let audioChunks = [];
-let recording = false;
+let profil=null;
+let situation=null;
+let historique=[];
+let etape=0;
+let mediaRecorder=null;
+let audioChunks=[];
+let recording=false;
 
 function esc(v){
-return String(v || "")
+return String(v||"")
 .replace(/&/g,"&amp;")
 .replace(/</g,"&lt;")
 .replace(/>/g,"&gt;")
-.replace(/"/g,"&quot;")
-.replace(/'/g,"&#039;");
+.replace(/\"/g,"&quot;")
+.replace(/'/g,"&#039;")
 }
 
 function showHome(){
@@ -2090,63 +1616,52 @@ parcours.innerHTML=
 "<p style='margin-top:18px'>"+
 "<button id='inconnu' class='secondary'>"+
 "✨ Je ne sais pas où aller — GouRare AI m'oriente"+
-"</button>"+
-"</p>";
+"</button></p>";
 
-const p =
+const p=
 document.getElementById("profils");
 
-const donnees =
-${JSON.stringify(PARCOURS)};
+const data=${JSON.stringify(PARCOURS)};
 
-Object.keys(donnees)
-.forEach(function(k){
+Object.keys(data).forEach(k=>{
 
-const x=donnees[k];
+const x=data[k];
 
-p.innerHTML +=
-"<div class='choice' data-p='"+k+"'>"+
+p.innerHTML+=
+"<div class='choice' data-p='"+esc(k)+"'>"+
 "<strong>"+esc(x.titre)+"</strong>"+
 "<span>"+esc(x.description)+"</span>"+
 "</div>";
 
 });
 
-p.querySelectorAll(".choice")
-.forEach(function(b){
+p.querySelectorAll(".choice").forEach(
+b=>b.onclick=()=>openProfil(b.dataset.p)
+);
 
-b.onclick=function(){
-openProfil(b.dataset.p);
-};
-
-});
-
-document.getElementById("inconnu")
-.onclick=function(){
+document.getElementById("inconnu").onclick=()=>{
 
 openProfil("particulier");
 
-question.value =
+question.value=
 "Je ne sais pas quel parcours correspond à ma situation. Aidez-moi à m'orienter.";
 
 outil.classList.remove("hidden");
-messageCard.classList.add("hidden");
 assistant.classList.add("hidden");
 
 };
-
 }
 
 function openProfil(k){
 
 profil=k;
 
-const x =
-${JSON.stringify(PARCOURS)}[k];
+const x=${JSON.stringify(PARCOURS)}[k];
 
 parcours.classList.add("hidden");
 outil.classList.add("hidden");
 messageCard.classList.add("hidden");
+
 assistant.classList.remove("hidden");
 
 titre.textContent=x.titre;
@@ -2154,37 +1669,29 @@ desc.textContent=x.description;
 
 situations.innerHTML="";
 
-x.situations.forEach(function(item){
+x.situations.forEach(item=>{
 
-const b =
+const b=
 document.createElement("div");
 
 b.className="choice";
 
 b.innerHTML=
-"<strong>"+
-esc(item[1])+
-"</strong>";
+"<strong>"+esc(item[1])+"</strong>";
 
 b.dataset.s=item[0];
 
-b.onclick=function(){
-openSituation(
+b.onclick=()=>openSituation(
 item[0],
 item[1]
 );
-};
 
 situations.appendChild(b);
 
 });
-
 }
 
-function openSituation(
-s,
-label
-){
+function openSituation(s,label){
 
 situation=s;
 
@@ -2198,72 +1705,97 @@ messageCard.classList.remove("hidden");
 question.value="";
 result.innerHTML="";
 
-status.textContent =
-"Parcours sélectionné : "+
-label;
+status.textContent=
+"Parcours sélectionné : "+label;
 
 messageMode.value="";
 
 if(
-s==="message" ||
+s==="message"||
 s==="document"
 ){
 messageMode.value="analyse";
 }
-
 }
 
-document.getElementById("retour")
-.onclick=showHome;
+document.getElementById("retour").onclick=
+showHome;
 
-document.getElementById("retourOutil")
-.onclick=function(){
+document.getElementById("retourOutil").onclick=()=>{
 
 outil.classList.add("hidden");
 messageCard.classList.add("hidden");
 assistant.classList.remove("hidden");
-result.innerHTML="";
 
 };
 
 showHome();
 
-/* =========================
-   ANALYSE TEXTE
-========================= */
-
 async function analyserTexte(){
 
-const q =
-question.value.trim();
+const q=question.value.trim();
 
 if(!q){
 
-status.textContent =
+status.textContent=
 "Veuillez écrire ou dire votre demande.";
 
 return;
 }
 
-status.textContent =
+status.textContent=
 "Analyse en cours...";
+
+result.innerHTML="";
 
 try{
 
-const premiere =
+const premiere=
 historique.length===0;
 
-const questionInitiale =
+const questionInitiale=
 premiere
-? q
-: historique[0].questionInitiale;
+?q
+:historique[0].questionInitiale;
 
-const reponseUtilisateur =
+const reponseUtilisateur=
 premiere
-? ""
-: q;
+?""
+:q;
 
-const r =
+const historiqueTexte=
+historique
+.map(x=>{
+
+const parts=[];
+
+if(x.questionInitiale){
+parts.push(
+"Question initiale : "+
+x.questionInitiale
+);
+}
+
+if(x.questionSuivante){
+parts.push(
+"Question posée : "+
+x.questionSuivante
+);
+}
+
+if(x.reponse){
+parts.push(
+"Réponse utilisateur : "+
+x.reponse
+);
+}
+
+return parts.join("\n");
+
+})
+.join("\n\n");
+
+const r=
 await fetch(
 "/api/analyze",
 {
@@ -2285,27 +1817,13 @@ questionInitiale,
 
 reponseUtilisateur,
 
-historique:
-historique
-.map(function(x){
+historique:historiqueTexte,
 
-return (
-"Question: "+
-x.question+
-"\\nRéponse utilisateur: "+
-x.reponse+
-"\\nQuestion suivante: "+
-x.questionSuivante
-);
+profil,
 
-})
-.join("\\n\\n"),
+situation,
 
-profil:profil,
-
-situation:situation,
-
-etape:etape,
+etape,
 
 messageMode:
 messageMode.value||null,
@@ -2317,31 +1835,30 @@ langue.value.trim()
 }
 );
 
-const d =
-await r.json();
+const d=await r.json();
 
-if(
-!r.ok ||
-!d.success
-){
-throw new Error(
-d.error ||
-"Erreur."
+if(!r.ok||!d.success){
+throw Error(
+d.error||"Erreur."
 );
 }
 
 historique.push({
 
-questionInitiale,
+questionInitiale:
+premiere
+?questionInitiale
+:historique[0]?.questionInitiale||"",
 
-question:q,
+question:
+q,
 
 reponse:
 reponseUtilisateur,
 
 questionSuivante:
-d.questionSuivante ||
-d.nextAction ||
+d.questionSuivante||
+d.nextAction||
 ""
 
 });
@@ -2352,197 +1869,175 @@ afficher(d);
 
 question.value="";
 
-status.textContent =
+status.textContent=
 "Analyse terminée. Répondez à la question suivante pour continuer.";
 
 }catch(e){
 
-status.textContent =
-e.message ||
-"Erreur.";
+status.textContent=
+e.message||"Erreur.";
 
 }
-
 }
-
-/* =========================
-   AFFICHAGE
-========================= */
 
 function liste(a){
 
-if(
-!a ||
-!a.length
-){
-return "<p>Aucun élément précis à présenter à ce stade.</p>";
+if(!a||!a.length){
+
+return"<p>Aucun élément précis à présenter à ce stade.</p>";
+
 }
 
-return (
-"<ul>"+
-a.map(function(x){
-
-const v =
+return"<ul>"+
+a.map(
+x=>
+"<li>"+
+esc(
 typeof x==="string"
-? x
-: x.texte ||
-JSON.stringify(x);
-
-return "<li>"+
-esc(v)+
-"</li>";
-
-}).join("")+
-"</ul>"
-);
-
+?x
+:(x.texte||JSON.stringify(x))
+)+
+"</li>"
+).join("")+
+"</ul>";
 }
 
 function afficher(d){
 
-let h="";
+let h=
 
-h +=
 "<div class='result-card'>"+
 "<h2>🧭 Ce que j'ai compris</h2>"+
 "<div class='ai-result'>"+
 esc(d.compris)+
-"</div>"+
-"</div>";
+"</div></div>"+
 
-h +=
 "<div class='result-card'>"+
 "<h2>💡 Orientation</h2>"+
 "<div class='ai-result'>"+
 esc(d.orientation)+
-"</div>"+
-"</div>";
+"</div></div>"+
 
-h +=
 "<div class='result-card'>"+
 "<h2>✅ Informations confirmées</h2>"+
 liste(d.confirmed)+
-"</div>";
+"</div>"+
 
-h +=
 "<div class='result-card'>"+
 "<h2>🔎 À vérifier</h2>"+
 liste(d.toVerify)+
-"</div>";
+"</div>"+
 
-h +=
 "<div class='result-card'>"+
 "<h2>💭 Recommandations</h2>"+
 liste(d.recommendations)+
-"</div>";
+"</div>"+
 
-h +=
 "<div class='result-card'>"+
 "<h2>📋 Actions concrètes</h2>"+
 liste(d.actions)+
-"</div>";
+"</div>"+
 
-h +=
 "<div class='result-card'>"+
 "<h2>📄 Documents</h2>"+
-(
-d.documents &&
-d.documents.length
-?
-liste(d.documents)
-:
-"<p>Aucun document précis à présenter à ce stade.</p>"
-)+
-"</div>";
 
-h +=
+(
+d.documents&&
+d.documents.length
+?liste(d.documents)
+:"<p>Aucun document précis à présenter à ce stade.</p>"
+)+
+
+"</div>"+
+
 "<div class='result-card'>"+
 "<h2>🚀 Prochaine action</h2>"+
 "<div class='ai-result'>"+
 esc(d.nextAction)+
 "</div>"+
-"<p style='margin-bottom:0;color:#4b5563'>"+
-"Répondez à cette question dans la zone ci-dessus, puis appuyez sur « Analyser » pour continuer."+
-"</p>"+
-"</div>";
+"<p style='color:#4b5563'>"+
+"Répondez à cette question dans la zone ci-dessus, puis appuyez sur « Analyser »."+
+"</p></div>"+
 
-h +=
 "<div class='result-card'>"+
 "<h2>📚 Sources consultées</h2>";
 
-(d.sources || [])
-.forEach(function(s){
+(d.sources||[]).forEach(s=>{
 
-h +=
+h+=
 "<div class='source'>"+
 esc(s.organisme)+
 " — "+
 esc(s.titre)+
-"<br>"+
-"<a href='"+esc(s.url)+"' target='_blank' rel='noopener noreferrer'>"+
+"<br><a href='"+
+esc(s.url)+
+"' target='_blank' rel='noopener noreferrer'>"+
 "Consulter la source officielle ↗"+
-"</a>"+
-"</div>";
+"</a></div>";
 
 });
 
-h += "</div>";
+h+="</div>";
 
 result.innerHTML=h;
-
 }
 
-/* =========================
-   IMAGE
-========================= */
+document.getElementById("analyser").onclick=
+analyserTexte;
 
-document.getElementById("photo")
-.onclick=function(){
+document.getElementById("photo").onclick=()=>{
 imageInput.click();
 };
 
-imageInput.onchange=function(){
+imageInput.onchange=()=>{
 
-const f =
-imageInput.files &&
+const f=
+imageInput.files&&
 imageInput.files[0];
 
 if(!f)return;
 
-if(
-!f.type.startsWith("image/")
-){
+if(!f.type.startsWith("image/")){
 
-status.textContent =
+status.textContent=
 "Veuillez sélectionner une image.";
 
-return;
+imageInput.value="";
 
+return;
 }
 
-if(
-f.size>5500000
-){
+if(f.size>5500000){
 
-status.textContent =
+status.textContent=
 "Image trop volumineuse.";
 
-return;
+imageInput.value="";
 
+return;
 }
 
-const rd =
+const rd=
 new FileReader();
 
-status.textContent =
+status.textContent=
 "📷 Analyse de l'image...";
 
-rd.onloadend =
-async function(){
+rd.onloadend=async()=>{
 
 try{
 
-const r =
+const dataUrl=
+String(rd.result||"");
+
+if(!dataUrl){
+
+throw Error(
+"Impossible de lire l'image."
+);
+}
+
+const r=
 await fetch(
 "/api/image",
 {
@@ -2552,101 +2047,80 @@ headers:{
 "application/json"
 },
 body:JSON.stringify({
-
-image:rd.result,
-
+image:dataUrl,
 demande:
 question.value.trim()
-
 })
 }
 );
 
-const d =
+const d=
 await r.json();
 
-if(
-!r.ok ||
-!d.success
-){
+if(!r.ok||!d.success){
 
-throw new Error(
-d.error ||
-"Erreur image."
+throw Error(
+d.error||"Erreur image."
 );
-
 }
 
-question.value =
-d.texte || "";
+question.value=
+d.texte||"";
 
 await analyserTexte();
 
 }catch(e){
 
-status.textContent =
-e.message ||
+status.textContent=
+e.message||
 "Erreur image.";
 
 }
-
 };
 
 rd.readAsDataURL(f);
-
 };
 
-/* =========================
-   MICROPHONE
-========================= */
+document.getElementById("micro").onclick=
+async function(){
 
-document.getElementById("micro")
-.onclick=async function(){
-
-if(
-recording &&
-mediaRecorder
-){
+if(recording&&mediaRecorder){
 
 mediaRecorder.stop();
 
 return;
-
 }
 
-if(
-!navigator.mediaDevices?.getUserMedia
-){
+if(!navigator.mediaDevices?.getUserMedia){
 
-status.textContent =
+status.textContent=
 "Microphone indisponible.";
 
 return;
-
 }
 
 try{
 
-const stream =
-await navigator.mediaDevices.getUserMedia(
-{audio:true}
-);
+const stream=
+await navigator.mediaDevices
+.getUserMedia({
+audio:true
+});
 
 audioChunks=[];
 
-mediaRecorder =
+mediaRecorder=
 new MediaRecorder(stream);
 
 recording=true;
 
-this.textContent =
+this.textContent=
 "⏹️ Arrêter";
 
-status.textContent =
+status.textContent=
 "🎙️ Je vous écoute...";
 
-mediaRecorder.ondataavailable =
-function(e){
+mediaRecorder.ondataavailable=e=>{
 
 if(e.data.size){
 audioChunks.push(e.data);
@@ -2654,14 +2128,11 @@ audioChunks.push(e.data);
 
 };
 
-mediaRecorder.onstop =
-async function(){
+mediaRecorder.onstop=async()=>{
 
 recording=false;
 
-document.getElementById(
-"micro"
-).textContent =
+this.textContent=
 "🎙️ Parler";
 
 stream
@@ -2670,25 +2141,42 @@ stream
 t=>t.stop()
 );
 
-const blob =
+const blob=
 new Blob(
 audioChunks,
 {
 type:
-mediaRecorder.mimeType ||
+mediaRecorder.mimeType||
 "audio/webm"
 }
 );
 
-const rd =
+if(blob.size>9000000){
+
+status.textContent=
+"Audio trop volumineux.";
+
+return;
+}
+
+const rd=
 new FileReader();
 
-rd.onloadend =
-async function(){
+rd.onloadend=async()=>{
 
 try{
 
-const r =
+const dataUrl=
+String(rd.result||"");
+
+if(!dataUrl){
+
+throw Error(
+"Impossible de lire l'audio."
+);
+}
+
+const r=
 await fetch(
 "/api/transcribe",
 {
@@ -2698,43 +2186,34 @@ headers:{
 "application/json"
 },
 body:JSON.stringify({
-
-audio:rd.result,
-
+audio:dataUrl,
 langue:"fr"
-
 })
 }
 );
 
-const d =
+const d=
 await r.json();
 
-if(
-!r.ok ||
-!d.success
-){
+if(!r.ok||!d.success){
 
-throw new Error(
-d.error ||
-"Erreur audio."
+throw Error(
+d.error||"Erreur audio."
 );
-
 }
 
-question.value =
-d.text || "";
+question.value=
+d.text||"";
 
 await analyserTexte();
 
 }catch(e){
 
-status.textContent =
-e.message ||
+status.textContent=
+e.message||
 "Erreur audio.";
 
 }
-
 };
 
 rd.readAsDataURL(blob);
@@ -2743,584 +2222,572 @@ rd.readAsDataURL(blob);
 
 mediaRecorder.start();
 
-}catch(e){
+}catch{
 
-status.textContent =
+status.textContent=
 "L'accès au microphone a été refusé ou est indisponible.";
 
 }
-
 };
 
 </script>
-
 </body>
 </html>`;
 }
 
-/* =========================
-   API ANALYZE
-========================= */
+async function handleAnalyze(r,env){
 
-async function handleAnalyze(
-  request,
-  env
-) {
+if(!rateLimit(r,"analyze")){
 
-  if (
-    !(
-      request.headers.get(
-        "content-type"
-      ) || ""
-    ).includes(
-      "application/json"
-    )
-  ) {
-    return jsonResponse(
-      {
-        success:false,
-        error:
-          "Le contenu doit être envoyé au format JSON."
-      },
-      415
-    );
-  }
+return jsonResponse(
+{
+success:false,
+error:
+"Trop de demandes. Réessayez plus tard."
+},
+429
+);
 
-  let b;
-
-  try {
-    b =
-      await request.json();
-  } catch {
-    return jsonResponse(
-      {
-        success:false,
-        error:"JSON invalide."
-      },
-      400
-    );
-  }
-
-  const q =
-    texte(
-      b.question,
-      LIMITS.question
-    );
-
-  if (!q) {
-    return jsonResponse(
-      {
-        success:false,
-        error:"Question vide."
-      },
-      400
-    );
-  }
-
-  try {
-
-    return jsonResponse(
-      await analyserQuestion(
-        env,
-        q,
-        {
-          messageMode:
-            b.type==="message"
-            ? texte(
-                b.messageMode,
-                50
-              )
-            : null,
-
-          langue:
-            texte(
-              b.langue,
-              50
-            ),
-
-          reponse:
-            texte(
-              b.reponse,
-              12000
-            ),
-
-          reponseUtilisateur:
-            texte(
-              b.reponseUtilisateur,
-              12000
-            ),
-
-          questionInitiale:
-            texte(
-              b.questionInitiale,
-              12000
-            ),
-
-          historique:
-            texte(
-              b.historique,
-              LIMITS.historique
-            ),
-
-          profil:
-            texte(
-              b.profil,
-              100
-            ),
-
-          situation:
-            texte(
-              b.situation,
-              100
-            ),
-
-          etape:
-            Number.isFinite(
-              Number(b.etape)
-            )
-            ? Number(b.etape)
-            : 0
-        }
-      )
-    );
-
-  } catch(e) {
-
-    return jsonResponse(
-      {
-        success:false,
-        error:
-          e.message ||
-          "Erreur."
-      },
-      500
-    );
-  }
 }
 
-/* =========================
-   API TRANSCRIPTION
-========================= */
+if(contentLengthTooLarge(r,400000)){
 
-async function handleTranscribe(
-  request,
-  env
-) {
+return jsonResponse(
+{
+success:false,
+error:
+"Requête trop volumineuse."
+},
+413
+);
 
-  let b;
-
-  try {
-    b =
-      await request.json();
-  } catch {
-    return jsonResponse(
-      {
-        success:false,
-        error:"JSON invalide."
-      },
-      400
-    );
-  }
-
-  try {
-
-    const text =
-      await transcrireAudio(
-        env,
-        texte(
-          b.audio,
-          LIMITS.audio
-        ),
-        texte(
-          b.langue,
-          10
-        ) || "fr"
-      );
-
-    if (!text) {
-      return jsonResponse(
-        {
-          success:false,
-          error:
-            "Aucun texte détecté."
-        },
-        422
-      );
-    }
-
-    return jsonResponse(
-      {
-        success:true,
-        text,
-        version:VERSION
-      }
-    );
-
-  } catch(e) {
-
-    return jsonResponse(
-      {
-        success:false,
-        error:
-          e.message ||
-          "Erreur audio."
-      },
-      500
-    );
-  }
 }
 
-/* =========================
-   API IMAGE
-========================= */
+if(
+!(r.headers.get("content-type")||"")
+.includes("application/json")
+){
 
-async function handleImage(
-  request,
-  env
-) {
+return jsonResponse(
+{
+success:false,
+error:
+"Le contenu doit être envoyé au format JSON."
+},
+415
+);
 
-  let b;
-
-  try {
-    b =
-      await request.json();
-  } catch {
-    return jsonResponse(
-      {
-        success:false,
-        error:"JSON invalide."
-      },
-      400
-    );
-  }
-
-  try {
-
-    const image =
-      texte(
-        b.image,
-        LIMITS.image
-      );
-
-    if (!image) {
-      return jsonResponse(
-        {
-          success:false,
-          error:"Image absente."
-        },
-        400
-      );
-    }
-
-    return jsonResponse(
-      {
-        success:true,
-
-        texte:
-          await analyserImage(
-            env,
-            image,
-            texte(
-              b.demande,
-              5000
-            )
-          ),
-
-        version:VERSION
-      }
-    );
-
-  } catch(e) {
-
-    return jsonResponse(
-      {
-        success:false,
-        error:
-          e.message ||
-          "Erreur image."
-      },
-      500
-    );
-  }
 }
 
-/* =========================
-   WORKER
-========================= */
+let b;
 
-export default {
+try{
 
-  async fetch(
-    request,
-    env
-  ) {
+b=await r.json();
 
-    const url =
-      new URL(request.url);
+}catch{
 
-    /*
-      CORS preflight
-    */
+return jsonResponse(
+{
+success:false,
+error:"JSON invalide."
+},
+400
+);
 
-    if (
-      request.method ===
-      "OPTIONS"
-    ) {
+}
 
-      return new Response(
-        null,
-        {
-          status:204,
-          headers:
-            securityHeaders()
-        }
-      );
-    }
+const q=texte(
+b.question,
+LIMITS.question
+);
 
-    /*
-      Health check
-    */
+if(!q){
 
-    if (
-      url.pathname ===
-      "/health"
-    ) {
+return jsonResponse(
+{
+success:false,
+error:"Question vide."
+},
+400
+);
 
-      return new Response(
-        JSON.stringify({
-          success:true,
-          service:"GouRare AI",
-          status:"OK",
-          version:VERSION,
+}
 
-          modules:{
-            texte:true,
-            parcours:true,
-            messages:true,
-            image:true,
-            voix:true,
-            sourcesOfficielles:true
-          }
-        }),
-        {
-          headers:{
-            ...securityHeaders(),
-            "content-type":
-              "application/json; charset=utf-8"
-          }
-        }
-      );
-    }
+try{
 
-    /*
-      Rate limit API
-    */
+return jsonResponse(
+await analyserQuestion(
+env,
+q,
+{
+messageMode:
+b.type==="message"
+?texte(b.messageMode,50)
+:null,
 
-    if (
-      url.pathname.startsWith(
-        "/api/"
-      )
-    ) {
+langue:
+texte(b.langue,50),
 
-      if (
-        !rateLimit(request)
-      ) {
+reponse:
+texte(b.reponse,12000),
 
-        return jsonResponse(
-          {
-            success:false,
-            error:
-              "Trop de demandes. Veuillez patienter une minute avant de réessayer."
-          },
-          429
-        );
-      }
-    }
+reponseUtilisateur:
+texte(
+b.reponseUtilisateur,
+12000
+),
 
-    /*
-      Analyse
-    */
+questionInitiale:
+texte(
+b.questionInitiale,
+12000
+),
 
-    if (
-      url.pathname ===
-      "/api/analyze"
-    ) {
+historique:
+texte(
+b.historique,
+LIMITS.historique
+),
 
-      if (
-        request.method !==
-        "POST"
-      ) {
+profil:
+texte(
+b.profil,
+100
+),
 
-        return jsonResponse(
-          {
-            success:false,
-            error:
-              "Méthode non autorisée."
-          },
-          405
-        );
-      }
+situation:
+texte(
+b.situation,
+100
+),
 
-      const r =
-        await handleAnalyze(
-          request,
-          env
-        );
+etape:
+Number.isFinite(
+Number(b.etape)
+)
+?Number(b.etape)
+:0
 
-      const h =
-        new Headers(
-          r.headers
-        );
+}
+)
+);
 
-      Object.entries(
-        securityHeaders()
-      ).forEach(
-        ([k,v]) =>
-          h.set(k,v)
-      );
+}catch(e){
 
-      return new Response(
-        r.body,
-        {
-          status:r.status,
-          headers:h
-        }
-      );
-    }
+return jsonResponse(
+{
+success:false,
+error:
+e.message||"Erreur."
+},
+500
+);
 
-    /*
-      Audio
-    */
+}
+}
 
-    if (
-      url.pathname ===
-      "/api/transcribe"
-    ) {
+async function handleTranscribe(r,env){
 
-      if (
-        request.method !==
-        "POST"
-      ) {
+if(!rateLimit(r,"transcribe")){
 
-        return jsonResponse(
-          {
-            success:false,
-            error:
-              "Méthode non autorisée."
-          },
-          405
-        );
-      }
+return jsonResponse(
+{
+success:false,
+error:
+"Trop de demandes audio. Réessayez plus tard."
+},
+429
+);
 
-      const r =
-        await handleTranscribe(
-          request,
-          env
-        );
+}
 
-      const h =
-        new Headers(
-          r.headers
-        );
+if(contentLengthTooLarge(r,16000000)){
 
-      Object.entries(
-        securityHeaders()
-      ).forEach(
-        ([k,v]) =>
-          h.set(k,v)
-      );
+return jsonResponse(
+{
+success:false,
+error:
+"Requête audio trop volumineuse."
+},
+413
+);
 
-      return new Response(
-        r.body,
-        {
-          status:r.status,
-          headers:h
-        }
-      );
-    }
+}
 
-    /*
-      Image
-    */
+if(
+!(r.headers.get("content-type")||"")
+.includes("application/json")
+){
 
-    if (
-      url.pathname ===
-      "/api/image"
-    ) {
+return jsonResponse(
+{
+success:false,
+error:
+"Le contenu doit être envoyé au format JSON."
+},
+415
+);
 
-      if (
-        request.method !==
-        "POST"
-      ) {
+}
 
-        return jsonResponse(
-          {
-            success:false,
-            error:
-              "Méthode non autorisée."
-          },
-          405
-        );
-      }
+let b;
 
-      const r =
-        await handleImage(
-          request,
-          env
-        );
+try{
 
-      const h =
-        new Headers(
-          r.headers
-        );
+b=await r.json();
 
-      Object.entries(
-        securityHeaders()
-      ).forEach(
-        ([k,v]) =>
-          h.set(k,v)
-      );
+}catch{
 
-      return new Response(
-        r.body,
-        {
-          status:r.status,
-          headers:h
-        }
-      );
-    }
+return jsonResponse(
+{
+success:false,
+error:"JSON invalide."
+},
+400
+);
 
-    /*
-      Accueil
-    */
+}
 
-    if (
-      url.pathname === "/"
-    ) {
+if(
+typeof b.audio!=="string"||
+!b.audio
+){
 
-      return new Response(
-        pageHTML(),
-        {
-          headers:{
-            ...securityHeaders(),
-            "content-type":
-              "text/html; charset=utf-8"
-          }
-        }
-      );
-    }
+return jsonResponse(
+{
+success:false,
+error:"Audio absent."
+},
+400
+);
 
-    /*
-      404
-    */
+}
 
-    return new Response(
-      "GouRare AI",
-      {
-        status:404,
-        headers:
-          securityHeaders()
-      }
-    );
-  }
+if(
+b.audio.length>LIMITS.audio
+){
+
+return jsonResponse(
+{
+success:false,
+error:"Audio trop volumineux."
+},
+413
+);
+
+}
+
+try{
+
+const text=
+await transcrireAudio(
+env,
+b.audio,
+texte(
+b.langue,
+10
+)||"fr"
+);
+
+if(!text){
+
+return jsonResponse(
+{
+success:false,
+error:
+"Aucun texte détecté."
+},
+422
+);
+
+}
+
+return jsonResponse({
+success:true,
+text,
+version:VERSION
+});
+
+}catch(e){
+
+return jsonResponse(
+{
+success:false,
+error:
+e.message||"Erreur audio."
+},
+500
+);
+
+}
+}
+
+async function handleImage(r,env){
+
+if(!rateLimit(r,"image")){
+
+return jsonResponse(
+{
+success:false,
+error:
+"Trop de demandes d’image. Réessayez plus tard."
+},
+429
+);
+
+}
+
+if(contentLengthTooLarge(r,7500000)){
+
+return jsonResponse(
+{
+success:false,
+error:
+"Requête image trop volumineuse."
+},
+413
+);
+
+}
+
+if(
+!(r.headers.get("content-type")||"")
+.includes("application/json")
+){
+
+return jsonResponse(
+{
+success:false,
+error:
+"Le contenu doit être envoyé au format JSON."
+},
+415
+);
+
+}
+
+let b;
+
+try{
+
+b=await r.json();
+
+}catch{
+
+return jsonResponse(
+{
+success:false,
+error:"JSON invalide."
+},
+400
+);
+
+}
+
+if(
+typeof b.image!=="string"||
+!b.image
+){
+
+return jsonResponse(
+{
+success:false,
+error:"Image absente."
+},
+400
+);
+
+}
+
+if(
+b.image.length>LIMITS.image
+){
+
+return jsonResponse(
+{
+success:false,
+error:"Image trop volumineuse."
+},
+413
+);
+
+}
+
+try{
+
+const image=b.image;
+
+return jsonResponse({
+success:true,
+
+texte:
+await analyserImage(
+env,
+image,
+texte(
+b.demande,
+5000
+)
+),
+
+version:VERSION
+
+});
+
+}catch(e){
+
+return jsonResponse(
+{
+success:false,
+error:
+e.message||"Erreur image."
+},
+500
+);
+
+}
+}
+
+export default{
+
+async fetch(r,env){
+
+const u=new URL(r.url);
+
+if(r.method==="OPTIONS"){
+
+return new Response(
+null,
+{
+status:204,
+headers:
+securityHeaders()
+}
+);
+
+}
+
+if(u.pathname==="/health"){
+
+return new Response(
+JSON.stringify({
+success:true,
+service:"GouRare AI",
+status:"OK",
+version:VERSION,
+
+modules:{
+texte:true,
+parcours:true,
+messages:true,
+image:true,
+voix:true,
+moteurDeVerite:true
+}
+
+}),
+{
+headers:{
+...securityHeaders(),
+"content-type":
+"application/json; charset=utf-8"
+}
+}
+);
+
+}
+
+if(u.pathname==="/api/analyze"){
+
+if(r.method!=="POST"){
+
+return jsonResponse(
+{
+success:false,
+error:
+"Méthode non autorisée."
+},
+405
+);
+
+}
+
+return handleAnalyze(
+r,
+env
+);
+
+}
+
+if(u.pathname==="/api/transcribe"){
+
+if(r.method!=="POST"){
+
+return jsonResponse(
+{
+success:false,
+error:
+"Méthode non autorisée."
+},
+405
+);
+
+}
+
+return handleTranscribe(
+r,
+env
+);
+
+}
+
+if(u.pathname==="/api/image"){
+
+if(r.method!=="POST"){
+
+return jsonResponse(
+{
+success:false,
+error:
+"Méthode non autorisée."
+},
+405
+);
+
+}
+
+return handleImage(
+r,
+env
+);
+
+}
+
+if(u.pathname==="/"){
+
+return new Response(
+pageHTML(),
+{
+headers:{
+...securityHeaders(),
+"content-type":
+"text/html; charset=utf-8"
+}
+}
+);
+
+}
+
+return new Response(
+"GouRare AI",
+{
+status:404,
+headers:
+securityHeaders()
+}
+);
+
+}
+
 };
