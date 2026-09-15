@@ -16,7 +16,6 @@ const RATE_LIMITS={
   transcribe:{windowMs:60000,maxRequests:6}
 };
 
-const RATE_STORE_MAX_KEYS=5000;
 const rateStore=new Map();
 
 const SOURCES={
@@ -65,13 +64,12 @@ const SOURCES={
 };
 
 function texte(v,max=10000){
-  return v==null
-    ?""
-    :String(v)
-      .replace(/\u0000/g,"")
-      .replace(/\r/g,"")
-      .trim()
-      .slice(0,max);
+  if(v==null)return"";
+  return String(v)
+    .replace(/\u0000/g,"")
+    .replace(/\r/g,"")
+    .trim()
+    .slice(0,max);
 }
 
 function unique(a){
@@ -95,7 +93,13 @@ function securityHeaders(){
     "Permissions-Policy":"camera=(self), microphone=(self), geolocation=()",
     "Cache-Control":"no-store",
     "Content-Security-Policy":
-      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"
+      "default-src 'self'; "+
+      "script-src 'self' 'unsafe-inline'; "+
+      "style-src 'self' 'unsafe-inline'; "+
+      "img-src 'self' data: blob:; "+
+      "connect-src 'self'; "+
+      "base-uri 'none'; "+
+      "frame-ancestors 'none'"
   };
 }
 
@@ -118,43 +122,19 @@ function contentLengthTooLarge(r,max){
 }
 
 function clientKey(r){
-  return r.headers.get("CF-Connecting-IP")||"anonymous";
-}
-
-function cleanRateStore(now){
-  if(rateStore.size<=RATE_STORE_MAX_KEYS)return;
-
-  for(const [key,times] of rateStore){
-    const type=String(key).split(":")[0];
-    const config=RATE_LIMITS[type];
-
-    if(!config){
-      rateStore.delete(key);
-      continue;
-    }
-
-    const recent=times.filter(
-      t=>now-t<config.windowMs
-    );
-
-    if(recent.length){
-      rateStore.set(key,recent);
-    }else{
-      rateStore.delete(key);
-    }
-
-    if(rateStore.size<=RATE_STORE_MAX_KEYS)break;
-  }
+  return(
+    r.headers.get("CF-Connecting-IP")||
+    r.headers.get("x-forwarded-for")||
+    "anonymous"
+  );
 }
 
 function rateLimit(r,type){
   const c=RATE_LIMITS[type];
   if(!c)return true;
 
-  const now=Date.now();
-  cleanRateStore(now);
-
   const k=type+":"+clientKey(r);
+  const now=Date.now();
 
   const a=(rateStore.get(k)||[])
     .filter(t=>now-t<c.windowMs);
@@ -281,12 +261,12 @@ function extraireInformations(q){
   const l=texte(q,12000).toLowerCase();
   const i=[];
 
-  const add=(t,v)=>{
-    if(v&&!i.some(x=>x.type===t)){
-      i.push({
-        type:t,
-        valeur:v
-      });
+  const add=(type,valeur)=>{
+    if(
+      valeur&&
+      !i.some(x=>x.type===type)
+    ){
+      i.push({type,valeur});
     }
   };
 
@@ -322,25 +302,11 @@ function extraireInformations(q){
   }
 
   const dm=l.match(
-    /(?:je\s+)?(?:suis\s+)?(?:arrivé|arrive|arrivée|arrivee|entré|entree)\s+(?:en\s+france\s+)?(?:depuis\s+)?(?:le\s+)?(?:début|debut|fin|mi-)?\s*20\d{2}/i
+    /(?:je suis\s+)?(?:arrivé|arrive|arrivée|arrivee|entré|entree)\s+(?:en\s+france\s+)?(?:depuis\s+)?(?:le\s+)?(?:début|debut|fin|mi-)?\s*20\d{2}/i
   );
 
   if(dm){
-    add(
-      "arrivée en France",
-      dm[0].trim()
-    );
-  }
-
-  const dm2=l.match(
-    /(?:depuis|à partir de|a partir de)\s+(?:le\s+)?(?:début|debut|fin|mi-)?\s*20\d{2}/i
-  );
-
-  if(dm2&&!i.some(x=>x.type==="arrivée en France")){
-    add(
-      "arrivée en France",
-      dm2[0].trim()
-    );
+    add("arrivée en France",dm[0]);
   }
 
   const mois=l.match(
@@ -349,90 +315,60 @@ function extraireInformations(q){
 
   if(
     mois&&
-    /arriv|entrée|entree|depuis/.test(l)
+    /\b(arriv|entrée|entree|depuis)\b/.test(l)
   ){
-    add(
-      "date d'arrivée",
-      mois[0]
-    );
+    add("date d'arrivée",mois[0]);
   }
 
   if(/\bvisa\b/.test(l)){
-    add(
-      "visa",
-      "présence d'un visa mentionnée"
-    );
+    add("visa","présence d'un visa mentionnée");
   }
 
   if(
     /\b(je travaille|je suis salarié|je suis salarie|j'ai un travail|j ai un travail|je travaille actuellement)\b/.test(l)
   ){
-    add(
-      "travail",
-      "travail actuel mentionné"
-    );
+    add("travail","travail actuel mentionné");
   }
 
   if(
     /\b(hébergé|heberge|hébergement|hebergement|chez mon frère|chez mon frere|chez ma soeur|chez ma sœur)\b/.test(l)
   ){
-    add(
-      "logement",
-      "hébergement mentionné"
-    );
+    add("logement","hébergement mentionné");
   }
 
   if(
     /^\s*(oui|yes|ouais)\s*[.!?]*$/i.test(l)||
-    /\b(j'ai déjà déposé|j ai deja depose|déjà déposé|deja depose|demande déposée|demande deposee)\b/.test(l)
+    /\b(j'ai déjà déposé|j ai deja depose|déjà déposé|deja depose|demande déposée|demande deposee)\b/i.test(l)
   ){
-    add(
-      "dépôt",
-      "une demande déjà déposée est mentionnée"
-    );
+    add("dépôt","une demande déjà déposée est mentionnée");
   }
 
   if(
     /^\s*(non|pas encore|jamais)\s*[.!?]*$/i.test(l)||
-    /\b(je n'ai pas déposé|je n ai pas depose|aucune demande|jamais déposé|jamais depose)\b/.test(l)
+    /\b(je n'ai pas déposé|je n ai pas depose|aucune demande|jamais déposé|jamais depose)\b/i.test(l)
   ){
-    add(
-      "dépôt",
-      "aucun dépôt n'est mentionné ou le dépôt est nié"
-    );
+    add("dépôt","aucun dépôt n'est mentionné ou le dépôt est nié");
   }
 
   if(
     /\b(première demande|premiere demande|premier titre|première carte|premiere carte|premier séjour|premier sejour)\b/.test(l)
   ){
-    add(
-      "procédure",
-      "première demande"
-    );
+    add("procédure","première demande");
   }
   else if(
     /\b(renouvellement|renouveler|renouvelle)\b/.test(l)
   ){
-    add(
-      "procédure",
-      "renouvellement"
-    );
+    add("procédure","renouvellement");
   }
   else if(
     /\b(changement de situation|changement de statut|changer de statut)\b/.test(l)
   ){
-    add(
-      "procédure",
-      "changement de situation / statut"
-    );
+    add("procédure","changement de situation / statut");
   }
   else if(
     /\b(demande d'asile|demande d asile|asile|protection internationale)\b/.test(l)
   ){
-    add(
-      "procédure",
-      "demande d'asile / protection"
-    );
+    add("procédure","demande d'asile / protection");
   }
 
   if(
@@ -442,49 +378,28 @@ function extraireInformations(q){
       /\b(titre de séjour|titre de sejour|séjour|sejour|visa|demande)\b/.test(l)
     )
   ){
-    add(
-      "motif",
-      "travail"
-    );
+    add("motif","travail");
   }
 
   if(
-    /^\s*(études|etudes|étudier|etudier|étudiant|etudiant)\s*[.!?]*$/i.test(l)||
+    /^\s*(études|etudes|étudier|etudier|étudiant|etudiant)\s*[.!?]*$/i||
     /\b(études|etudes|étudier|etudier|étudiant|etudiant)\b/.test(l)
   ){
-    add(
-      "motif",
-      "études"
-    );
+    add("motif","études");
   }
 
-  if(
-    /^\s*(famille|conjoint|époux|epoux|épouse|epouse)\s*[.!?]*$/i.test(l)||
-    /\b(famille|conjoint|époux|epoux|épouse|epouse|regroupement familial)\b/.test(l)
-  ){
-    add(
-      "motif",
-      "famille"
-    );
+  if(/\b(famille|conjoint|époux|epoux|épouse|epouse|regroupement familial)\b/.test(l)){
+    add("motif","famille");
   }
 
-  if(
-    /^\s*(asile|protection internationale)\s*[.!?]*$/i.test(l)||
-    /\b(asile|protection internationale|demandeur d'asile|demandeuse d'asile)\b/.test(l)
-  ){
-    add(
-      "motif",
-      "asile / protection"
-    );
+  if(/\b(asile|protection internationale|demandeur d'asile|demandeuse d'asile)\b/.test(l)){
+    add("motif","asile / protection");
   }
 
   if(
     /\b(démarches de séjour|demarches de sejour|démarche de séjour|demarche de sejour|titre de séjour|titre de sejour|carte de séjour|carte de sejour|récépissé|recepisse)\b/.test(l)
   ){
-    add(
-      "objectif",
-      "démarches liées au séjour"
-    );
+    add("objectif","démarches liées au séjour");
   }
 
   return i;
@@ -498,46 +413,16 @@ function etatDepot(v){
 
   if(
     /^(oui|yes|ouais)$/.test(s)||
-    /\b(j'ai déjà déposé|j ai deja depose|déjà déposé|deja depose|demande déposée|demande deposee)\b/.test(s)
+    /déjà déposé|deja depose|demande déposée|demande deposee/.test(s)
   ){
     return"oui";
   }
 
   if(
     /^(non|pas encore|jamais)$/.test(s)||
-    /\b(je n'ai pas déposé|je n ai pas depose|aucune demande|jamais déposé|jamais depose)\b/.test(s)
+    /je n'ai pas déposé|je n ai pas depose|aucune demande|jamais déposé|jamais depose/.test(s)
   ){
     return"non";
-  }
-
-  return"inconnu";
-}
-
-function etatDepotDepuisContexte(base,rep,infos){
-  let depot=etatDepot(rep);
-
-  if(depot!=="inconnu"){
-    return depot;
-  }
-
-  depot=etatDepot(base);
-
-  if(depot!=="inconnu"){
-    return depot;
-  }
-
-  const info=infos.find(
-    x=>x.type==="dépôt"
-  );
-
-  if(info){
-    if(/aucun|nié|nie/.test(info.valeur)){
-      return"non";
-    }
-
-    if(/déjà|déposée|deposee/.test(info.valeur)){
-      return"oui";
-    }
   }
 
   return"inconnu";
@@ -579,15 +464,33 @@ function prochaineQuestion(q,c,o={}){
     x=>x.type==="motif"
   );
 
-  const depot=etatDepotDepuisContexte(
-    base,
-    rep,
-    infos
-  );
+  /*
+   * IMPORTANT :
+   * On vérifie d'abord la réponse actuelle,
+   * puis la demande initiale,
+   * puis les informations extraites.
+   */
+  let depot=etatDepot(rep);
+
+  if(depot==="inconnu"){
+    const depotInitial=etatDepot(base);
+
+    if(depotInitial!=="inconnu"){
+      depot=depotInitial;
+    }
+    else if(depotInfo){
+      depot=depotInfo.valeur.includes("aucun")
+        ?"non"
+        :"oui";
+    }
+  }
 
   if(c.recepisse){
 
-    if(depot==="inconnu"){
+    if(
+      depot==="inconnu"&&
+      etape===0
+    ){
       return"Avez-vous déjà déposé une demande de titre de séjour auprès de l’ANEF ou de la préfecture ?";
     }
 
@@ -612,28 +515,31 @@ function prochaineQuestion(q,c,o={}){
 
       return"Quel document ou quelle situation avez-vous actuellement concernant votre séjour (visa, passeport, ancien titre, aucun document, autre) ?";
     }
+
+    return"Avez-vous déjà déposé une demande de titre de séjour auprès de l’ANEF ou de la préfecture ?";
   }
 
   if(c.immigration){
 
-    if(depot==="inconnu"){
+    if(
+      depot==="inconnu"&&
+      etape===0
+    ){
       return"Avez-vous déjà déposé une demande de titre de séjour auprès de l’ANEF ou de la préfecture ?";
     }
 
-    if(depot==="non"&&!motif){
+    if(
+      depot==="non"&&
+      !motif
+    ){
       return"Pour quel motif souhaitez-vous demander un titre de séjour : travail, famille, études, demande d’asile ou autre ?";
     }
 
-    if(depot==="oui"&&!proc){
+    if(
+      depot==="oui"&&
+      !proc
+    ){
       return"Quel type de demande de titre de séjour avez-vous déposé : première demande, renouvellement, changement de situation, demande d’asile ou autre ?";
-    }
-
-    if(depot==="non"&&motif){
-      return"Quel document ou quelle situation avez-vous actuellement concernant votre séjour (visa, passeport, ancien titre, aucun document, autre) ?";
-    }
-
-    if(depot==="oui"&&proc){
-      return"Quel est votre objectif maintenant : suivre votre dossier, obtenir ou renouveler votre titre, pouvoir travailler, ou résoudre un problème administratif ?";
     }
 
     return"Quelle est la prochaine démarche ou le principal problème que vous souhaitez résoudre concernant votre séjour ?";
@@ -669,20 +575,13 @@ function prochaineQuestion(q,c,o={}){
 function progression(q,o={}){
   const base=[
     q,
-    texte(
-      o.reponseUtilisateur||o.reponse,
-      12000
-    ),
-    texte(
-      o.historique,
-      LIMITS.historique
-    )
+    texte(o.reponseUtilisateur||o.reponse,12000),
+    texte(o.historique,LIMITS.historique)
   ]
-    .filter(Boolean)
-    .join("\n");
+  .filter(Boolean)
+  .join("\n");
 
   const c=detectContext(base);
-
   c.message=!!o.messageMode;
 
   return c;
@@ -707,8 +606,7 @@ function selectSources(c){
     ids.push("guichet");
   }
 
-  return unique(ids)
-    .map(x=>SOURCES[x]);
+  return unique(ids).map(x=>SOURCES[x]);
 }
 
 function infosToText(infos,q,c){
@@ -718,51 +616,49 @@ function infosToText(infos,q,c){
       :texte(q);
   }
 
-  return infos
-    .map(x=>{
+  return infos.map(x=>{
 
-      if(x.type==="nationalité"){
-        return"Vous indiquez être de nationalité "+x.valeur;
-      }
+    if(x.type==="nationalité"){
+      return"Vous indiquez être de nationalité "+x.valeur;
+    }
 
-      if(
-        x.type==="arrivée en France"||
-        x.type==="date d'arrivée"
-      ){
-        return"Vous indiquez être arrivé en France "+x.valeur.replace(/^depuis\s*/i,"");
-      }
+    if(
+      x.type==="arrivée en France"||
+      x.type==="date d'arrivée"
+    ){
+      return"Vous indiquez être arrivé en France "+x.valeur.replace(/^depuis\s*/i,"");
+    }
 
-      if(x.type==="objectif"){
-        return"Votre objectif concerne "+x.valeur;
-      }
+    if(x.type==="objectif"){
+      return"Votre objectif concerne "+x.valeur;
+    }
 
-      if(x.type==="motif"){
-        return"Le motif mentionné est "+x.valeur;
-      }
+    if(x.type==="motif"){
+      return"Le motif mentionné est "+x.valeur;
+    }
 
-      if(x.type==="procédure"){
-        return"La procédure mentionnée est "+x.valeur;
-      }
+    if(x.type==="procédure"){
+      return"La procédure mentionnée est "+x.valeur;
+    }
 
-      if(x.type==="visa"){
-        return"Vous mentionnez un visa";
-      }
+    if(x.type==="visa"){
+      return"Vous mentionnez un visa";
+    }
 
-      if(x.type==="travail"){
-        return"Vous mentionnez un travail actuel";
-      }
+    if(x.type==="travail"){
+      return"Vous mentionnez un travail actuel";
+    }
 
-      if(x.type==="logement"){
-        return"Vous mentionnez un hébergement";
-      }
+    if(x.type==="logement"){
+      return"Vous mentionnez un hébergement";
+    }
 
-      if(x.type==="dépôt"){
-        return x.valeur;
-      }
+    if(x.type==="dépôt"){
+      return x.valeur;
+    }
 
-      return x.type+" : "+x.valeur;
-    })
-    .join(". ")+"." ;
+    return x.type+" : "+x.valeur;
+  }).join(". ")+".";
 }
 
 function confirmed(q,c,sources,infos){
@@ -779,9 +675,7 @@ function confirmed(q,c,sources,infos){
       "logement",
       "dépôt"
     ].includes(x.type))
-    .map(
-      x=>x.type+" : "+x.valeur
-    );
+    .map(x=>x.type+" : "+x.valeur);
 
   if(c.immigration){
     a.push(
@@ -894,7 +788,14 @@ Les choix de l'interface ne prouvent aucun statut juridique, droit, nationalité
 
 Pour l'immigration, ne déduis jamais une situation légale non confirmée.
 
-Pour un récépissé, distingue demande de titre, dépôt, procédure, document reçu et objectif.
+Ne transforme jamais « je viens d'arriver en France » en « première demande ».
+
+Pour un récépissé, distingue :
+- demande de titre
+- dépôt
+- type de procédure
+- document reçu
+- objectif de l'utilisateur.
 
 Ne dis jamais qu'une personne peut séjourner ou travailler sans éléments confirmés.
 
@@ -937,7 +838,7 @@ async function askAI(env,prompt,maxTokens=700){
 }
 
 function messagePrompt(contenu,mode,langue){
-  const m={
+  const modes={
     analyse:"Analyse le message : faits, demande, incertitudes et réponse possible.",
     reponse:"Prépare une réponse claire et polie sans inventer de faits.",
     reformulation:"Réécris le message plus clairement sans changer son sens.",
@@ -946,7 +847,7 @@ function messagePrompt(contenu,mode,langue){
   };
 
   return`Langue : ${langue||"français"}
-Mode : ${m[mode]||m.analyse}
+Mode : ${modes[mode]||modes.analyse}
 
 CONTENU :
 ${texte(contenu,18000)}`;
@@ -967,11 +868,15 @@ async function analyserImage(env,image,demande=""){
       messages:[
         {
           role:"system",
-          content:"Analyse uniquement ce qui est réellement visible ou lisible. Ne devine jamais un texte illisible."
+          content:
+            "Analyse uniquement ce qui est réellement visible ou lisible. "+
+            "Ne devine jamais un texte illisible."
         },
         {
           role:"user",
-          content:demande||"Lis et analyse cette image. Explique uniquement ce qui est visible et indique les incertitudes."
+          content:
+            demande||
+            "Lis et analyse cette image. Explique uniquement ce qui est visible et indique les incertitudes."
         }
       ],
       image,
@@ -982,48 +887,39 @@ async function analyserImage(env,image,demande=""){
 
   return typeof r==="string"
     ?r
-    :(r?.response||r?.result?.response||
+    :(r?.response||
+      r?.result?.response||
       (typeof r?.result==="string"
         ?r.result
         :JSON.stringify(r)));
 }
 
 function base64FromDataURL(v){
-  if(typeof v!=="string"){
-    return"";
-  }
+  const s=String(v||"");
+  const i=s.indexOf(",");
 
-  const i=v.indexOf(",");
-
-  if(
-    v.startsWith("data:")&&
-    i>=0
-  ){
-    return v.slice(i+1);
-  }
-
-  return v;
+  return s.startsWith("data:")&&i>=0
+    ?s.slice(i+1)
+    :s;
 }
 
 async function transcrireAudio(env,audio,langue="fr"){
-  if(!audio||typeof audio!=="string"){
+  if(!audio){
     throw Error("Audio absent.");
+  }
+
+  if(typeof audio!=="string"){
+    throw Error("Format audio invalide.");
   }
 
   if(audio.length>LIMITS.audio){
     throw Error("Audio trop volumineux.");
   }
 
-  const contenu=base64FromDataURL(audio);
-
-  if(!contenu){
-    throw Error("Données audio invalides.");
-  }
-
   const r=await env.IA.run(
     MODEL_AUDIO,
     {
-      audio:contenu,
+      audio:base64FromDataURL(audio),
       task:"transcribe",
       language:langue
     }
@@ -1148,11 +1044,16 @@ async function analyserQuestion(env,q,o={}){
 
   if(c.recepisse){
 
-    const dep=etatDepotDepuisContexte(
-      base,
-      rep,
-      infos
-    );
+    /*
+     * Même correction ici :
+     * on vérifie d'abord la réponse actuelle,
+     * puis la demande initiale.
+     */
+    let dep=etatDepot(rep);
+
+    if(dep==="inconnu"){
+      dep=etatDepot(base);
+    }
 
     const hasDep=infos.some(
       x=>x.type==="dépôt"
@@ -1163,19 +1064,16 @@ async function analyserQuestion(env,q,o={}){
     );
 
     if(!hasDep){
-
       verify.push(
         "Vérifier si une demande de titre de séjour a déjà été déposée."
       );
-
-    }else if(dep==="oui"&&!hasProc){
-
+    }
+    else if(dep==="oui"&&!hasProc){
       verify.push(
         "Vérifier le type exact de procédure de séjour."
       );
-
-    }else{
-
+    }
+    else{
       verify.push(
         "Vérifier le document reçu et l'état réel du dossier."
       );
@@ -1196,11 +1094,11 @@ async function analyserQuestion(env,q,o={}){
       orientation,
       3000
     )
-      .replace(
-        /^\s*(?:💡\s*)?Orientation\s*:?\s*/i,
-        ""
-      )
-      .trim(),
+    .replace(
+      /^\s*(?:💡\s*)?Orientation\s*:?\s*/i,
+      ""
+    )
+    .trim(),
 
     confirmed:confirmed(
       base,
@@ -1227,9 +1125,11 @@ async function analyserQuestion(env,q,o={}){
     ),
 
     risks:[],
+
     professional:[],
 
     nextAction:next,
+
     questionSuivante:next,
 
     sources:sources.map(s=>({
@@ -1256,166 +1156,160 @@ function pageHTML(){
 *{box-sizing:border-box}
 
 body{
-margin:0;
-font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
-background:#f4f6f8;
-color:#111827
+ margin:0;
+ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+ background:#f4f6f8;
+ color:#111827
 }
 
 header{
-background:#111827;
-color:#fff;
-padding:28px 18px;
-text-align:center
+ background:#111827;
+ color:#fff;
+ padding:28px 18px;
+ text-align:center
 }
 
 header h1{
-margin:0 0 8px;
-font-size:32px
+ margin:0 0 8px;
+ font-size:32px
 }
 
 header p{
-margin:0;
-opacity:.85
+ margin:0;
+ opacity:.85
 }
 
 .container{
-max-width:950px;
-margin:25px auto;
-padding:0 15px 90px
+ max-width:950px;
+ margin:25px auto;
+ padding:0 15px 90px
 }
 
 .card,.result-card{
-background:#fff;
-border-radius:18px;
-padding:20px;
-margin-bottom:18px;
-box-shadow:0 8px 30px rgba(0,0,0,.07)
+ background:#fff;
+ border-radius:18px;
+ padding:20px;
+ margin-bottom:18px;
+ box-shadow:0 8px 30px rgba(0,0,0,.07)
 }
 
 .choices{
-display:grid;
-grid-template-columns:repeat(2,1fr);
-gap:14px
+ display:grid;
+ grid-template-columns:repeat(2,1fr);
+ gap:14px
 }
 
 .choice{
-padding:22px 16px;
-border:1px solid #e5e7eb;
-border-radius:16px;
-background:#fff;
-text-align:left;
-cursor:pointer
+ padding:22px 16px;
+ border:1px solid #e5e7eb;
+ border-radius:16px;
+ background:#fff;
+ text-align:left;
+ cursor:pointer
 }
 
 .choice strong{
-display:block;
-font-size:19px;
-margin-bottom:7px
+ display:block;
+ font-size:19px;
+ margin-bottom:7px
 }
 
 .choice span{
-color:#6b7280
+ color:#6b7280
 }
 
 textarea,input,select{
-width:100%;
-padding:13px;
-border:1px solid #d1d5db;
-border-radius:11px;
-font-size:16px;
-background:#fff
+ width:100%;
+ padding:13px;
+ border:1px solid #d1d5db;
+ border-radius:11px;
+ font-size:16px;
+ background:#fff
 }
 
 textarea{
-min-height:130px;
-resize:vertical
+ min-height:130px;
+ resize:vertical
 }
 
 button{
-border:0;
-border-radius:11px;
-padding:12px 16px;
-font-size:15px;
-cursor:pointer;
-background:#111827;
-color:#fff
+ border:0;
+ border-radius:11px;
+ padding:12px 16px;
+ font-size:15px;
+ cursor:pointer;
+ background:#111827;
+ color:#fff
 }
 
 .secondary{
-background:#e5e7eb;
-color:#111827
+ background:#e5e7eb;
+ color:#111827
 }
 
 .actions{
-display:flex;
-flex-wrap:wrap;
-gap:10px;
-margin-top:12px
+ display:flex;
+ flex-wrap:wrap;
+ gap:10px;
+ margin-top:12px
 }
 
 .actions button{
-flex:1
+ flex:1
 }
 
 .ai-result{
-white-space:pre-wrap;
-line-height:1.65
+ white-space:pre-wrap;
+ line-height:1.65
 }
 
 .source{
-padding:11px;
-background:#f3f4f6;
-border-radius:10px;
-margin:8px 0
+ padding:11px;
+ background:#f3f4f6;
+ border-radius:10px;
+ margin:8px 0
 }
 
 .source a{
-color:#111827;
-font-weight:600
+ color:#111827;
+ font-weight:600
 }
 
 .status{
-margin-top:10px;
-color:#4b5563
+ margin-top:10px;
+ color:#4b5563
 }
 
 .hidden{
-display:none
+ display:none
 }
 
 .cancer{
-position:fixed;
-right:12px;
-bottom:12px;
-background:#fff;
-border:1px solid #e5e7eb;
-padding:10px 13px;
-border-radius:999px;
-box-shadow:0 5px 20px rgba(0,0,0,.12);
-font-size:13px;
-z-index:20
+ position:fixed;
+ right:12px;
+ bottom:12px;
+ background:#fff;
+ border:1px solid #e5e7eb;
+ padding:10px 13px;
+ border-radius:999px;
+ box-shadow:0 5px 20px rgba(0,0,0,.12);
+ font-size:13px;
+ z-index:20
 }
 
 footer{
-text-align:center;
-color:#6b7280;
-padding:25px 10px
+ text-align:center;
+ color:#6b7280;
+ padding:25px 10px
 }
 
 @media(max-width:650px){
-.choices{
-grid-template-columns:1fr
-}
-
-header h1{
-font-size:27px
-}
-
-.actions button{
-width:100%;
-flex-basis:100%
-}
+ .choices{grid-template-columns:1fr}
+ header h1{font-size:27px}
+ .actions button{
+  width:100%;
+  flex-basis:100%
+ }
 }
 </style>
 </head>
@@ -1433,10 +1327,8 @@ flex-basis:100%
 
 <div id="assistant" class="card hidden">
 <button class="secondary" id="retour">← Retour</button>
-
 <h2 id="titreParcours"></h2>
 <p id="descriptionParcours"></p>
-
 <div id="situations" class="choices"></div>
 </div>
 
@@ -1447,34 +1339,24 @@ flex-basis:100%
 <h2>🧠 Votre demande</h2>
 
 <textarea
-id="question"
-placeholder="Expliquez votre situation..."
+ id="question"
+ placeholder="Expliquez votre situation..."
 ></textarea>
 
 <div class="actions">
-
-<button id="analyser">
-Analyser
-</button>
-
-<button id="micro" class="secondary">
-🎙️ Parler
-</button>
-
-<button id="photo" class="secondary">
-📷 Analyser une image
-</button>
-
+<button id="analyser">Analyser</button>
+<button id="micro" class="secondary">🎙️ Parler</button>
+<button id="photo" class="secondary">📷 Analyser une image</button>
 </div>
 
 <div id="status" class="status"></div>
 
 <input
-id="imageInput"
-type="file"
-accept="image/*"
-capture="environment"
-class="hidden"
+ id="imageInput"
+ type="file"
+ accept="image/*"
+ capture="environment"
+ class="hidden"
 >
 
 </div>
@@ -1485,9 +1367,7 @@ class="hidden"
 
 <select id="messageMode">
 
-<option value="">
-Mode normal
-</option>
+<option value="">Mode normal</option>
 
 <option value="analyse">
 🔎 Analyser le message
@@ -1512,9 +1392,9 @@ Mode normal
 </select>
 
 <input
-id="langue"
-placeholder="Langue souhaitée pour une traduction"
-style="margin-top:10px"
+ id="langue"
+ placeholder="Langue souhaitée pour une traduction"
+ style="margin-top:10px"
 >
 
 </div>
@@ -1528,55 +1408,25 @@ style="margin-top:10px"
 </div>
 
 <footer>
-
 🎗️ Notre soutien aux personnes touchées par le cancer.
-
 <br><br>
-
 GouRare AI — Version ${VERSION}
-
 </footer>
 
 <script>
-
-const parcours=
-document.getElementById("parcours");
-
-const assistant=
-document.getElementById("assistant");
-
-const outil=
-document.getElementById("outil");
-
-const messageCard=
-document.getElementById("messageCard");
-
-const situations=
-document.getElementById("situations");
-
-const titre=
-document.getElementById("titreParcours");
-
-const desc=
-document.getElementById("descriptionParcours");
-
-const question=
-document.getElementById("question");
-
-const result=
-document.getElementById("result");
-
-const status=
-document.getElementById("status");
-
-const messageMode=
-document.getElementById("messageMode");
-
-const langue=
-document.getElementById("langue");
-
-const imageInput=
-document.getElementById("imageInput");
+const parcours=document.getElementById("parcours");
+const assistant=document.getElementById("assistant");
+const outil=document.getElementById("outil");
+const messageCard=document.getElementById("messageCard");
+const situations=document.getElementById("situations");
+const titre=document.getElementById("titreParcours");
+const desc=document.getElementById("descriptionParcours");
+const question=document.getElementById("question");
+const result=document.getElementById("result");
+const status=document.getElementById("status");
+const messageMode=document.getElementById("messageMode");
+const langue=document.getElementById("langue");
+const imageInput=document.getElementById("imageInput");
 
 let profil=null;
 let situation=null;
@@ -1587,1207 +1437,1049 @@ let audioChunks=[];
 let recording=false;
 
 function esc(v){
-return String(v||"")
-.replace(/&/g,"&amp;")
-.replace(/</g,"&lt;")
-.replace(/>/g,"&gt;")
-.replace(/\"/g,"&quot;")
-.replace(/'/g,"&#039;")
+ return String(v||"")
+ .replace(/&/g,"&amp;")
+ .replace(/</g,"&lt;")
+ .replace(/>/g,"&gt;")
+ .replace(/\"/g,"&quot;")
+ .replace(/'/g,"&#039;");
 }
 
 function showHome(){
 
-profil=null;
-situation=null;
-historique=[];
-etape=0;
+ profil=null;
+ situation=null;
+ historique=[];
+ etape=0;
 
-parcours.classList.remove("hidden");
-assistant.classList.add("hidden");
-outil.classList.add("hidden");
-messageCard.classList.add("hidden");
+ parcours.classList.remove("hidden");
+ assistant.classList.add("hidden");
+ outil.classList.add("hidden");
+ messageCard.classList.add("hidden");
 
-result.innerHTML="";
+ result.innerHTML="";
 
-parcours.innerHTML=
-"<h2>Comment pouvons-nous vous orienter ?</h2>"+
-"<p>Choisissez le parcours qui correspond le mieux à votre situation.</p>"+
-"<div class='choices' id='profils'></div>"+
-"<p style='margin-top:18px'>"+
-"<button id='inconnu' class='secondary'>"+
-"✨ Je ne sais pas où aller — GouRare AI m'oriente"+
-"</button></p>";
+ parcours.innerHTML=
+ "<h2>Comment pouvons-nous vous orienter ?</h2>"+
+ "<p>Choisissez le parcours qui correspond le mieux à votre situation.</p>"+
+ "<div class='choices' id='profils'></div>"+
+ "<p style='margin-top:18px'>"+
+ "<button id='inconnu' class='secondary'>"+
+ "✨ Je ne sais pas où aller — GouRare AI m'oriente"+
+ "</button></p>";
 
-const p=
-document.getElementById("profils");
+ const p=document.getElementById("profils");
+ const data=${JSON.stringify(PARCOURS)};
 
-const data=${JSON.stringify(PARCOURS)};
+ Object.keys(data).forEach(k=>{
 
-Object.keys(data).forEach(k=>{
+  const x=data[k];
 
-const x=data[k];
+  p.innerHTML+=
+   "<div class='choice' data-p='"+esc(k)+"'>"+
+   "<strong>"+esc(x.titre)+"</strong>"+
+   "<span>"+esc(x.description)+"</span>"+
+   "</div>";
+ });
 
-p.innerHTML+=
-"<div class='choice' data-p='"+esc(k)+"'>"+
-"<strong>"+esc(x.titre)+"</strong>"+
-"<span>"+esc(x.description)+"</span>"+
-"</div>";
+ p.querySelectorAll(".choice").forEach(
+  b=>b.onclick=()=>openProfil(b.dataset.p)
+ );
 
-});
+ document.getElementById("inconnu").onclick=()=>{
 
-p.querySelectorAll(".choice").forEach(
-b=>b.onclick=()=>openProfil(b.dataset.p)
-);
+  openProfil("particulier");
 
-document.getElementById("inconnu").onclick=()=>{
+  question.value=
+   "Je ne sais pas quel parcours correspond à ma situation. Aidez-moi à m'orienter.";
 
-openProfil("particulier");
-
-question.value=
-"Je ne sais pas quel parcours correspond à ma situation. Aidez-moi à m'orienter.";
-
-outil.classList.remove("hidden");
-assistant.classList.add("hidden");
-
-};
+  outil.classList.remove("hidden");
+  assistant.classList.add("hidden");
+ };
 }
 
 function openProfil(k){
 
-profil=k;
+ profil=k;
 
-const x=${JSON.stringify(PARCOURS)}[k];
+ const x=${JSON.stringify(PARCOURS)}[k];
 
-parcours.classList.add("hidden");
-outil.classList.add("hidden");
-messageCard.classList.add("hidden");
+ parcours.classList.add("hidden");
+ outil.classList.add("hidden");
+ messageCard.classList.add("hidden");
+ assistant.classList.remove("hidden");
 
-assistant.classList.remove("hidden");
+ titre.textContent=x.titre;
+ desc.textContent=x.description;
 
-titre.textContent=x.titre;
-desc.textContent=x.description;
+ situations.innerHTML="";
 
-situations.innerHTML="";
+ x.situations.forEach(item=>{
 
-x.situations.forEach(item=>{
+  const b=document.createElement("div");
 
-const b=
-document.createElement("div");
+  b.className="choice";
 
-b.className="choice";
+  b.innerHTML=
+   "<strong>"+esc(item[1])+"</strong>";
 
-b.innerHTML=
-"<strong>"+esc(item[1])+"</strong>";
+  b.dataset.s=item[0];
 
-b.dataset.s=item[0];
+  b.onclick=()=>openSituation(
+   item[0],
+   item[1]
+  );
 
-b.onclick=()=>openSituation(
-item[0],
-item[1]
-);
-
-situations.appendChild(b);
-
-});
+  situations.appendChild(b);
+ });
 }
 
 function openSituation(s,label){
 
-situation=s;
+ situation=s;
+ historique=[];
+ etape=0;
 
-historique=[];
-etape=0;
+ assistant.classList.add("hidden");
+ outil.classList.remove("hidden");
+ messageCard.classList.remove("hidden");
 
-assistant.classList.add("hidden");
-outil.classList.remove("hidden");
-messageCard.classList.remove("hidden");
+ question.value="";
+ result.innerHTML="";
 
-question.value="";
-result.innerHTML="";
+ status.textContent=
+  "Parcours sélectionné : "+label;
 
-status.textContent=
-"Parcours sélectionné : "+label;
-
-messageMode.value="";
-
-if(
-s==="message"||
-s==="document"
-){
-messageMode.value="analyse";
-}
+ messageMode.value="";
 }
 
-document.getElementById("retour").onclick=
-showHome;
+document.getElementById("retour").onclick=showHome;
 
 document.getElementById("retourOutil").onclick=()=>{
-
-outil.classList.add("hidden");
-messageCard.classList.add("hidden");
-assistant.classList.remove("hidden");
-
+ outil.classList.add("hidden");
+ messageCard.classList.add("hidden");
+ assistant.classList.remove("hidden");
 };
 
 showHome();
 
 async function analyserTexte(){
 
-const q=question.value.trim();
+ const q=question.value.trim();
 
-if(!q){
+ if(!q){
+  status.textContent=
+   "Veuillez écrire ou dire votre demande.";
+  return;
+ }
 
-status.textContent=
-"Veuillez écrire ou dire votre demande.";
+ status.textContent="Analyse en cours...";
+ result.innerHTML="";
 
-return;
-}
+ try{
 
-status.textContent=
-"Analyse en cours...";
+  const premiere=
+   historique.length===0;
 
-result.innerHTML="";
+  /*
+   * Première question :
+   * la totalité du texte est la demande initiale.
+   *
+   * Questions suivantes :
+   * questionInitiale reste celle du début,
+   * q devient la réponse actuelle.
+   */
+  const questionInitiale=
+   premiere
+    ?q
+    :historique[0].questionInitiale;
 
-try{
+  const reponseUtilisateur=
+   premiere
+    ?""
+    :q;
 
-const premiere=
-historique.length===0;
+  const r=await fetch(
+   "/api/analyze",
+   {
+    method:"POST",
+    headers:{
+     "content-type":"application/json"
+    },
+    body:JSON.stringify({
 
-const questionInitiale=
-premiere
-?q
-:historique[0].questionInitiale;
+     type:
+      messageMode.value
+       ?"message"
+       :"question",
 
-const reponseUtilisateur=
-premiere
-?""
-:q;
+     question:q,
 
-const historiqueTexte=
-historique
-.map(x=>{
+     questionInitiale,
 
-const parts=[];
+     reponseUtilisateur,
 
-if(x.questionInitiale){
-parts.push(
-"Question initiale : "+
-x.questionInitiale
-);
-}
+     historique:
+      historique
+       .map(x=>
+        (x.questionInitiale
+          ?"Question initiale: "+
+           x.questionInitiale+
+           "\n"
+          :"")+
+        (x.reponse
+          ?"Réponse utilisateur: "+
+           x.reponse
+          :"")
+       )
+       .join("\n\n"),
 
-if(x.questionSuivante){
-parts.push(
-"Question posée : "+
-x.questionSuivante
-);
-}
+     profil,
+     situation,
+     etape,
 
-if(x.reponse){
-parts.push(
-"Réponse utilisateur : "+
-x.reponse
-);
-}
+     messageMode:
+      messageMode.value||null,
 
-return parts.join("\n");
+     langue:
+      langue.value.trim()
+    })
+   }
+  );
 
-})
-.join("\n\n");
+  const d=await r.json();
 
-const r=
-await fetch(
-"/api/analyze",
-{
-method:"POST",
-headers:{
-"content-type":
-"application/json"
-},
-body:JSON.stringify({
+  if(!r.ok||!d.success){
+   throw Error(
+    d.error||"Erreur."
+   );
+  }
 
-type:
-messageMode.value
-?"message"
-:"question",
+  historique.push({
 
-question:q,
+   questionInitiale:
+    premiere
+     ?questionInitiale
+     :"",
 
-questionInitiale,
+   question:q,
 
-reponseUtilisateur,
+   reponse:reponseUtilisateur,
 
-historique:historiqueTexte,
+   questionSuivante:
+    d.questionSuivante||
+    d.nextAction||
+    ""
+  });
 
-profil,
+  etape++;
 
-situation,
+  afficher(d);
 
-etape,
+  question.value="";
 
-messageMode:
-messageMode.value||null,
+  status.textContent=
+   "Analyse terminée. Répondez à la question suivante pour continuer.";
 
-langue:
-langue.value.trim()
+ }catch(e){
 
-})
-}
-);
+  status.textContent=
+   e.message||
+   "Erreur.";
 
-const d=await r.json();
-
-if(!r.ok||!d.success){
-throw Error(
-d.error||"Erreur."
-);
-}
-
-historique.push({
-
-questionInitiale:
-premiere
-?questionInitiale
-:historique[0]?.questionInitiale||"",
-
-question:
-q,
-
-reponse:
-reponseUtilisateur,
-
-questionSuivante:
-d.questionSuivante||
-d.nextAction||
-""
-
-});
-
-etape++;
-
-afficher(d);
-
-question.value="";
-
-status.textContent=
-"Analyse terminée. Répondez à la question suivante pour continuer.";
-
-}catch(e){
-
-status.textContent=
-e.message||"Erreur.";
-
-}
+ }
 }
 
 function liste(a){
 
-if(!a||!a.length){
+ if(!a||!a.length){
+  return"<p>Aucun élément précis à présenter à ce stade.</p>";
+ }
 
-return"<p>Aucun élément précis à présenter à ce stade.</p>";
-
-}
-
-return"<ul>"+
-a.map(
-x=>
-"<li>"+
-esc(
-typeof x==="string"
-?x
-:(x.texte||JSON.stringify(x))
-)+
-"</li>"
-).join("")+
-"</ul>";
+ return"<ul>"+
+  a.map(x=>
+   "<li>"+
+   esc(
+    typeof x==="string"
+     ?x
+     :(x.texte||
+       JSON.stringify(x))
+   )+
+   "</li>"
+  ).join("")+
+  "</ul>";
 }
 
 function afficher(d){
 
-let h=
+ let h=
+ "<div class='result-card'>"+
+ "<h2>🧭 Ce que j'ai compris</h2>"+
+ "<div class='ai-result'>"+
+ esc(d.compris)+
+ "</div>"+
+ "</div>"+
 
-"<div class='result-card'>"+
-"<h2>🧭 Ce que j'ai compris</h2>"+
-"<div class='ai-result'>"+
-esc(d.compris)+
-"</div></div>"+
+ "<div class='result-card'>"+
+ "<h2>💡 Orientation</h2>"+
+ "<div class='ai-result'>"+
+ esc(d.orientation)+
+ "</div>"+
+ "</div>"+
 
-"<div class='result-card'>"+
-"<h2>💡 Orientation</h2>"+
-"<div class='ai-result'>"+
-esc(d.orientation)+
-"</div></div>"+
+ "<div class='result-card'>"+
+ "<h2>✅ Informations confirmées</h2>"+
+ liste(d.confirmed)+
+ "</div>"+
 
-"<div class='result-card'>"+
-"<h2>✅ Informations confirmées</h2>"+
-liste(d.confirmed)+
-"</div>"+
+ "<div class='result-card'>"+
+ "<h2>🔎 À vérifier</h2>"+
+ liste(d.toVerify)+
+ "</div>"+
 
-"<div class='result-card'>"+
-"<h2>🔎 À vérifier</h2>"+
-liste(d.toVerify)+
-"</div>"+
+ "<div class='result-card'>"+
+ "<h2>💭 Recommandations</h2>"+
+ liste(d.recommendations)+
+ "</div>"+
 
-"<div class='result-card'>"+
-"<h2>💭 Recommandations</h2>"+
-liste(d.recommendations)+
-"</div>"+
+ "<div class='result-card'>"+
+ "<h2>📋 Actions concrètes</h2>"+
+ liste(d.actions)+
+ "</div>"+
 
-"<div class='result-card'>"+
-"<h2>📋 Actions concrètes</h2>"+
-liste(d.actions)+
-"</div>"+
+ "<div class='result-card'>"+
+ "<h2>📄 Documents</h2>"+
+ (
+  d.documents&&d.documents.length
+   ?liste(d.documents)
+   :"<p>Aucun document précis à présenter à ce stade.</p>"
+ )+
+ "</div>"+
 
-"<div class='result-card'>"+
-"<h2>📄 Documents</h2>"+
+ "<div class='result-card'>"+
+ "<h2>🚀 Prochaine action</h2>"+
+ "<div class='ai-result'>"+
+ esc(d.nextAction)+
+ "</div>"+
+ "<p style='color:#4b5563'>"+
+ "Répondez à cette question dans la zone ci-dessus, puis appuyez sur « Analyser »."+
+ "</p>"+
+ "</div>"+
 
-(
-d.documents&&
-d.documents.length
-?liste(d.documents)
-:"<p>Aucun document précis à présenter à ce stade.</p>"
-)+
+ "<div class='result-card'>"+
+ "<h2>📚 Sources consultées</h2>";
 
-"</div>"+
+ (d.sources||[]).forEach(s=>{
 
-"<div class='result-card'>"+
-"<h2>🚀 Prochaine action</h2>"+
-"<div class='ai-result'>"+
-esc(d.nextAction)+
-"</div>"+
-"<p style='color:#4b5563'>"+
-"Répondez à cette question dans la zone ci-dessus, puis appuyez sur « Analyser »."+
-"</p></div>"+
+  h+=
+   "<div class='source'>"+
+   esc(s.organisme)+
+   " — "+
+   esc(s.titre)+
+   "<br><a href='"+
+   esc(s.url)+
+   "' target='_blank' rel='noopener noreferrer'>"+
+   "Consulter la source officielle ↗"+
+   "</a></div>";
+ });
 
-"<div class='result-card'>"+
-"<h2>📚 Sources consultées</h2>";
+ h+="</div>";
 
-(d.sources||[]).forEach(s=>{
-
-h+=
-"<div class='source'>"+
-esc(s.organisme)+
-" — "+
-esc(s.titre)+
-"<br><a href='"+
-esc(s.url)+
-"' target='_blank' rel='noopener noreferrer'>"+
-"Consulter la source officielle ↗"+
-"</a></div>";
-
-});
-
-h+="</div>";
-
-result.innerHTML=h;
+ result.innerHTML=h;
 }
 
 document.getElementById("analyser").onclick=
-analyserTexte;
+ analyserTexte;
 
 document.getElementById("photo").onclick=()=>{
-imageInput.click();
+ imageInput.click();
 };
 
 imageInput.onchange=()=>{
 
-const f=
-imageInput.files&&
-imageInput.files[0];
+ const f=
+  imageInput.files&&
+  imageInput.files[0];
 
-if(!f)return;
+ if(!f)return;
 
-if(!f.type.startsWith("image/")){
+ if(!f.type.startsWith("image/")){
+  status.textContent=
+   "Veuillez sélectionner une image.";
+  return;
+ }
 
-status.textContent=
-"Veuillez sélectionner une image.";
+ if(f.size>5500000){
+  status.textContent=
+   "Image trop volumineuse.";
+  return;
+ }
 
-imageInput.value="";
+ const rd=new FileReader();
 
-return;
-}
+ status.textContent=
+  "📷 Analyse de l'image...";
 
-if(f.size>5500000){
+ rd.onloadend=async()=>{
 
-status.textContent=
-"Image trop volumineuse.";
+  try{
 
-imageInput.value="";
+   /*
+    * Vérification supplémentaire
+    * avant envoi.
+    */
+   if(
+    typeof rd.result!=="string"||
+    rd.result.length>5500000
+   ){
+    throw Error(
+     "Image trop volumineuse."
+    );
+   }
 
-return;
-}
+   const r=await fetch(
+    "/api/image",
+    {
+     method:"POST",
+     headers:{
+      "content-type":"application/json"
+     },
+     body:JSON.stringify({
+      image:rd.result,
+      demande:question.value.trim()
+     })
+    }
+   );
 
-const rd=
-new FileReader();
+   const d=await r.json();
 
-status.textContent=
-"📷 Analyse de l'image...";
+   if(!r.ok||!d.success){
+    throw Error(
+     d.error||
+     "Erreur image."
+    );
+   }
 
-rd.onloadend=async()=>{
+   question.value=d.texte||"";
 
-try{
+   await analyserTexte();
 
-const dataUrl=
-String(rd.result||"");
+  }catch(e){
 
-if(!dataUrl){
+   status.textContent=
+    e.message||
+    "Erreur image.";
 
-throw Error(
-"Impossible de lire l'image."
-);
-}
+  }
+ };
 
-const r=
-await fetch(
-"/api/image",
-{
-method:"POST",
-headers:{
-"content-type":
-"application/json"
-},
-body:JSON.stringify({
-image:dataUrl,
-demande:
-question.value.trim()
-})
-}
-);
-
-const d=
-await r.json();
-
-if(!r.ok||!d.success){
-
-throw Error(
-d.error||"Erreur image."
-);
-}
-
-question.value=
-d.texte||"";
-
-await analyserTexte();
-
-}catch(e){
-
-status.textContent=
-e.message||
-"Erreur image.";
-
-}
-};
-
-rd.readAsDataURL(f);
+ rd.readAsDataURL(f);
 };
 
 document.getElementById("micro").onclick=
 async function(){
 
-if(recording&&mediaRecorder){
+ if(recording&&mediaRecorder){
+  mediaRecorder.stop();
+  return;
+ }
 
-mediaRecorder.stop();
+ if(!navigator.mediaDevices?.getUserMedia){
+  status.textContent=
+   "Microphone indisponible.";
+  return;
+ }
 
-return;
-}
+ try{
 
-if(!navigator.mediaDevices?.getUserMedia){
+  const stream=
+   await navigator.mediaDevices.getUserMedia(
+    {audio:true}
+   );
 
-status.textContent=
-"Microphone indisponible.";
+  audioChunks=[];
+  mediaRecorder=
+   new MediaRecorder(stream);
 
-return;
-}
+  recording=true;
 
-try{
+  this.textContent=
+   "⏹️ Arrêter";
 
-const stream=
-await navigator.mediaDevices
-.getUserMedia({
-audio:true
-});
+  status.textContent=
+   "🎙️ Je vous écoute...";
 
-audioChunks=[];
+  mediaRecorder.ondataavailable=e=>{
+   if(e.data.size){
+    audioChunks.push(e.data);
+   }
+  };
 
-mediaRecorder=
-new MediaRecorder(stream);
+  mediaRecorder.onstop=async()=>{
 
-recording=true;
+   recording=false;
 
-this.textContent=
-"⏹️ Arrêter";
+   this.textContent=
+    "🎙️ Parler";
 
-status.textContent=
-"🎙️ Je vous écoute...";
+   stream
+    .getTracks()
+    .forEach(t=>t.stop());
 
-mediaRecorder.ondataavailable=e=>{
+   const blob=
+    new Blob(
+     audioChunks,
+     {
+      type:
+       mediaRecorder.mimeType||
+       "audio/webm"
+     }
+    );
 
-if(e.data.size){
-audioChunks.push(e.data);
-}
+   if(blob.size>9000000){
+    status.textContent=
+     "Audio trop volumineux.";
+    return;
+   }
 
+   const rd=new FileReader();
+
+   rd.onloadend=async()=>{
+
+    try{
+
+     if(
+      typeof rd.result!=="string"||
+      rd.result.length>12000000
+     ){
+      throw Error(
+       "Audio trop volumineux."
+      );
+     }
+
+     const r=await fetch(
+      "/api/transcribe",
+      {
+       method:"POST",
+       headers:{
+        "content-type":"application/json"
+       },
+       body:JSON.stringify({
+        audio:rd.result,
+        langue:"fr"
+       })
+      }
+     );
+
+     const d=await r.json();
+
+     if(!r.ok||!d.success){
+      throw Error(
+       d.error||
+       "Erreur audio."
+      );
+     }
+
+     question.value=
+      d.text||
+      "";
+
+     await analyserTexte();
+
+    }catch(e){
+
+     status.textContent=
+      e.message||
+      "Erreur audio.";
+
+    }
+   };
+
+   rd.readAsDataURL(blob);
+  };
+
+  mediaRecorder.start();
+
+ }catch{
+
+  status.textContent=
+   "L'accès au microphone a été refusé ou est indisponible.";
+
+ }
 };
-
-mediaRecorder.onstop=async()=>{
-
-recording=false;
-
-this.textContent=
-"🎙️ Parler";
-
-stream
-.getTracks()
-.forEach(
-t=>t.stop()
-);
-
-const blob=
-new Blob(
-audioChunks,
-{
-type:
-mediaRecorder.mimeType||
-"audio/webm"
-}
-);
-
-if(blob.size>9000000){
-
-status.textContent=
-"Audio trop volumineux.";
-
-return;
-}
-
-const rd=
-new FileReader();
-
-rd.onloadend=async()=>{
-
-try{
-
-const dataUrl=
-String(rd.result||"");
-
-if(!dataUrl){
-
-throw Error(
-"Impossible de lire l'audio."
-);
-}
-
-const r=
-await fetch(
-"/api/transcribe",
-{
-method:"POST",
-headers:{
-"content-type":
-"application/json"
-},
-body:JSON.stringify({
-audio:dataUrl,
-langue:"fr"
-})
-}
-);
-
-const d=
-await r.json();
-
-if(!r.ok||!d.success){
-
-throw Error(
-d.error||"Erreur audio."
-);
-}
-
-question.value=
-d.text||"";
-
-await analyserTexte();
-
-}catch(e){
-
-status.textContent=
-e.message||
-"Erreur audio.";
-
-}
-};
-
-rd.readAsDataURL(blob);
-
-};
-
-mediaRecorder.start();
-
-}catch{
-
-status.textContent=
-"L'accès au microphone a été refusé ou est indisponible.";
-
-}
-};
-
 </script>
+
 </body>
 </html>`;
 }
 
 async function handleAnalyze(r,env){
 
-if(!rateLimit(r,"analyze")){
+ if(!rateLimit(r,"analyze")){
+  return jsonResponse(
+   {
+    success:false,
+    error:
+     "Trop de demandes. Réessayez plus tard."
+   },
+   429
+  );
+ }
 
-return jsonResponse(
-{
-success:false,
-error:
-"Trop de demandes. Réessayez plus tard."
-},
-429
-);
+ if(contentLengthTooLarge(r,400000)){
+  return jsonResponse(
+   {
+    success:false,
+    error:"Requête trop volumineuse."
+   },
+   413
+  );
+ }
 
-}
+ if(
+  !(r.headers.get("content-type")||"")
+   .includes("application/json")
+ ){
+  return jsonResponse(
+   {
+    success:false,
+    error:
+     "Le contenu doit être envoyé au format JSON."
+   },
+   415
+  );
+ }
 
-if(contentLengthTooLarge(r,400000)){
+ let b;
 
-return jsonResponse(
-{
-success:false,
-error:
-"Requête trop volumineuse."
-},
-413
-);
+ try{
+  b=await r.json();
+ }catch{
+  return jsonResponse(
+   {
+    success:false,
+    error:"JSON invalide."
+   },
+   400
+  );
+ }
 
-}
+ const q=texte(
+  b.question,
+  LIMITS.question
+ );
 
-if(
-!(r.headers.get("content-type")||"")
-.includes("application/json")
-){
+ if(!q){
+  return jsonResponse(
+   {
+    success:false,
+    error:"Question vide."
+   },
+   400
+  );
+ }
 
-return jsonResponse(
-{
-success:false,
-error:
-"Le contenu doit être envoyé au format JSON."
-},
-415
-);
+ try{
 
-}
+  return jsonResponse(
+   await analyserQuestion(
+    env,
+    q,
+    {
+     messageMode:
+      b.type==="message"
+       ?texte(b.messageMode,50)
+       :null,
 
-let b;
+     langue:
+      texte(b.langue,50),
 
-try{
+     reponse:
+      texte(b.reponse,12000),
 
-b=await r.json();
+     reponseUtilisateur:
+      texte(
+       b.reponseUtilisateur,
+       12000
+      ),
 
-}catch{
+     questionInitiale:
+      texte(
+       b.questionInitiale,
+       12000
+      ),
 
-return jsonResponse(
-{
-success:false,
-error:"JSON invalide."
-},
-400
-);
+     historique:
+      texte(
+       b.historique,
+       LIMITS.historique
+      ),
 
-}
+     profil:
+      texte(b.profil,100),
 
-const q=texte(
-b.question,
-LIMITS.question
-);
+     situation:
+      texte(b.situation,100),
 
-if(!q){
+     etape:
+      Number.isFinite(
+       Number(b.etape)
+      )
+       ?Number(b.etape)
+       :0
+    }
+   )
+  );
 
-return jsonResponse(
-{
-success:false,
-error:"Question vide."
-},
-400
-);
+ }catch(e){
 
-}
-
-try{
-
-return jsonResponse(
-await analyserQuestion(
-env,
-q,
-{
-messageMode:
-b.type==="message"
-?texte(b.messageMode,50)
-:null,
-
-langue:
-texte(b.langue,50),
-
-reponse:
-texte(b.reponse,12000),
-
-reponseUtilisateur:
-texte(
-b.reponseUtilisateur,
-12000
-),
-
-questionInitiale:
-texte(
-b.questionInitiale,
-12000
-),
-
-historique:
-texte(
-b.historique,
-LIMITS.historique
-),
-
-profil:
-texte(
-b.profil,
-100
-),
-
-situation:
-texte(
-b.situation,
-100
-),
-
-etape:
-Number.isFinite(
-Number(b.etape)
-)
-?Number(b.etape)
-:0
-
-}
-)
-);
-
-}catch(e){
-
-return jsonResponse(
-{
-success:false,
-error:
-e.message||"Erreur."
-},
-500
-);
-
-}
+  return jsonResponse(
+   {
+    success:false,
+    error:
+     e.message||
+     "Erreur."
+   },
+   500
+  );
+ }
 }
 
 async function handleTranscribe(r,env){
 
-if(!rateLimit(r,"transcribe")){
+ if(!rateLimit(r,"transcribe")){
+  return jsonResponse(
+   {
+    success:false,
+    error:
+     "Trop de demandes audio. Réessayez plus tard."
+   },
+   429
+  );
+ }
 
-return jsonResponse(
-{
-success:false,
-error:
-"Trop de demandes audio. Réessayez plus tard."
-},
-429
-);
+ if(contentLengthTooLarge(r,16000000)){
+  return jsonResponse(
+   {
+    success:false,
+    error:"Requête audio trop volumineuse."
+   },
+   413
+  );
+ }
 
-}
+ if(
+  !(r.headers.get("content-type")||"")
+   .includes("application/json")
+ ){
+  return jsonResponse(
+   {
+    success:false,
+    error:
+     "Le contenu doit être envoyé au format JSON."
+   },
+   415
+  );
+ }
 
-if(contentLengthTooLarge(r,16000000)){
+ let b;
 
-return jsonResponse(
-{
-success:false,
-error:
-"Requête audio trop volumineuse."
-},
-413
-);
+ try{
+  b=await r.json();
+ }catch{
+  return jsonResponse(
+   {
+    success:false,
+    error:"JSON invalide."
+   },
+   400
+  );
+ }
 
-}
+ /*
+  * IMPORTANT :
+  * ne jamais utiliser texte() ici avant
+  * de vérifier la taille.
+  */
+ if(
+  typeof b.audio!=="string"||
+  !b.audio
+ ){
+  return jsonResponse(
+   {
+    success:false,
+    error:"Audio absent."
+   },
+   400
+  );
+ }
 
-if(
-!(r.headers.get("content-type")||"")
-.includes("application/json")
-){
+ if(b.audio.length>LIMITS.audio){
+  return jsonResponse(
+   {
+    success:false,
+    error:"Audio trop volumineux."
+   },
+   413
+  );
+ }
 
-return jsonResponse(
-{
-success:false,
-error:
-"Le contenu doit être envoyé au format JSON."
-},
-415
-);
+ try{
 
-}
+  const text=await transcrireAudio(
+   env,
+   b.audio,
+   texte(b.langue,10)||"fr"
+  );
 
-let b;
+  if(!text){
+   return jsonResponse(
+    {
+     success:false,
+     error:"Aucun texte détecté."
+    },
+    422
+   );
+  }
 
-try{
+  return jsonResponse({
+   success:true,
+   text,
+   version:VERSION
+  });
 
-b=await r.json();
+ }catch(e){
 
-}catch{
-
-return jsonResponse(
-{
-success:false,
-error:"JSON invalide."
-},
-400
-);
-
-}
-
-if(
-typeof b.audio!=="string"||
-!b.audio
-){
-
-return jsonResponse(
-{
-success:false,
-error:"Audio absent."
-},
-400
-);
-
-}
-
-if(
-b.audio.length>LIMITS.audio
-){
-
-return jsonResponse(
-{
-success:false,
-error:"Audio trop volumineux."
-},
-413
-);
-
-}
-
-try{
-
-const text=
-await transcrireAudio(
-env,
-b.audio,
-texte(
-b.langue,
-10
-)||"fr"
-);
-
-if(!text){
-
-return jsonResponse(
-{
-success:false,
-error:
-"Aucun texte détecté."
-},
-422
-);
-
-}
-
-return jsonResponse({
-success:true,
-text,
-version:VERSION
-});
-
-}catch(e){
-
-return jsonResponse(
-{
-success:false,
-error:
-e.message||"Erreur audio."
-},
-500
-);
-
-}
+  return jsonResponse(
+   {
+    success:false,
+    error:
+     e.message||
+     "Erreur audio."
+   },
+   500
+  );
+ }
 }
 
 async function handleImage(r,env){
 
-if(!rateLimit(r,"image")){
+ if(!rateLimit(r,"image")){
+  return jsonResponse(
+   {
+    success:false,
+    error:
+     "Trop de demandes d’image. Réessayez plus tard."
+   },
+   429
+  );
+ }
 
-return jsonResponse(
-{
-success:false,
-error:
-"Trop de demandes d’image. Réessayez plus tard."
-},
-429
-);
+ if(contentLengthTooLarge(r,7500000)){
+  return jsonResponse(
+   {
+    success:false,
+    error:
+     "Requête image trop volumineuse."
+   },
+   413
+  );
+ }
 
-}
+ if(
+  !(r.headers.get("content-type")||"")
+   .includes("application/json")
+ ){
+  return jsonResponse(
+   {
+    success:false,
+    error:
+     "Le contenu doit être envoyé au format JSON."
+   },
+   415
+  );
+ }
 
-if(contentLengthTooLarge(r,7500000)){
+ let b;
 
-return jsonResponse(
-{
-success:false,
-error:
-"Requête image trop volumineuse."
-},
-413
-);
+ try{
+  b=await r.json();
+ }catch{
+  return jsonResponse(
+   {
+    success:false,
+    error:"JSON invalide."
+   },
+   400
+  );
+ }
 
-}
+ /*
+  * IMPORTANT :
+  * ne pas utiliser texte() sur image avant
+  * le contrôle de taille.
+  */
+ if(
+  typeof b.image!=="string"||
+  !b.image
+ ){
+  return jsonResponse(
+   {
+    success:false,
+    error:"Image absente."
+   },
+   400
+  );
+ }
 
-if(
-!(r.headers.get("content-type")||"")
-.includes("application/json")
-){
+ if(b.image.length>LIMITS.image){
+  return jsonResponse(
+   {
+    success:false,
+    error:"Image trop volumineuse."
+   },
+   413
+  );
+ }
 
-return jsonResponse(
-{
-success:false,
-error:
-"Le contenu doit être envoyé au format JSON."
-},
-415
-);
+ try{
 
-}
+  return jsonResponse({
+   success:true,
 
-let b;
+   texte:await analyserImage(
+    env,
+    b.image,
+    texte(b.demande,5000)
+   ),
 
-try{
+   version:VERSION
+  });
 
-b=await r.json();
+ }catch(e){
 
-}catch{
-
-return jsonResponse(
-{
-success:false,
-error:"JSON invalide."
-},
-400
-);
-
-}
-
-if(
-typeof b.image!=="string"||
-!b.image
-){
-
-return jsonResponse(
-{
-success:false,
-error:"Image absente."
-},
-400
-);
-
-}
-
-if(
-b.image.length>LIMITS.image
-){
-
-return jsonResponse(
-{
-success:false,
-error:"Image trop volumineuse."
-},
-413
-);
-
-}
-
-try{
-
-const image=b.image;
-
-return jsonResponse({
-success:true,
-
-texte:
-await analyserImage(
-env,
-image,
-texte(
-b.demande,
-5000
-)
-),
-
-version:VERSION
-
-});
-
-}catch(e){
-
-return jsonResponse(
-{
-success:false,
-error:
-e.message||"Erreur image."
-},
-500
-);
-
-}
+  return jsonResponse(
+   {
+    success:false,
+    error:
+     e.message||
+     "Erreur image."
+   },
+   500
+  );
+ }
 }
 
 export default{
 
-async fetch(r,env){
+ async fetch(r,env){
 
-const u=new URL(r.url);
+  const u=new URL(r.url);
 
-if(r.method==="OPTIONS"){
+  if(r.method==="OPTIONS"){
 
-return new Response(
-null,
-{
-status:204,
-headers:
-securityHeaders()
-}
-);
+   return new Response(
+    null,
+    {
+     status:204,
+     headers:securityHeaders()
+    }
+   );
+  }
 
-}
+  if(u.pathname==="/health"){
 
-if(u.pathname==="/health"){
+   return new Response(
+    JSON.stringify({
+     success:true,
+     service:"GouRare AI",
+     status:"OK",
+     version:VERSION,
 
-return new Response(
-JSON.stringify({
-success:true,
-service:"GouRare AI",
-status:"OK",
-version:VERSION,
+     modules:{
+      texte:true,
+      parcours:true,
+      messages:true,
+      image:true,
+      voix:true,
+      moteurDeVerite:true
+     }
+    }),
+    {
+     headers:{
+      ...securityHeaders(),
+      "content-type":
+       "application/json; charset=utf-8"
+     }
+    }
+   );
+  }
 
-modules:{
-texte:true,
-parcours:true,
-messages:true,
-image:true,
-voix:true,
-moteurDeVerite:true
-}
+  if(u.pathname==="/api/analyze"){
 
-}),
-{
-headers:{
-...securityHeaders(),
-"content-type":
-"application/json; charset=utf-8"
-}
-}
-);
+   if(r.method!=="POST"){
+    return jsonResponse(
+     {
+      success:false,
+      error:"Méthode non autorisée."
+     },
+     405
+    );
+   }
 
-}
+   return handleAnalyze(r,env);
+  }
 
-if(u.pathname==="/api/analyze"){
+  if(u.pathname==="/api/transcribe"){
 
-if(r.method!=="POST"){
+   if(r.method!=="POST"){
+    return jsonResponse(
+     {
+      success:false,
+      error:"Méthode non autorisée."
+     },
+     405
+    );
+   }
 
-return jsonResponse(
-{
-success:false,
-error:
-"Méthode non autorisée."
-},
-405
-);
+   return handleTranscribe(r,env);
+  }
 
-}
+  if(u.pathname==="/api/image"){
 
-return handleAnalyze(
-r,
-env
-);
+   if(r.method!=="POST"){
+    return jsonResponse(
+     {
+      success:false,
+      error:"Méthode non autorisée."
+     },
+     405
+    );
+   }
 
-}
+   return handleImage(r,env);
+  }
 
-if(u.pathname==="/api/transcribe"){
+  if(u.pathname==="/"){
 
-if(r.method!=="POST"){
+   return new Response(
+    pageHTML(),
+    {
+     headers:{
+      ...securityHeaders(),
+      "content-type":
+       "text/html; charset=utf-8"
+     }
+    }
+   );
+  }
 
-return jsonResponse(
-{
-success:false,
-error:
-"Méthode non autorisée."
-},
-405
-);
-
-}
-
-return handleTranscribe(
-r,
-env
-);
-
-}
-
-if(u.pathname==="/api/image"){
-
-if(r.method!=="POST"){
-
-return jsonResponse(
-{
-success:false,
-error:
-"Méthode non autorisée."
-},
-405
-);
-
-}
-
-return handleImage(
-r,
-env
-);
-
-}
-
-if(u.pathname==="/"){
-
-return new Response(
-pageHTML(),
-{
-headers:{
-...securityHeaders(),
-"content-type":
-"text/html; charset=utf-8"
-}
-}
-);
-
-}
-
-return new Response(
-"GouRare AI",
-{
-status:404,
-headers:
-securityHeaders()
-}
-);
-
-}
-
+  return new Response(
+   "GouRare AI",
+   {
+    status:404,
+    headers:securityHeaders()
+   }
+  );
+ }
 };
