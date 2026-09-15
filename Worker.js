@@ -965,8 +965,64 @@ footer {
   GouRare AI — Version ${VERSION}
 </footer>
 
-<script>
-const parcours = ${parcoursJSON};
+  if (response && typeof response.text === "string") {
+    return response.text;
+  }
+
+  if (
+    response &&
+    response.transcription_info &&
+    typeof response.transcription_info.text === "string"
+  ) {
+    return response.transcription_info.text;
+  }
+
+  return "";
+}
+
+function pageHTML() {
+  const parcoursJSON = JSON.stringify(PARCOURS).replace(/</g, "\\u003c");
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GouRare AI</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f5f7fa;
+  color: #17202a;
+}
+
+header {
+  background: #ffffff;
+  padding: 28px 18px 18px;
+  text-align: center;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.logo {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.subtitle {
+  margin-top: 8px;
+  color: #68707a;
+}
+
+.container {
+  max-width: 900px;
+
 
 let parcoursActuel = null;
 let etapeActuelle = 0;
