@@ -1,6 +1,3 @@
-
-Majdi Akremi <majdi.akremi@gmail.com>	16 septembre 2026 à 02:12
-À : Majdi Akremi <majdi.akremi@gmail.com>
 // ============================================================
 // GouRare AI — V10.1
 // Case Intelligence + Deterministic Decision Engine
