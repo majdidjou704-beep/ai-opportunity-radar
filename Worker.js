@@ -825,12 +825,6 @@ situationEmploi;
 if (parcoursEmploi) {
 contexte.travail = true;
 
-/*
-Le parcours choisi explicitement
-garde la priorité sur les signaux
-génériques détectés dans le texte.
-*/
-
 contexte.entreprise = false;
 contexte.statut = false;
 }
@@ -871,10 +865,6 @@ options.questionsPosees
 ? options.questionsPosees
 : []
 ),
-
-/*
-Information interne utile au moteur.
-*/
 
 parcoursEmploi,
 
@@ -950,21 +940,6 @@ const {
 informations,
 contexte
 } = etat;
-
-/*
-=======================================================
-🔒 EMPLOI PRIORITAIRE
-=======================================================
-
-Si l'utilisateur a explicitement choisi
-le profil Chercheur d'emploi, le moteur commence
-par les questions d'emploi.
-
-Cela empêche un signal secondaire dans le texte
-de provoquer immédiatement un passage vers
-le parcours entreprise.
-=======================================================
-*/
 
 if (etat.parcoursEmploi) {
 return [
@@ -1235,12 +1210,6 @@ const ids = [];
 if (contexte.travail) {
 ids.push(
 "france_travail"
-);
-}
-
-if (contexte.immigration) {
-ids.push(
-"anef"
 );
 
 if (contexte.travail) {
@@ -2346,6 +2315,10 @@ content="#111827"
 box-sizing:border-box;
 }
 
+html{
+scroll-behavior:smooth;
+}
+
 body{
 margin:0;
 font-family:
@@ -2474,6 +2447,11 @@ flex:1;
 
 .result-card{
 border-left:5px solid #111827;
+scroll-margin-top:20px;
+}
+
+#result{
+scroll-margin-top:20px;
 }
 
 .ai-result{
@@ -2506,6 +2484,32 @@ color:#4b5563;
 display:none;
 }
 
+/*
+=======================================================
+COMPOSER STICKY
+=======================================================
+*/
+
+#outil{
+position:sticky;
+bottom:12px;
+z-index:15;
+border:1px solid #e5e7eb;
+box-shadow:
+0 12px 35px rgba(0,0,0,.14);
+}
+
+#outil::before{
+content:"";
+position:absolute;
+inset:-1px;
+border-radius:18px;
+background:rgba(255,255,255,.72);
+backdrop-filter:blur(10px);
+-webkit-backdrop-filter:blur(10px);
+z-index:-1;
+}
+
 .cancer{
 position:fixed;
 right:12px;
@@ -2528,6 +2532,10 @@ padding:25px 10px;
 
 @media(max-width:650px){
 
+.container{
+padding-bottom:100px;
+}
+
 .choices{
 grid-template-columns:1fr;
 }
@@ -2536,9 +2544,35 @@ header h1{
 font-size:27px;
 }
 
+.actions{
+gap:8px;
+}
+
 .actions button{
 width:100%;
 flex-basis:100%;
+}
+
+#outil{
+bottom:8px;
+margin-left:-3px;
+margin-right:-3px;
+padding:15px;
+border-radius:16px;
+}
+
+#outil::before{
+border-radius:16px;
+}
+
+#outil textarea{
+min-height:105px;
+}
+
+.cancer{
+bottom:8px;
+right:8px;
+font-size:12px;
 }
 
 }
@@ -2895,7 +2929,6 @@ profil = k;
 
 const parcoursData =
 ${JSON.stringify(PARCOURS)};
-
 const x =
 parcoursData[k];
 
@@ -3250,6 +3283,30 @@ d.decision?.etape === "question"
 ? "Répondez à la question suivante pour continuer."
 : "Analyse terminée.";
 
+
+/*
+=======================================================
+UX : REPLACER LE CURSEUR DANS LA ZONE DE SAISIE
+SANS FAIRE REMONTER LA PAGE
+=======================================================
+*/
+
+setTimeout(function(){
+
+try{
+
+question.focus({
+preventScroll:true
+});
+
+}catch(e){
+
+question.focus();
+
+}
+
+},500);
+
 }catch(e){
 
 status.textContent =
@@ -3443,6 +3500,32 @@ h +=
 
 result.innerHTML =
 h;
+
+
+/*
+=======================================================
+UX : APRÈS L'AFFICHAGE, ALLER AUTOMATIQUEMENT
+VERS أول بطاقة نتيجة
+=======================================================
+*/
+
+requestAnimationFrame(function(){
+
+const firstResult =
+result.querySelector(
+".result-card"
+);
+
+if(firstResult){
+
+firstResult.scrollIntoView({
+behavior:"smooth",
+block:"start"
+});
+
+}
+
+});
 
 }
 
@@ -3997,8 +4080,6 @@ DECISION_VERSION
 }
 
 }
-
-
 /* =========================================================
 API TRANSCRIPTION
 ========================================================= */
@@ -4579,6 +4660,7 @@ headers:{
 
 }
 );
+
 
 }
 
