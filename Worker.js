@@ -2,2718 +2,2684 @@ const MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
 const MODEL_VISION = "@cf/meta/llama-3.2-11b-vision-instruct";
 const MODEL_AUDIO = "@cf/openai/whisper-large-v3-turbo";
 
-const VERSION = "10.1.2";
-const DECISION_VERSION = "10.1.2";
+const VERSION = "10.1.3";
+const DECISION_VERSION = "10.1.3";
+
+/* =========================================================
+   GO RARE AI — CORE CONFIGURATION
+   ========================================================= */
 
 const LIMITS = {
-question: 12000,
-history: 24000,
-image: 7000000,
-audio: 12000000,
-message: 18000
+  question: 12000,
+  history: 24000,
+  image: 7000000,
+  audio: 12000000,
+  message: 18000,
+  messages: 40
 };
-
-/* =========================================================
-RATE LIMIT
-========================================================= */
 
 const RATE_LIMIT = {
-windowMs: 60 * 1000,
-maxRequests: 30
+  max: 30,
+  windowMs: 60000
 };
 
-const rateMap = new Map();
-
-function getClientIP(request) {
-return (
-request.headers.get("CF-Connecting-IP") ||
-request.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ||
-"unknown"
-);
-}
-
-function checkRateLimit(request) {
-const ip = getClientIP(request);
-const now = Date.now();
-
-let entry = rateMap.get(ip);
-
-if (!entry || now - entry.start > RATE_LIMIT.windowMs) {
-entry = {
-start: now,
-count: 0
-};
-}
-
-entry.count += 1;
-rateMap.set(ip, entry);
-
-if (entry.count > RATE_LIMIT.maxRequests) {
-return false;
-}
-
-if (rateMap.size > 5000) {
-for (const [key, value] of rateMap.entries()) {
-if (now - value.start > RATE_LIMIT.windowMs) {
-rateMap.delete(key);
-}
-}
-}
-
-return true;
-}
+/*
+ * Rate limiting is intentionally isolate-local at this stage.
+ * Global production limiting can later move to Durable Objects/KV.
+ */
+const rateStore = new Map();
 
 /* =========================================================
-SOURCES OFFICIELLES
-========================================================= */
+   OFFICIAL SOURCES
+   ========================================================= */
 
 const SOURCES = {
-anef: {
-id: "anef",
-titre: "Faire une demande en ligne pour un titre de séjour ou un changement de situation",
-organisme: "Service-Public.fr / ANEF",
-url: "https://www.service-public.fr/particuliers/vosdroits/R59398"
-},
+  anef: {
+    id: "anef",
+    name: "ANEF",
+    url: "https://administration-etrangers-en-france.interieur.gouv.fr/"
+  },
 
-travail_etranger: {
-id: "travail_etranger",
-titre: "Autorisation de travail d'un salarié étranger en France",
-organisme: "Service-Public.fr",
-url: "https://www.service-public.fr/particuliers/vosdroits/F2728"
-},
+  travail_etranger: {
+    id: "travail_etranger",
+    name: "Service-Public — Travail d'un étranger en France",
+    url: "https://www.service-public.fr/particuliers/vosdroits/N107"
+  },
 
-france_travail: {
-id: "france_travail",
-titre: "France Travail",
-organisme: "France Travail",
-url: "https://www.francetravail.fr/"
-},
+  france_travail: {
+    id: "france_travail",
+    name: "France Travail",
+    url: "https://www.francetravail.fr/"
+  },
 
-statut: {
-id: "statut",
-titre: "Trouver le statut juridique adapté à son activité",
-organisme: "Service Public Entreprendre",
-url: "https://entreprendre.service-public.fr/vosdroits/R18323"
-},
+  statut: {
+    id: "statut",
+    name: "Service-Public",
+    url: "https://www.service-public.fr/"
+  },
 
-creation_ei: {
-id: "creation_ei",
-titre: "Création d'une entreprise individuelle",
-organisme: "Service Public Entreprendre",
-url: "https://entreprendre.service-public.fr/vosdroits/F36763"
-},
+  creation_ei: {
+    id: "creation_ei",
+    name: "Service-Public Entreprendre",
+    url: "https://entreprendre.service-public.fr/"
+  },
 
-guichet: {
-id: "guichet",
-titre: "Guichet des formalités des entreprises",
-organisme: "Service Public Entreprendre",
-url: "https://entreprendre.service-public.fr/vosdroits/F23571"
-}
+  guichet: {
+    id: "guichet",
+    name: "Guichet unique des formalités",
+    url: "https://formalites.entreprises.gouv.fr/"
+  }
 };
 
 /* =========================================================
-PARCOURS
-========================================================= */
+   PARCOURS
+   ========================================================= */
 
 const PARCOURS = {
-migrant: {
-titre: "🌍 Migrant / Nouveau arrivant",
-description: "Situation administrative, travail, logement, droits et démarches.",
-situations: [
-["arrive", "🆕 Je viens d'arriver"],
-["administratif", "🪪 Ma situation administrative"],
-["emploi", "💼 Je cherche un emploi"],
-["logement", "🏠 Je cherche un logement"],
-["document", "📄 Je ne comprends pas un document"],
-["droits", "⚖️ Je veux connaître mes droits"],
-["social", "🤝 Je cherche une aide sociale"],
-["etudes", "🎓 Je veux étudier"],
-["famille", "👨‍👩‍👧 Famille / regroupement familial"],
-["asile", "🛂 Asile / protection"],
-["irreguliere", "❓ Situation irrégulière"],
-["autre", "❓ Autre situation"]
-]
-},
+  migrant: {
+    label: {
+      fr: "Étranger / immigration",
+      ar: "أجنبي / الهجرة",
+      en: "Immigration"
+    },
 
-particulier: {
-titre: "👤 Particulier / Résident",
-description: "Vie quotidienne, droits, démarches et problèmes personnels.",
-situations: [
-["administratif", "🧾 Démarches administratives"],
-["emploi", "💼 Travail / emploi"],
-["logement", "🏠 Logement"],
-["finance", "💰 Impôts / finances"],
-["social", "🤝 Aides sociales"],
-["juridique", "⚖️ Droits / problème juridique"],
-["message", "✉️ Lettre / email / message"],
-["document", "📷 Comprendre un document"],
-["opportunite", "🎯 Trouver une opportunité"],
-["autre", "❓ Autre"]
-]
-},
+    situations: [
+      {
+        id: "titre_sejour",
+        label: {
+          fr: "Titre de séjour",
+          ar: "تصريح الإقامة",
+          en: "Residence permit"
+        }
+      },
+      {
+        id: "renouvellement",
+        label: {
+          fr: "Renouvellement",
+          ar: "تجديد",
+          en: "Renewal"
+        }
+      },
+      {
+        id: "premiere_demande",
+        label: {
+          fr: "Première demande",
+          ar: "طلب أول",
+          en: "First application"
+        }
+      },
+      {
+        id: "travail",
+        label: {
+          fr: "Travailler en France",
+          ar: "العمل في فرنسا",
+          en: "Working in France"
+        }
+      },
+      {
+        id: "anef",
+        label: {
+          fr: "Démarches ANEF",
+          ar: "إجراءات ANEF",
+          en: "ANEF procedures"
+        }
+      }
+    ]
+  },
 
-emploi: {
-titre: "💼 Chercheur d'emploi",
-description: "Recherche d'emploi, candidature, CV et entretien.",
-situations: [
-["offres", "🔎 Trouver des offres"],
-["cv", "📄 Créer / améliorer mon CV"],
-["candidature", "✉️ Candidature / lettre de motivation"],
-["annonce", "📩 Répondre à une annonce"],
-["entretien", "🎤 Préparer un entretien"],
-["entreprise", "🏢 Trouver une entreprise"],
-["adapte", "♿ Rechercher un emploi adapté à ma situation"],
-["comparaison", "🎯 Comparer plusieurs offres"],
-["autre", "❓ Autre"]
-]
-},
+  particulier: {
+    label: {
+      fr: "Particulier",
+      ar: "شخص",
+      en: "Individual"
+    },
 
-entreprise: {
-titre: "🏢 Entreprise / Entrepreneur",
-description: "Créer, gérer, développer et trouver des opportunités.",
-situations: [
-["creation", "🚀 Créer mon entreprise"],
-["developpement", "📈 Développer mon activité"],
-["fiscalite", "💰 Fiscalité"],
-["comptabilite", "🧾 Comptabilité / obligations"],
-["salaries", "👥 Salariés"],
-["juridique", "⚖️ Problème juridique"],
-["fournisseurs", "🔎 Trouver des fournisseurs"],
-["offres", "💶 Comparer des offres / prix"],
-["opportunite", "🎯 Trouver des opportunités"],
-["ia", "🤖 Trouver une solution IA"],
-["autre", "❓ Autre"]
-]
-}
+    situations: [
+      {
+        id: "emploi",
+        label: {
+          fr: "Recherche d'emploi",
+          ar: "البحث عن عمل",
+          en: "Job search"
+        }
+      },
+      {
+        id: "formation",
+        label: {
+          fr: "Formation",
+          ar: "تكوين",
+          en: "Training"
+        }
+      },
+      {
+        id: "administratif",
+        label: {
+          fr: "Démarche administrative",
+          ar: "إجراء إداري",
+          en: "Administrative procedure"
+        }
+      }
+    ]
+  },
+
+  emploi: {
+    label: {
+      fr: "Emploi",
+      ar: "العمل",
+      en: "Employment"
+    },
+
+    situations: [
+      {
+        id: "emploi",
+        label: {
+          fr: "Trouver un emploi",
+          ar: "العثور على عمل",
+          en: "Find a job"
+        }
+      },
+      {
+        id: "reconversion",
+        label: {
+          fr: "Reconversion",
+          ar: "تغيير المسار المهني",
+          en: "Career change"
+        }
+      },
+      {
+        id: "formation",
+        label: {
+          fr: "Formation",
+          ar: "تكوين",
+          en: "Training"
+        }
+      }
+    ]
+  },
+
+  entreprise: {
+    label: {
+      fr: "Entreprise",
+      ar: "شركة / مشروع",
+      en: "Business"
+    },
+
+    situations: [
+      {
+        id: "creation",
+        label: {
+          fr: "Créer une entreprise",
+          ar: "إنشاء شركة",
+          en: "Create a business"
+        }
+      },
+      {
+        id: "developpement",
+        label: {
+          fr: "Développer une entreprise",
+          ar: "تطوير شركة",
+          en: "Develop a business"
+        }
+      }
+    ]
+  }
 };
 
 /* =========================================================
-UTILITAIRES
-========================================================= */
+   LANGUAGE
+   ========================================================= */
 
-function texte(v, max = 10000) {
-if (v === null || v === undefined) return "";
-
-return String(v)
-.replace(/\u0000/g, "")
-.replace(/\r/g, "")
-.trim()
-.slice(0, max);
-}
-
-function unique(a) {
-return [...new Set((a || []).filter(Boolean))];
-}
-
-function escapeHTML(v) {
-return texte(v, 50000)
-.replace(/&/g, "&amp;")
-.replace(/</g, "&lt;")
-.replace(/>/g, "&gt;")
-.replace(/"/g, "&quot;")
-.replace(/'/g, "&#039;");
-}
-
-function jsonResponse(data, status = 200, extraHeaders = {}) {
-return new Response(
-JSON.stringify(data),
-{
-status,
-headers: {
-"content-type": "application/json; charset=utf-8",
-"cache-control": "no-store",
-...extraHeaders
-}
-}
-);
-}
-
-function securityHeaders() {
-return {
-"X-Content-Type-Options": "nosniff",
-"X-Frame-Options": "DENY",
-"Referrer-Policy": "strict-origin-when-cross-origin",
-"Permissions-Policy": "camera=(self), microphone=(self), geolocation=()",
-"Cache-Control": "no-store"
+const LANGUAGES = {
+  fr: "fr",
+  ar: "ar",
+  en: "en",
+  es: "es",
+  it: "it",
+  de: "de",
+  pt: "pt",
+  nl: "nl"
 };
-}
 
-function hasInfo(informations, type) {
-return (informations || []).some(
-item => item?.type === type && texte(item?.valeur)
-);
-}
+const COUNTRY_LANGUAGES = {
+  FR: "fr",
+  BE: "fr",
+  LU: "fr",
+  CH: "fr",
+  CA: "fr"
+};
 
-function getInfo(informations, type) {
-return (informations || []).find(
-item => item?.type === type && texte(item?.valeur)
-) || null;
-}
+function normalizeLanguage(value) {
+  if (!value) return "fr";
 
-function addInfo(list, type, valeur, confiance = "élevée") {
-const v = texte(valeur, 500);
+  const v = String(value)
+    .trim()
+    .toLowerCase()
+    .replace("_", "-");
 
-if (!v) return;
+  if (v.startsWith("fr")) return "fr";
+  if (v.startsWith("ar")) return "ar";
+  if (v.startsWith("en")) return "en";
+  if (v.startsWith("es")) return "es";
+  if (v.startsWith("it")) return "it";
+  if (v.startsWith("de")) return "de";
+  if (v.startsWith("pt")) return "pt";
+  if (v.startsWith("nl")) return "nl";
 
-const exists = list.some(
-item =>
-item?.type === type &&
-texte(item?.valeur).toLowerCase() === v.toLowerCase()
-);
-
-if (!exists) {
-list.push({
-type,
-valeur: v,
-confiance
-});
-}
-}
-
-function informationsContient(informations, type) {
-return hasInfo(informations, type);
-}
-
-function dedupeInformations(informations) {
-const out = [];
-
-for (const item of informations || []) {
-if (!item?.type || !texte(item?.valeur)) continue;
-
-const exists = out.some(
-x =>
-x.type === item.type &&
-texte(x.valeur).toLowerCase() ===
-texte(item.valeur).toLowerCase()
-);
-
-if (!exists) {
-out.push({
-type: item.type,
-valeur: texte(item.valeur, 500),
-confiance: item.confiance || "moyenne"
-});
-}
-}
-
-return out;
+  return "fr";
 }
 
 /* =========================================================
-NORMALISATION LOCALISATION
-========================================================= */
+   LOCATION NORMALIZATION
+   ========================================================= */
 
-function normaliserRecherche(v) {
-return texte(v)
-.toLowerCase()
-.normalize("NFD")
-.replace(/[\u0300-\u036f]/g, "")
-.replace(/[’']/g, "'")
-.replace(/-/g, " ")
-.replace(/\s+/g, " ")
-.trim();
+function normaliserRecherche(value) {
+  if (!value) return "";
+
+  return String(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[’']/g, " ")
+    .replace(/[-_/]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 const LOCATION_ALIASES = {
-"vigneux sur seine": "Vigneux-sur-Seine",
-"vignieux sur seine": "Vigneux-sur-Seine",
+  "vigneux sur seine": "Vigneux-sur-Seine",
+  "vignieux sur seine": "Vigneux-sur-Seine",
+  "vignieux-sur-seine": "Vigneux-sur-Seine",
+  "vigneux": "Vigneux-sur-Seine",
 
-"paris": "Paris",
-"creteil": "Créteil",
-"evry": "Évry",
-"evry courcouronnes": "Évry-Courcouronnes",
-"montgeron": "Montgeron",
-"draveil": "Draveil",
-"athis mons": "Athis-Mons",
-"juvisy sur orge": "Juvisy-sur-Orge",
-"viry chatillon": "Viry-Châtillon",
-"corbeil essonnes": "Corbeil-Essonnes",
+  "paris": "Paris",
+  "paris 75": "Paris",
 
-"essonne": "Essonne",
-"val de marne": "Val-de-Marne",
-"seine et marne": "Seine-et-Marne",
-"hauts de seine": "Hauts-de-Seine"
+  "evry": "Évry-Courcouronnes",
+  "evry courcouronnes": "Évry-Courcouronnes",
+
+  "corbeil essonnes": "Corbeil-Essonnes",
+  "corbeil essonne": "Corbeil-Essonnes",
+
+  "montgeron": "Montgeron",
+  "draveil": "Draveil",
+  "juvisy sur orge": "Juvisy-sur-Orge",
+  "viry chatillon": "Viry-Châtillon",
+
+  "creteil": "Créteil",
+  "melun": "Melun",
+  "mass y": "Massy",
+  "massy": "Massy"
 };
 
-function trouverLocalisation(q) {
-const normalise = normaliserRecherche(q);
+function trouverLocalisation(value) {
+  const normalized = normaliserRecherche(value);
 
-for (const [alias, canonical] of Object.entries(LOCATION_ALIASES)) {
-if (normalise.includes(alias)) {
-return canonical;
-}
-}
+  if (!normalized) return null;
 
-return null;
-}
+  if (LOCATION_ALIASES[normalized]) {
+    return LOCATION_ALIASES[normalized];
+  }
 
-/* =========================================================
-EXTRACTION DES INFORMATIONS
-========================================================= */
-
-function extraireInformations(q) {
-const result = [];
-const s = texte(q, LIMITS.question);
-
-/* France */
-if (
-/\bfrance\b/i.test(s) ||
-/\ben france\b/i.test(s)
-) {
-addInfo(result, "presence_france", "France");
-}
-
-/* Diplôme */
-if (
-/sans diplôme|sans diplome|pas de diplôme|pas de diplome|aucun diplôme|aucun diplome/i.test(s)
-) {
-addInfo(result, "diplome", "Sans diplôme");
-} else if (
-/\b(bac|baccalauréat|baccalaureat|cap|bep|licence|master|doctorat|diplôme|diplome)\b/i.test(s)
-) {
-const match = s.match(
-/\b(bac(?:calauréat|calaureat)?|cap|bep|licence|master|doctorat|diplôme|diplome)\b/i
-);
-
-if (match) {
-addInfo(
-result,
-"diplome",
-match[1],
-"moyenne"
-);
-}
-}
-
-/* Expérience */
-if (
-/sans expérience|sans experience|pas d'expérience|pas d'experience|aucune expérience|aucune experience/i.test(s)
-) {
-addInfo(
-result,
-"experience",
-"Sans expérience"
-);
-} else if (
-/\b\d+\s*(ans?|années?|annees?)\s+d'expérience/i.test(s)
-) {
-const match = s.match(
-/\b\d+\s*(ans?|années?|annees?)\s+d'expérience/i
-);
-
-if (match) {
-addInfo(
-result,
-"experience",
-match[0],
-"élevée"
-);
-}
-}
-
-/* Objectif emploi */
-if (
-/cherche un emploi|cherche du travail|recherche un emploi|recherche du travail|trouver un emploi|trouver du travail|cherche principalement un emploi/i.test(s)
-) {
-addInfo(
-result,
-"objectif",
-"Recherche d'emploi"
-);
-}
-
-/* Localisation */
-const localisation = trouverLocalisation(s);
-
-if (localisation) {
-addInfo(
-result,
-"zone_recherche",
-localisation
-);
-}
-
-/* =======================================================
-TYPE D'EMPLOI
-======================================================= */
-
-const typeExpressions = [
-{
-regex:
-/\bposte\s+(?:de|comme|en tant que)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]{2,40}(?:\s+[A-Za-zÀ-ÿ'’-]{2,40}){0,3})/i
-},
-
-{
-regex:
-/\bemploi\s+(?:de|comme|en tant que)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]{2,40}(?:\s+[A-Za-zÀ-ÿ'’-]{2,40}){0,3})/i
-},
-
-{
-regex:
-/\btravail\s+(?:de|comme|en tant que)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]{2,40}(?:\s+[A-Za-zÀ-ÿ'’-]{2,40}){0,3})/i
-}
-];
-
-for (const item of typeExpressions) {
-const match = s.match(item.regex);
-
-if (match?.[1]) {
-const metier = texte(match[1]).trim();
-
-const interdit = [
-"diplôme",
-"diplome",
-"expérience",
-"experience",
-"sans diplôme",
-"sans diplome",
-"sans expérience",
-"sans experience",
-"france"
-];
-
-const fauxPositif = interdit.some(
-term =>
-metier
-.toLowerCase()
-.includes(term.toLowerCase())
-);
-
-if (!fauxPositif) {
-addInfo(
-result,
-"type_emploi",
-metier,
-"moyenne"
-);
-}
-
-break;
-}
-}
-
-/* Secteur quelconque */
-if (
-/n'importe quel travail|n’importe quel travail|n'importe quel emploi|n’importe quel emploi|tout type d'emploi|tout type de travail|tout secteur|tous les secteurs|peu importe le secteur|peu importe le travail|peu importe l'emploi|je suis ouvert à tout|je suis ouverte à tout|je prends tout/i.test(s)
-) {
-addInfo(
-result,
-"type_emploi",
-"Ouvert à tout secteur",
-"élevée"
-);
-}
-
-/* Mobilité */
-if (
-/je peux me déplacer|je peux me deplacer|je suis mobile|je peux travailler dans les environs|je peux me rendre|je peux me déplacer pour travailler|je peux me deplacer pour travailler/i.test(s) ||
-/\bmobile\b/i.test(s)
-) {
-addInfo(
-result,
-"mobilite",
-"Flexible"
-);
-}
-
-if (
-/je ne peux pas me déplacer|je ne peux pas me deplacer|sans déplacement|sans deplacement|je ne suis pas mobile/i.test(s)
-) {
-addInfo(
-result,
-"mobilite",
-"Limitée"
-);
-}
-
-/* Horaires */
-if (
-/flexible sur les horaires|flexible pour les horaires|horaires flexibles|peu importe les horaires|peu importe l'horaire|n'importe quels horaires|n’importe quels horaires|disponible à tout moment|disponible a tout moment/i.test(s)
-) {
-addInfo(
-result,
-"horaires",
-"Flexible"
-);
-}
-
-/* Titre de séjour */
-if (
-/titre de séjour|titre de sejour|carte de séjour|carte de sejour/i.test(s)
-) {
-addInfo(
-result,
-"titre_sejour",
-"Titre de séjour",
-"moyenne"
-);
-}
-
-/* Statut salarié */
-if (
-/\bsalarié\b|\bsalarie\b/i.test(s)
-) {
-addInfo(
-result,
-"statut_sejour",
-"Salarié",
-"moyenne"
-);
-}
-
-/* Récépissé */
-if (
-/récépissé|recepisse/i.test(s)
-) {
-addInfo(
-result,
-"recepisse",
-"Récépissé"
-);
-}
-
-/* Renouvellement */
-if (
-/renouvellement|renouveler|expire|expiration|fin de validité|fin de validite/i.test(s)
-) {
-addInfo(
-result,
-"renouvellement",
-"Renouvellement",
-"moyenne"
-);
-}
-
-/* Asile */
-if (
-/demande d'asile|demande d asile|demandeur d'asile|demandeuse d'asile/i.test(s)
-) {
-addInfo(
-result,
-"asile",
-"Demande d'asile"
-);
-}
-
-/* Entreprise */
-if (
-/créer une entreprise|creer une entreprise|création d'entreprise|creation d'entreprise|lancer mon entreprise|ouvrir une entreprise|je veux créer mon entreprise|je veux creer mon entreprise/i.test(s)
-) {
-addInfo(
-result,
-"objectif",
-"Création d'entreprise"
-);
-}
-
-return dedupeInformations(result);
+  return String(value).trim();
 }
 
 /* =========================================================
-CONTEXTE
-========================================================= */
+   SAFE TEXT HELPERS
+   ========================================================= */
 
-function detectContext(q) {
-const s = normaliserRecherche(q);
+function cleanText(value, maxLength = 12000) {
+  if (value === null || value === undefined) {
+    return "";
+  }
 
-return {
-nettoyage:
-/nettoyage|menage|proprete|cleaning/.test(s),
+  return String(value)
+    .replace(/\u0000/g, "")
+    .slice(0, maxLength)
+    .trim();
+}
 
-entreprise:
-/creer|creation|lancer|ouvrir|entreprise|societe|activite/.test(s),
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
 
-statut:
-/statut|forme juridique|micro|micro entreprise|independant|ei|entreprise individuelle/.test(s),
-
-travail:
-/travail|emploi|salarie|contrat|employeur|licenciement|salaire|cherche un emploi|recherche un emploi/.test(s),
-
-social:
-/caf|rsa|aide|social|allocation|droits sociaux/.test(s),
-
-administratif:
-/demarche|administratif|administrative|prefecture|mairie|document officiel/.test(s),
-
-juridique:
-/avocat|juridique|justice|tribunal|loi|legal|mise en demeure/.test(s),
-
-fiscalite:
-/impot|fiscal|fiscalite|urssaf|tva|cfe|cotisation/.test(s),
-
-immigration:
-/recepisse|titre de sejour|sejour|visa|anef|prefecture|etranger|demande d asile|asile|carte de sejour/.test(s),
-
-recepisse:
-/recepisse/.test(s),
-
-titreSejour:
-/titre de sejour|carte de sejour/.test(s),
-
-anef:
-/\banef\b/.test(s),
-
-renouvellement:
-/renouvellement|renouveler|expire|expiration|fin de validite/.test(s),
-
-premiereDemande:
-/premiere demande|premier titre|premiere carte|je viens d arriver/.test(s),
-
-asile:
-/asile|demandeur d asile|demandeuse d asile/.test(s)
-};
+function uniqueArray(values) {
+  return [...new Set(safeArray(values).filter(Boolean))];
 }
 
 /* =========================================================
-HISTORIQUE UTILISATEUR UNIQUEMENT
-========================================================= */
+   REQUEST SECURITY
+   ========================================================= */
+
+function getClientIP(request) {
+  const connecting = request.headers.get("CF-Connecting-IP");
+
+  if (connecting) {
+    return connecting.trim();
+  }
+
+  const forwarded = request.headers.get("X-Forwarded-For");
+
+  if (forwarded) {
+    return forwarded.split(",")[0].trim();
+  }
+
+  return "unknown";
+}
+
+function checkRateLimit(request) {
+  const ip = getClientIP(request);
+  const now = Date.now();
+
+  let entry = rateStore.get(ip);
+
+  if (!entry || now - entry.startedAt >= RATE_LIMIT.windowMs) {
+    entry = {
+      startedAt: now,
+      count: 0
+    };
+
+    rateStore.set(ip, entry);
+  }
+
+  entry.count++;
+
+  if (entry.count > RATE_LIMIT.max) {
+    return false;
+  }
+
+  /*
+   * Small cleanup to prevent the isolate-local Map
+   * from growing forever.
+   */
+  if (rateStore.size > 5000) {
+    for (const [key, item] of rateStore.entries()) {
+      if (now - item.startedAt >= RATE_LIMIT.windowMs) {
+        rateStore.delete(key);
+      }
+    }
+  }
+
+  return true;
+}
+
+function securityHeaders(extra = {}) {
+  return {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), geolocation=(), payment=(), usb=()",
+    "Content-Security-Policy":
+      "default-src 'self'; " +
+      "script-src 'self' 'unsafe-inline'; " +
+      "style-src 'self' 'unsafe-inline'; " +
+      "img-src 'self' data: blob:; " +
+      "media-src 'self' blob:; " +
+      "connect-src 'self'; " +
+      "font-src 'self' data:; " +
+      "object-src 'none'; " +
+      "base-uri 'none'; " +
+      "form-action 'self'; " +
+      "frame-ancestors 'none';",
+    ...extra
+  };
+}
+
+function json(data, status = 200, extraHeaders = {}) {
+  return new Response(
+    JSON.stringify(data),
+    {
+      status,
+      headers: securityHeaders(extraHeaders)
+    }
+  );
+}
+
+/* =========================================================
+   LANGUAGE DETECTION
+   ========================================================= */
+
+function detectLanguage(text, explicitLanguage = null) {
+  if (explicitLanguage) {
+    return normalizeLanguage(explicitLanguage);
+  }
+
+  const value = cleanText(text, 5000);
+
+  if (!value) {
+    return "fr";
+  }
+
+  const arabicChars = (value.match(/[\u0600-\u06FF]/g) || []).length;
+
+  if (arabicChars >= 2) {
+    return "ar";
+  }
+
+  const frenchSignals = [
+    "je ",
+    "j'ai",
+    "emploi",
+    "travail",
+    "diplôme",
+    "expérience",
+    "france",
+    "titre de séjour",
+    "entreprise"
+  ];
+
+  const englishSignals = [
+    "i ",
+    "job",
+    "work",
+    "experience",
+    "degree",
+    "business",
+    "france"
+  ];
+
+  const lower = value.toLowerCase();
+
+  const frScore = frenchSignals.reduce(
+    (score, word) => score + (lower.includes(word) ? 1 : 0),
+    0
+  );
+
+  const enScore = englishSignals.reduce(
+    (score, word) => score + (lower.includes(word) ? 1 : 0),
+    0
+  );
+
+  if (frScore > enScore && frScore > 0) {
+    return "fr";
+  }
+
+  if (enScore > frScore && enScore > 0) {
+    return "en";
+  }
+
+  return "fr";
+}
+
+/* =========================================================
+   INFORMATION EXTRACTION
+   ========================================================= */
+
+function extraireInformations(text) {
+  const original = cleanText(text, LIMITS.question);
+  const value = normaliserRecherche(original);
+
+  const info = {};
+
+  if (!value) {
+    return info;
+  }
+
+  /* ---------------- France ---------------- */
+
+  if (
+    value.includes("france") ||
+    value.includes("francais") ||
+    value.includes("francaise")
+  ) {
+    info.pays = "France";
+  }
+
+  /* ---------------- Diplôme ---------------- */
+
+  if (
+    value.includes("sans diplome") ||
+    value.includes("pas de diplome") ||
+    value.includes("aucun diplome") ||
+    value.includes("aucune qualification") ||
+    value.includes("je n ai pas de diplome")
+  ) {
+    info.diplome = "Sans diplôme";
+  } else if (
+    value.includes("avec diplome") ||
+    value.includes("j ai un diplome") ||
+    value.includes("diplome")
+  ) {
+    /*
+     * Do not invent the diploma itself.
+     * Only record a generic presence when the text
+     * explicitly indicates one.
+     */
+    if (!info.diplome && !value.includes("sans diplome")) {
+      info.diplome = "Diplôme à préciser";
+    }
+  }
+
+  /* ---------------- Expérience ---------------- */
+
+  if (
+    value.includes("sans experience") ||
+    value.includes("pas d experience") ||
+    value.includes("aucune experience") ||
+    value.includes("je n ai pas d experience") ||
+    value.includes("sans expérience")
+  ) {
+    info.experience = "Sans expérience";
+  } else if (
+    value.includes("avec experience") ||
+    value.includes("j ai de l experience") ||
+    value.includes("experience")
+  ) {
+    if (!value.includes("sans experience") &&
+        !value.includes("pas d experience") &&
+        !value.includes("aucune experience")) {
+      info.experience = "Expérience à préciser";
+    }
+  }
+
+  /* ---------------- Objectif emploi ---------------- */
+
+  if (
+    value.includes("cherche un emploi") ||
+    value.includes("recherche un emploi") ||
+    value.includes("chercher un emploi") ||
+    value.includes("trouver un emploi") ||
+    value.includes("cherche du travail") ||
+    value.includes("recherche du travail") ||
+    value.includes("trouver du travail") ||
+    value.includes("emploi")
+  ) {
+    info.objectif = "Recherche d'emploi";
+  }
+
+  /* ---------------- Type d'emploi ---------------- */
+
+  const employmentPatterns = [
+    {
+      pattern: "facteur",
+      value: "Facteur / livraison de courrier"
+    },
+    {
+      pattern: "livreur",
+      value: "Livraison"
+    },
+    {
+      pattern: "nettoyage",
+      value: "Nettoyage"
+    },
+    {
+      pattern: "agent d entretien",
+      value: "Entretien / nettoyage"
+    },
+    {
+      pattern: "manutention",
+      value: "Manutention"
+    },
+    {
+      pattern: "logistique",
+      value: "Logistique"
+    },
+    {
+      pattern: "restauration",
+      value: "Restauration"
+    },
+    {
+      pattern: "cuisine",
+      value: "Cuisine / restauration"
+    },
+    {
+      pattern: "magasin",
+      value: "Commerce / magasin"
+    },
+    {
+      pattern: "vente",
+      value: "Vente"
+    },
+    {
+      pattern: "batiment",
+      value: "Bâtiment"
+    }
+  ];
+
+  for (const item of employmentPatterns) {
+    if (value.includes(item.pattern)) {
+      info.type_emploi = item.value;
+      break;
+    }
+  }
+
+  /* ---------------- Ouverture secteurs ---------------- */
+
+  if (
+    value.includes("tous les secteurs") ||
+    value.includes("tous secteurs") ||
+    value.includes("n importe quel secteur") ||
+    value.includes("n'importe quel secteur") ||
+    value.includes("peu importe le secteur") ||
+    value.includes("ouvert a tous les secteurs") ||
+    value.includes("ouvert à tous les secteurs")
+  ) {
+    info.ouvert_tous_secteurs = true;
+  }
+
+  /* ---------------- Mobilité ---------------- */
+
+  if (
+    value.includes("mobile") ||
+    value.includes("mobilite") ||
+    value.includes("je peux me deplacer") ||
+    value.includes("je peux me déplacer") ||
+    value.includes("peu importe la distance") ||
+    value.includes("partout")
+  ) {
+    info.mobilite = "Flexible";
+  }
+
+  /* ---------------- Horaires ---------------- */
+
+  if (
+    value.includes("peu importe les horaires") ||
+    value.includes("n importe quels horaires") ||
+    value.includes("n'importe quels horaires") ||
+    value.includes("horaires flexibles") ||
+    value.includes("flexible pour les horaires") ||
+    value.includes("peu importe le temps")
+  ) {
+    info.horaires = "Flexible";
+  }
+
+  /* ---------------- Localisation ---------------- */
+
+  const knownLocations = [
+    "vigneux-sur-seine",
+    "vignieux-sur-seine",
+    "vigneux sur seine",
+    "vignieux sur seine",
+    "paris",
+    "evry",
+    "evry courcouronnes",
+    "corbeil essonnes",
+    "montgeron",
+    "draveil",
+    "juvisy sur orge",
+    "viry chatillon",
+    "creteil",
+    "melun",
+    "massy"
+  ];
+
+  for (const location of knownLocations) {
+    const normalizedLocation = normaliserRecherche(location);
+
+    if (value.includes(normalizedLocation)) {
+      info.zone_recherche = trouverLocalisation(location);
+      break;
+    }
+  }
+
+  /* ---------------- Présence en France ---------------- */
+
+  if (
+    value.includes("je suis en france") ||
+    value.includes("je vis en france") ||
+    value.includes("je reside en france") ||
+    value.includes("je réside en france") ||
+    value.includes("je suis actuellement en france")
+  ) {
+    info.presence_france = true;
+  }
+
+  /* ---------------- Titre / statut séjour ---------------- */
+
+  if (
+    value.includes("titre de sejour") ||
+    value.includes("titre de séjour")
+  ) {
+    info.titre_sejour = true;
+    info.statut_sejour = "Titre de séjour";
+  }
+
+  if (
+    value.includes("salarie") ||
+    value.includes("salarié") ||
+    value.includes("titre salarié")
+  ) {
+    info.statut_sejour = "Salarié";
+    info.titre_sejour = true;
+  }
+
+  if (
+    value.includes("recepisse") ||
+    value.includes("récépissé")
+  ) {
+    info.recepisse = true;
+    info.statut_sejour = "Récépissé";
+  }
+
+  if (
+    value.includes("renouvellement") ||
+    value.includes("renouveler mon titre")
+  ) {
+    info.renouvellement = true;
+  }
+
+  if (
+    value.includes("demande d asile") ||
+    value.includes("demande d'asile") ||
+    value.includes("asile")
+  ) {
+    info.asile = true;
+  }
+
+  /* ---------------- Entreprise ---------------- */
+
+  if (
+    value.includes("creer une entreprise") ||
+    value.includes("créer une entreprise") ||
+    value.includes("creation d entreprise") ||
+    value.includes("création d'entreprise") ||
+    value.includes("creer mon entreprise") ||
+    value.includes("créer mon entreprise")
+  ) {
+    info.creation_entreprise = true;
+  }
+
+  if (
+    value.includes("mon entreprise") ||
+    value.includes("mon activite") ||
+    value.includes("mon activité") ||
+    value.includes("entreprise")
+  ) {
+    info.entreprise = true;
+  }
+
+  return info;
+}
+
+/* =========================================================
+   CONTEXT DETECTION
+   ========================================================= */
+
+function detectContext(text, situation = null, profil = null) {
+  const value = normaliserRecherche(text);
+
+  const context = {
+    travail: false,
+    emploi: false,
+    nettoyage: false,
+    entreprise: false,
+    statut: false,
+    social: false,
+    administratif: false,
+    juridique: false,
+    fiscalite: false,
+    immigration: false,
+    recepisse: false,
+    titreSejour: false,
+    anef: false,
+    renouvellement: false,
+    premiereDemande: false,
+    asile: false
+  };
+
+  if (
+    situation === "emploi" ||
+    profil === "emploi"
+  ) {
+    context.travail = true;
+    context.emploi = true;
+  }
+
+  if (
+    value.includes("emploi") ||
+    value.includes("travail") ||
+    value.includes("job") ||
+    value.includes("facteur") ||
+    value.includes("livreur") ||
+    value.includes("nettoyage") ||
+    value.includes("manutention")
+  ) {
+    context.travail = true;
+    context.emploi = true;
+  }
+
+  if (
+    value.includes("nettoyage") ||
+    value.includes("menage") ||
+    value.includes("ménage") ||
+    value.includes("agent d entretien")
+  ) {
+    context.nettoyage = true;
+  }
+
+  if (
+    profil === "entreprise" ||
+    situation === "creation" ||
+    situation === "developpement"
+  ) {
+    context.entreprise = true;
+  }
+
+  if (
+    value.includes("entreprise") ||
+    value.includes("societe") ||
+    value.includes("société") ||
+    value.includes("entrepreneur") ||
+    value.includes("creation d entreprise") ||
+    value.includes("création d'entreprise")
+  ) {
+    context.entreprise = true;
+  }
+
+  if (
+    value.includes("titre de sejour") ||
+    value.includes("titre de séjour") ||
+    value.includes("recepisse") ||
+    value.includes("récépissé") ||
+    value.includes("anef") ||
+    value.includes("etranger") ||
+    value.includes("étranger") ||
+    value.includes("immigration")
+  ) {
+    context.immigration = true;
+    context.statut = true;
+  }
+
+  if (
+    value.includes("recepisse") ||
+    value.includes("récépissé")
+  ) {
+    context.recepisse = true;
+  }
+
+  if (
+    value.includes("titre de sejour") ||
+    value.includes("titre de séjour")
+  ) {
+    context.titreSejour = true;
+  }
+
+  if (value.includes("anef")) {
+    context.anef = true;
+  }
+
+  if (
+    value.includes("renouvellement") ||
+    value.includes("renouveler")
+  ) {
+    context.renouvellement = true;
+  }
+
+  if (
+    value.includes("premiere demande") ||
+    value.includes("première demande")
+  ) {
+    context.premiereDemande = true;
+  }
+
+  if (
+    value.includes("asile") ||
+    value.includes("demande d asile") ||
+    value.includes("demande d'asile")
+  ) {
+    context.asile = true;
+    context.immigration = true;
+  }
+
+  if (
+    value.includes("administratif") ||
+    value.includes("administrative") ||
+    value.includes("demarche") ||
+    value.includes("démarche")
+  ) {
+    context.administratif = true;
+  }
+
+  if (
+    value.includes("juridique") ||
+    value.includes("avocat") ||
+    value.includes("droit")
+  ) {
+    context.juridique = true;
+  }
+
+  if (
+    value.includes("fiscal") ||
+    value.includes("impot") ||
+    value.includes("impôt") ||
+    value.includes("taxe")
+  ) {
+    context.fiscalite = true;
+  }
+
+  if (
+    value.includes("social") ||
+    value.includes("aide sociale") ||
+    value.includes("rsa")
+  ) {
+    context.social = true;
+  }
+
+  return context;
+}
+
+/* =========================================================
+   USER-ONLY HISTORY
+   ========================================================= */
 
 function analyserHistorique(history) {
-const result = [];
+  const messages = safeArray(history);
 
-for (const item of (history || []).slice(-30)) {
-if (!item) continue;
+  const userMessages = messages
+    .filter(message => {
+      if (!message || typeof message !== "object") {
+        return false;
+      }
 
-/*
-Les messages de l'assistant ne deviennent jamais
-des faits utilisateur.
-*/
+      const role = String(message.role || "").toLowerCase();
 
-if (item.role !== "user") continue;
+      return role === "user";
+    })
+    .map(message => cleanText(
+      message.content || message.text || "",
+      5000
+    ))
+    .filter(Boolean);
 
-const content =
-texte(
-item.content,
-LIMITS.question
-);
+  const limited = userMessages.slice(-20);
 
-if (!content) continue;
+  const combined = limited.join("\n");
 
-result.push(
-...extraireInformations(content)
-);
-}
-
-return dedupeInformations(result);
-}
-
-/* =========================================================
-ÉTAT DE CONVERSATION
-========================================================= */
-
-function construireEtatConversation(options = {}) {
-const history =
-Array.isArray(options.history)
-? options.history
-: [];
-
-const historiqueInfos =
-analyserHistorique(history);
-
-const suppliedInfos =
-Array.isArray(options.informations)
-? options.informations
-: [];
-
-const documentInfos =
-Array.isArray(options.documentInfos)
-? options.documentInfos
-: [];
-
-const currentInfos =
-extraireInformations(
-texte(
-options.question,
-LIMITS.question
-)
-);
-
-const toutes =
-dedupeInformations([
-...historiqueInfos,
-...suppliedInfos,
-...documentInfos,
-...currentInfos
-]);
-
-const texteGlobal = [
-...history
-.filter(x => x?.role === "user")
-.map(x => texte(x.content, 6000)),
-
-texte(
-options.question,
-LIMITS.question
-)
-]
-.filter(Boolean)
-.join("\n");
-
-const contexte =
-detectContext(texteGlobal);
-
-/*
-=======================================================
-CONTEXTE STRUCTURÉ
-=======================================================
-*/
-
-if (
-hasInfo(toutes, "objectif") &&
-/recherche d'emploi/i.test(
-getInfo(
-toutes,
-"objectif"
-)?.valeur || ""
-)
-) {
-contexte.travail = true;
-}
-
-if (hasInfo(toutes, "titre_sejour")) {
-contexte.immigration = true;
-}
-
-if (hasInfo(toutes, "recepisse")) {
-contexte.immigration = true;
-contexte.recepisse = true;
-}
-
-/*
-=======================================================
-🔒 PROTECTION DU PARCOURS EMPLOI
-=======================================================
-
-Le profil "emploi" est la sélection explicite
-de l'utilisateur.
-
-Tant que l'utilisateur est dans ce profil,
-les signaux textuels "entreprise", "activité",
-"services", etc. ne doivent pas faire basculer
-automatiquement le moteur vers entreprise.
-
-L'objectif ici est d'empêcher un changement de
-domaine provoqué par un simple mot dans la conversation.
-=======================================================
-*/
-
-const profilEmploi =
-options.profil === "emploi";
-
-const situationsEmploi = [
-"offres",
-"cv",
-"candidature",
-"annonce",
-"entretien",
-"entreprise",
-"adapte",
-"comparaison",
-"autre"
-];
-
-const situationEmploi =
-situationsEmploi.includes(
-texte(options.situation, 100)
-.toLowerCase()
-);
-
-const parcoursEmploi =
-profilEmploi ||
-situationEmploi;
-
-if (parcoursEmploi) {
-contexte.travail = true;
-
-contexte.entreprise = false;
-contexte.statut = false;
-}
-
-/*
-=======================================================
-ENTREPRISE EXPLICITE
-=======================================================
-*/
-
-if (
-options.profil === "entreprise" ||
-options.situation === "creation"
-) {
-contexte.entreprise = true;
-}
-
-/*
-=======================================================
-PROFIL PARTICULIER / MIGRANT
-=======================================================
-*/
-
-if (options.situation === "emploi") {
-contexte.travail = true;
-}
-
-return {
-informations: toutes,
-
-contexte,
-
-questionsPosees:
-unique(
-Array.isArray(
-options.questionsPosees
-)
-? options.questionsPosees
-: []
-),
-
-parcoursEmploi,
-
-profil:
-texte(
-options.profil,
-100
-),
-
-situation:
-texte(
-options.situation,
-100
-)
-};
+  return {
+    messages: limited,
+    texte: combined,
+    informations: extraireInformations(combined)
+  };
 }
 
 /* =========================================================
-CATALOGUE DES QUESTIONS
-========================================================= */
+   CONVERSATION STATE
+   ========================================================= */
+
+function construireEtatConversation({
+  question,
+  history = [],
+  informations = {},
+  documentInfo = {},
+  profil = null,
+  situation = null,
+  langue = null
+}) {
+  const historique = analyserHistorique(history);
+
+  const currentQuestion = cleanText(
+    question,
+    LIMITS.question
+  );
+
+  const currentInfo = extraireInformations(currentQuestion);
+
+  const mergedInfo = {
+    ...historique.informations,
+    ...informations,
+    ...currentInfo
+  };
+
+  const contextText = [
+    historique.texte,
+    currentQuestion
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const contexte = detectContext(
+    contextText,
+    situation,
+    profil
+  );
+
+  /*
+   * IMPORTANT:
+   * If the user has explicitly established an employment path,
+   * do not let a weak keyword such as "entreprise" elsewhere
+   * silently switch the case to business mode.
+   */
+  const explicitEmployment =
+    mergedInfo.objectif === "Recherche d'emploi" ||
+    mergedInfo.type_emploi ||
+    mergedInfo.zone_recherche ||
+    situation === "emploi" ||
+    profil === "emploi";
+
+  if (explicitEmployment) {
+    contexte.travail = true;
+    contexte.emploi = true;
+  }
+
+  return {
+    question: currentQuestion,
+    history: historique.messages,
+    informations: mergedInfo,
+    documentInfo: documentInfo || {},
+    profil,
+    situation,
+    langue: normalizeLanguage(
+      langue || detectLanguage(
+        contextText,
+        langue
+      )
+    ),
+    contexte
+  };
+}
+
+/* =========================================================
+   DETERMINISTIC QUESTIONS
+   ========================================================= */
 
 const QUESTIONS = {
+  fr: {
+    zone_recherche:
+      "Dans quelle ville ou zone recherchez-vous principalement un emploi ?",
 
-zone_recherche: {
-fr: "Dans quelle ville ou zone souhaitez-vous principalement rechercher un emploi ?",
-ar: "في أي مدينة أو منطقة تريد البحث عن عمل بشكل أساسي؟",
-en: "In which city or area would you mainly like to look for a job?"
-},
+    type_emploi:
+      "Quel type d'emploi recherchez-vous principalement ? Êtes-vous ouvert à différents secteurs ?",
 
-type_emploi: {
-fr: "Quel type d'emploi recherchez-vous principalement ? Êtes-vous ouvert à différents secteurs ?",
-ar: "ما نوع العمل الذي تبحث عنه أساساً؟ وهل أنت منفتح على قطاعات مختلفة؟",
-en: "What type of job are you mainly looking for? Are you open to different sectors?"
-},
+    mobilite:
+      "Êtes-vous mobile pour travailler dans les villes ou communes voisines ?",
 
-mobilite: {
-fr: "Êtes-vous prêt à vous déplacer pour travailler en dehors de votre zone principale ?",
-ar: "هل يمكنك التنقل للعمل خارج منطقتك الرئيسية؟",
-en: "Are you willing to travel outside your main area for work?"
-},
+    horaires:
+      "Avez-vous des contraintes concernant les horaires de travail ?",
 
-horaires: {
-fr: "Êtes-vous flexible concernant les horaires de travail ?",
-ar: "هل أنت مرن بالنسبة إلى أوقات العمل؟",
-en: "Are you flexible regarding working hours?"
-},
+    presence_france:
+      "Êtes-vous actuellement en France ?",
 
-presence_france: {
-fr: "Êtes-vous actuellement en France ?",
-ar: "هل أنت موجود حالياً في فرنسا؟",
-en: "Are you currently in France?"
-},
+    statut_sejour:
+      "Quel est votre statut ou votre titre de séjour actuel en France ?",
 
-statut_sejour: {
-fr: "Quel est votre statut ou votre titre de séjour actuel ?",
-ar: "ما هو وضع إقامتك أو نوع تصريح الإقامة الحالي؟",
-en: "What is your current residence status or permit?"
-},
+    entreprise:
+      "Pouvez-vous me préciser votre entreprise ou votre projet d'activité ?"
+  },
 
-entreprise: {
-fr: "Quelle activité ou quels services souhaitez-vous proposer ?",
-ar: "ما النشاط أو الخدمات التي تريد تقديمها؟",
-en: "What activity or services would you like to offer?"
-}
+  ar: {
+    zone_recherche:
+      "في أي مدينة أو منطقة تبحث بشكل أساسي عن عمل؟",
+
+    type_emploi:
+      "ما نوع العمل الذي تبحث عنه أساسًا؟ وهل أنت منفتح على قطاعات مختلفة؟",
+
+    mobilite:
+      "هل يمكنك التنقل للعمل في المدن أو المناطق المجاورة؟",
+
+    horaires:
+      "هل لديك قيود معينة بخصوص أوقات العمل؟",
+
+    presence_france:
+      "هل أنت حاليًا في فرنسا؟",
+
+    statut_sejour:
+      "ما هو وضع إقامتك أو نوع تصريح الإقامة الحالي في فرنسا؟",
+
+    entreprise:
+      "هل يمكنك أن توضح لي شركتك أو مشروع نشاطك؟"
+  },
+
+  en: {
+    zone_recherche:
+      "Which city or area are you mainly looking to work in?",
+
+    type_emploi:
+      "What type of job are you mainly looking for? Are you open to different sectors?",
+
+    mobilite:
+      "Are you able to travel to nearby towns or areas for work?",
+
+    horaires:
+      "Do you have any restrictions regarding working hours?",
+
+    presence_france:
+      "Are you currently in France?",
+
+    statut_sejour:
+      "What is your current residence status or residence permit in France?",
+
+    entreprise:
+      "Could you tell me about your company or business project?"
+  }
 };
 
 /* =========================================================
-DÉCISION ENGINE
-========================================================= */
+   QUESTION CANDIDATES
+   ========================================================= */
 
 function candidatsQuestions(etat) {
-const {
-informations,
-contexte
-} = etat;
+  const {
+    informations,
+    contexte,
+    profil,
+    situation
+  } = etat;
 
-if (etat.parcoursEmploi) {
-return [
-{
-key: "zone_recherche",
+  const candidates = [];
 
-required: true,
+  const hasEmploymentPath =
+    contexte.emploi ||
+    contexte.travail ||
+    profil === "emploi" ||
+    situation === "emploi";
 
-when: () =>
-!hasInfo(
-informations,
-"zone_recherche"
-)
-},
+  if (hasEmploymentPath) {
+    if (!informations.zone_recherche) {
+      candidates.push("zone_recherche");
+    }
 
-{
-key: "type_emploi",
+    if (
+      !informations.type_emploi &&
+      !informations.ouvert_tous_secteurs
+    ) {
+      candidates.push("type_emploi");
+    }
 
-required: true,
+    if (!informations.mobilite) {
+      candidates.push("mobilite");
+    }
 
-when: () =>
-!hasInfo(
-informations,
-"type_emploi"
-)
-},
+    if (!informations.horaires) {
+      candidates.push("horaires");
+    }
+  }
 
-{
-key: "mobilite",
+  if (contexte.immigration) {
+    if (
+      informations.presence_france === undefined &&
+      informations.titre_sejour !== true &&
+      informations.recepisse !== true
+    ) {
+      candidates.push("presence_france");
+    }
 
-required: false,
+    if (
+      !informations.statut_sejour &&
+      informations.titre_sejour !== true
+    ) {
+      candidates.push("statut_sejour");
+    }
+  }
 
-when: () =>
-!hasInfo(
-informations,
-"mobilite"
-)
-},
+  /*
+   * Enterprise questions are only activated when the case is
+   * genuinely enterprise-oriented.
+   */
+  if (
+    contexte.entreprise &&
+    !hasEmploymentPath
+  ) {
+    if (!informations.entreprise) {
+      candidates.push("entreprise");
+    }
+  }
 
-{
-key: "horaires",
-
-required: false,
-
-when: () =>
-!hasInfo(
-informations,
-"horaires"
-)
-}
-];
-}
-
-/*
-=======================================================
-IMMIGRATION
-=======================================================
-*/
-
-if (
-contexte.recepisse ||
-contexte.immigration
-) {
-return [
-{
-key: "presence_france",
-
-required: true,
-
-when: () =>
-!hasInfo(
-informations,
-"presence_france"
-)
-},
-
-{
-key: "statut_sejour",
-
-required: true,
-
-when: () =>
-!hasInfo(
-informations,
-"statut_sejour"
-) &&
-!hasInfo(
-informations,
-"titre_sejour"
-)
-}
-];
-}
-
-/*
-=======================================================
-ENTREPRISE
-=======================================================
-*/
-
-if (
-contexte.entreprise ||
-contexte.statut
-) {
-return [
-{
-key: "entreprise",
-
-required: true,
-
-when: () =>
-!hasInfo(
-informations,
-"entreprise"
-)
-}
-];
-}
-
-/*
-=======================================================
-TRAVAIL GÉNÉRAL
-=======================================================
-*/
-
-if (contexte.travail) {
-return [
-{
-key: "zone_recherche",
-
-required: true,
-
-when: () =>
-!hasInfo(
-informations,
-"zone_recherche"
-)
-},
-
-{
-key: "type_emploi",
-
-required: true,
-
-when: () =>
-!hasInfo(
-informations,
-"type_emploi"
-)
-},
-
-{
-key: "mobilite",
-
-required: false,
-
-when: () =>
-!hasInfo(
-informations,
-"mobilite"
-)
-},
-
-{
-key: "horaires",
-
-required: false,
-
-when: () =>
-!hasInfo(
-informations,
-"horaires"
-)
-}
-];
-}
-
-return [];
-}
-
-function langueQuestion(langue) {
-const l =
-texte(
-langue,
-10
-).toLowerCase();
-
-if (l.startsWith("ar")) {
-return "ar";
-}
-
-if (l.startsWith("en")) {
-return "en";
-}
-
-return "fr";
-}
-
-function construireDecision(
-etat,
-langue = "fr"
-) {
-const candidates =
-candidatsQuestions(etat);
-
-const asked =
-new Set(
-etat.questionsPosees || []
-);
-
-for (
-const candidate
-of candidates
-) {
-if (
-asked.has(
-candidate.key
-)
-) {
-continue;
-}
-
-if (!candidate.when()) {
-continue;
-}
-
-const lang =
-langueQuestion(langue);
-
-return {
-etape: "question",
-
-questionKey:
-candidate.key,
-
-question:
-QUESTIONS[
-candidate.key
-]?.[lang] ||
-QUESTIONS[
-candidate.key
-]?.fr ||
-"",
-
-champsManquants:
-[candidate.key]
-};
-}
-
-return {
-etape: "orientation",
-
-questionKey: null,
-
-question: "",
-
-champsManquants: []
-};
+  return uniqueArray(candidates);
 }
 
 /* =========================================================
-SOURCES
-========================================================= */
+   DETERMINISTIC DECISION ENGINE
+   ========================================================= */
 
-function selectSources(contexte) {
-const ids = [];
+function construireDecision(etat) {
+  const candidates = candidatsQuestions(etat);
 
-if (contexte.travail) {
-ids.push(
-"france_travail"
-);
+  if (candidates.length === 0) {
+    return {
+      etape: "orientation",
+      questionKey: null,
+      question: null,
+      champsManquants: []
+    };
+  }
 
-if (contexte.travail) {
-ids.push(
-"travail_etranger"
-);
-}
-}
+  const key = candidates[0];
 
-if (
-contexte.entreprise ||
-contexte.statut
-) {
-ids.push(
-"statut"
-);
-}
+  const langue = normalizeLanguage(etat.langue);
 
-if (
-contexte.entreprise &&
-contexte.statut
-) {
-ids.push(
-"creation_ei"
-);
+  const question =
+    QUESTIONS[langue]?.[key] ||
+    QUESTIONS.fr[key];
 
-ids.push(
-"guichet"
-);
-}
-
-return unique(ids)
-.map(
-id => SOURCES[id]
-)
-.filter(Boolean);
+  return {
+    etape: "question",
+    questionKey: key,
+    question,
+    champsManquants: candidates
+  };
 }
 
 /* =========================================================
-DOCUMENTS / ACTIONS / RECOMMANDATIONS
-========================================================= */
+   PROTECTION AGAINST RE-ASKING EXPLICIT ANSWERS
+   ========================================================= */
 
-function confirmed(
-informations,
-contexte
-) {
-const out = [];
+function appliquerProtectionsEmploi(etat, decision) {
+  if (!decision || decision.etape !== "question") {
+    return decision;
+  }
 
-for (
-const item
-of informations || []
-) {
-if (!item?.valeur) {
-continue;
-}
+  const info = etat.informations || {};
 
-if (
-item.type === "zone_recherche" ||
-item.type === "type_emploi" ||
-item.type === "mobilite" ||
-item.type === "horaires" ||
-item.type === "diplome" ||
-item.type === "experience" ||
-item.type === "objectif"
-) {
-out.push(
-`${item.type} : ${item.valeur}`
-);
-}
-}
+  /*
+   * Explicitly confirmed absence of diploma must never
+   * cause a diploma question later.
+   */
+  if (
+    info.diplome === "Sans diplôme" &&
+    decision.questionKey === "diplome"
+  ) {
+    return construireDecision({
+      ...etat,
+      informations: {
+        ...info,
+        diplome: "Sans diplôme"
+      }
+    });
+  }
 
-if (contexte.immigration) {
-out.push(
-"Une question liée au séjour ou à la situation administrative a été détectée."
-);
-}
+  /*
+   * Same principle for experience.
+   */
+  if (
+    info.experience === "Sans expérience" &&
+    decision.questionKey === "experience"
+  ) {
+    return construireDecision({
+      ...etat,
+      informations: {
+        ...info,
+        experience: "Sans expérience"
+      }
+    });
+  }
 
-return unique(out);
-}
-
-function documents(
-informations,
-contexte
-) {
-const out = [];
-
-if (contexte.immigration) {
-out.push({
-statut: "à vérifier",
-
-texte:
-"Le titre ou document de séjour réellement détenu et sa date de validité."
-});
-}
-
-if (contexte.travail) {
-out.push({
-statut: "à vérifier",
-
-texte:
-"Les justificatifs éventuellement demandés pour les candidatures ou l'inscription auprès des organismes concernés."
-});
-}
-
-return out;
-}
-
-function actions(
-informations,
-contexte
-) {
-const out = [];
-
-if (contexte.travail) {
-
-if (
-hasInfo(
-informations,
-"zone_recherche"
-)
-) {
-out.push(
-"Rechercher les possibilités d'emploi correspondant à la zone indiquée."
-);
-}
-
-if (
-hasInfo(
-informations,
-"type_emploi"
-)
-) {
-out.push(
-"Cibler les métiers correspondant au type d'emploi indiqué."
-);
-}
-
-if (
-hasInfo(
-informations,
-"diplome"
-) &&
-/sans diplôme/i.test(
-getInfo(
-informations,
-"diplome"
-)?.valeur || ""
-)
-) {
-out.push(
-"Privilégier les offres dont les conditions d'accès n'exigent pas de diplôme, sous réserve des exigences de chaque poste."
-);
-}
-
-if (
-hasInfo(
-informations,
-"experience"
-) &&
-/sans expérience/i.test(
-getInfo(
-informations,
-"experience"
-)?.valeur || ""
-)
-) {
-out.push(
-"Privilégier les offres accessibles sans expérience, sous réserve des exigences de chaque employeur."
-);
-}
-
-out.push(
-"Vérifier les conditions exactes de chaque offre avant de candidater."
-);
-}
-
-if (contexte.immigration) {
-out.push(
-"Vérifier la procédure administrative exacte à partir des documents réellement détenus."
-);
-}
-
-return unique(out);
-}
-
-function recommendations(
-informations,
-contexte
-) {
-const out = [];
-
-if (contexte.travail) {
-
-out.push(
-"Les possibilités d'emploi dépendent des exigences propres à chaque poste et employeur."
-);
-
-if (
-hasInfo(
-informations,
-"diplome"
-) &&
-/sans diplôme/i.test(
-getInfo(
-informations,
-"diplome"
-)?.valeur || ""
-)
-) {
-out.push(
-"L'absence de diplôme n'empêche pas nécessairement toute candidature, mais certaines professions restent soumises à des conditions particulières."
-);
-}
-}
-
-if (contexte.immigration) {
-out.push(
-"Les droits liés au séjour ou au travail doivent être vérifiés à partir du titre ou document exact et de la procédure concernée."
-);
-}
-
-return unique(out);
+  return decision;
 }
 
 /* =========================================================
-SYSTEM PROMPT
-========================================================= */
+   SOURCE SELECTION
+   ========================================================= */
 
-function systemPrompt() {
-return `
-Tu es GouRare AI, un assistant d'orientation et d'analyse multi-domaines.
+function selectSources(etat) {
+  const sources = [];
 
-Tu n'es pas avocat, expert-comptable, médecin, administration ou travailleur social.
+  const contexte = etat.contexte || {};
 
-RÈGLES ABSOLUES :
+  if (
+    contexte.travail ||
+    contexte.emploi
+  ) {
+    sources.push("france_travail");
 
-1. Ne transforme jamais une hypothèse en fait.
-2. Les informations utilisateur doivent provenir uniquement de ses messages ou de données explicitement fournies.
-3. Une réponse précédente de l'assistant n'est jamais une preuve sur l'utilisateur.
-4. Ne réinvente jamais une information que l'utilisateur n'a pas donnée.
-5. Ne donne jamais de conclusion juridique non vérifiée.
-6. Pour l'immigration, ne déduis jamais un droit au séjour ou au travail sans éléments confirmés.
-7. Les sources officielles fournies par GouRare AI sont prioritaires.
-8. Ne fabrique jamais de loi, article, montant, seuil, délai, obligation, document ou statistique.
-9. Le moteur de décision détermine le parcours et la prochaine question.
-10. Lorsque GouRare AI fournit une question déterministe, respecte exactement cette question.
-11. Ne pose pas une question déjà résolue.
-12. Si l'utilisateur a clairement indiqué qu'il est sans diplôme, ne lui redemande pas s'il possède un diplôme.
-13. Si l'utilisateur a clairement indiqué qu'il est sans expérience, ne lui redemande pas son expérience.
-14. Pour l'emploi, donne une orientation concrète uniquement lorsque les informations essentielles sont suffisantes.
-15. Ne présente jamais une information incertaine comme confirmée.
-16. Pour une image, analyse uniquement ce qui est réellement visible ou lisible.
-17. Pour un message, respecte strictement le contenu fourni.
-18. Ne répète pas les URL des sources dans ton texte : elles sont affichées séparément.
-19. N'utilise jamais le nom « ANPE » comme organisme actuel de l'emploi en France.
-20. Pour les services publics actuels de l'emploi en France, utilise « France Travail » lorsque cette source est pertinente.
-21. Ne fabrique jamais le nom d'une agence, d'un organisme, d'une administration ou d'un service local.
-22. Ne présente jamais comme vérifiée une adresse, une agence locale, un numéro de téléphone, un site ou un service qui n'est pas présent dans les sources fournies.
-23. Si une information locale précise n'est pas vérifiée, indique simplement qu'elle doit être vérifiée sur la source officielle.
-24. Les sources officielles fournies par GouRare AI ont priorité sur les connaissances générales du modèle.
-25. Ne remplace jamais une source officielle fournie par un organisme ancien, fictif ou non vérifié.
+    /*
+     * Only add foreign-worker information when the case
+     * actually contains an immigration/work-authorization
+     * dimension.
+     */
+    if (contexte.immigration) {
+      sources.push("travail_etranger");
+    }
+  }
 
-Objectif :
+  if (
+    contexte.statut ||
+    contexte.immigration
+  ) {
+    sources.push("statut");
+  }
 
-COMPRENDRE
-→ IDENTIFIER
-→ VÉRIFIER
-→ ORIENTER
-→ DONNER UNE ACTION CONCRÈTE
+  if (
+    contexte.entreprise &&
+    !contexte.emploi &&
+    !contexte.travail
+  ) {
+    sources.push("creation_ei");
+    sources.push("guichet");
+  }
 
-Réponds de manière claire, humaine, concise et pratique.
+  if (contexte.anef) {
+    sources.push("anef");
+  }
+
+  return uniqueArray(sources)
+    .map(id => SOURCES[id])
+    .filter(Boolean);
+}
+
+/* =========================================================
+   CONFIRMED INFORMATION
+   ========================================================= */
+
+function confirmed(etat) {
+  const info = etat.informations || {};
+  const confirmedInfo = [];
+
+  if (info.objectif) {
+    confirmedInfo.push({
+      key: "objectif",
+      label: "Objectif",
+      value: info.objectif
+    });
+  }
+
+  if (info.zone_recherche) {
+    confirmedInfo.push({
+      key: "zone_recherche",
+      label: "Zone de recherche",
+      value: info.zone_recherche
+    });
+  }
+
+  if (info.type_emploi) {
+    confirmedInfo.push({
+      key: "type_emploi",
+      label: "Type d'emploi",
+      value: info.type_emploi
+    });
+  }
+
+  if (info.diplome) {
+    confirmedInfo.push({
+      key: "diplome",
+      label: "Diplôme",
+      value: info.diplome
+    });
+  }
+
+  if (info.experience) {
+    confirmedInfo.push({
+      key: "experience",
+      label: "Expérience",
+      value: info.experience
+    });
+  }
+
+  if (info.mobilite) {
+    confirmedInfo.push({
+      key: "mobilite",
+      label: "Mobilité",
+      value: info.mobilite
+    });
+  }
+
+  if (info.horaires) {
+    confirmedInfo.push({
+      key: "horaires",
+      label: "Horaires",
+      value: info.horaires
+    });
+  }
+
+  if (info.statut_sejour) {
+    confirmedInfo.push({
+      key: "statut_sejour",
+      label: "Statut de séjour",
+      value: info.statut_sejour
+    });
+  }
+
+  return confirmedInfo;
+}
+
+/* =========================================================
+   DOCUMENT CHECKS
+   ========================================================= */
+
+function documents(etat) {
+  const contexte = etat.contexte || {};
+  const info = etat.informations || {};
+
+  const result = [];
+
+  if (
+    contexte.immigration ||
+    contexte.statut
+  ) {
+    result.push({
+      title: "Vérification du statut",
+      items: [
+        "Titre ou document de séjour actuel",
+        "Date de validité",
+        "Éventuel récépissé ou justificatif récent",
+        "Informations affichées sur ANEF si la démarche y est liée"
+      ]
+    });
+  }
+
+  if (
+    contexte.travail &&
+    info.statut_sejour
+  ) {
+    result.push({
+      title: "Vérification liée au travail",
+      items: [
+        "Vérifier que le statut permet bien l'activité envisagée",
+        "Vérifier les éventuelles restrictions indiquées sur le document",
+        "Vérifier les règles officielles applicables au poste"
+      ]
+    });
+  }
+
+  return result;
+}
+
+/* =========================================================
+   ACTIONS
+   ========================================================= */
+
+function actions(etat) {
+  const contexte = etat.contexte || {};
+  const info = etat.informations || {};
+
+  const result = [];
+
+  if (contexte.emploi || contexte.travail) {
+    result.push(
+      "Créer ou mettre à jour votre profil France Travail.",
+      "Rechercher les offres correspondant à votre zone et à votre type d'emploi.",
+      "Préparer un CV simple adapté aux postes visés."
+    );
+
+    if (info.diplome === "Sans diplôme") {
+      result.push(
+        "Privilégier également les offres accessibles sans diplôme."
+      );
+    }
+
+    if (info.experience === "Sans expérience") {
+      result.push(
+        "Inclure les offres acceptant les débutants et les profils sans expérience."
+      );
+    }
+  }
+
+  if (contexte.immigration) {
+    result.push(
+      "Vérifier les informations officielles correspondant exactement à votre statut.",
+      "Utiliser ANEF lorsque la démarche concernée y est accessible."
+    );
+  }
+
+  return uniqueArray(result);
+}
+
+/* =========================================================
+   RECOMMENDATIONS
+   ========================================================= */
+
+function recommendations(etat) {
+  const contexte = etat.contexte || {};
+  const info = etat.informations || {};
+
+  const result = [];
+
+  if (
+    contexte.emploi ||
+    contexte.travail
+  ) {
+    if (
+      info.diplome === "Sans diplôme" &&
+      info.experience === "Sans expérience"
+    ) {
+      result.push({
+        type: "emploi",
+        title: "Profil accessible aux recherches sans diplôme ni expérience",
+        text:
+          "La recherche peut être orientée vers les postes qui indiquent explicitement qu'aucun diplôme ou aucune expérience préalable n'est exigé."
+      });
+    }
+
+    if (info.ouvert_tous_secteurs) {
+      result.push({
+        type: "ouverture",
+        title: "Recherche multisectorielle",
+        text:
+          "L'analyse peut comparer plusieurs familles de métiers au lieu de limiter la recherche à un seul secteur."
+      });
+    }
+  }
+
+  return result;
+}
+/* =========================================================
+   SYSTEM PROMPT
+   ========================================================= */
+
+function systemPrompt(etat, decision) {
+  const langue = normalizeLanguage(etat.langue);
+
+  const languageInstruction = {
+    fr: "Répondre principalement en français.",
+    ar: "Répondre principalement en arabe. Conserver les noms officiels français lorsque nécessaire et expliquer leur sens en arabe.",
+    en: "Respond primarily in English. Preserve official French names when necessary and explain them in English."
+  }[langue] || "Répondre principalement en français.";
+
+  return `
+Tu es Go Rare AI, un moteur d'orientation et d'intelligence de situation.
+
+${languageInstruction}
+
+PRINCIPES ABSOLUS :
+
+1. Ne jamais inventer une loi, une procédure, une condition administrative,
+   un délai, un droit ou une obligation.
+
+2. Les informations certaines doivent être séparées des informations
+   à vérifier et des déductions.
+
+3. Les sources officielles sont prioritaires.
+
+4. Le Decision Engine déterministe contrôle le parcours conversationnel.
+   Le modèle IA ne doit jamais décider de remplacer une question
+   déterministe par une autre.
+
+5. Ne repose pas une question dont la réponse est déjà explicitement connue.
+
+6. Si l'utilisateur a explicitement indiqué :
+   - sans diplôme
+   - sans expérience
+   ne lui demande pas à nouveau ces informations.
+
+7. Ne transforme jamais automatiquement une recherche d'emploi en création
+   d'entreprise simplement parce qu'un mot comme "entreprise" apparaît.
+
+8. Pour les questions concernant l'immigration, le séjour ou le travail
+   d'un étranger, indique clairement ce qui doit être vérifié auprès
+   des sources officielles.
+
+9. Ne prétends jamais avoir consulté une source en temps réel si ce n'est
+   pas réellement le cas.
+
+10. Ne présente jamais une déduction comme un fait confirmé.
+
+11. Si une information manque, utilise la question fournie par le
+    Decision Engine.
+
+12. Les réponses doivent être concrètes, compréhensibles et orientées
+    vers les prochaines étapes.
+
+13. Go Rare AI cherche également les transformations possibles :
+    expérience informelle → compétence transférable,
+    contrainte → possibilité,
+    combinaison de plusieurs éléments → nouvelle piste.
+
+14. Toute piste de transformation doit rester explicable et ne doit pas
+    être présentée comme une garantie.
+
+DECISION ACTUELLE :
+${JSON.stringify(decision)}
+
+ÉTAT :
+${JSON.stringify(etat)}
+
+Réponds de manière concise mais utile.
 `;
 }
 
 /* =========================================================
-IA
-========================================================= */
+   AI HELPER
+   ========================================================= */
 
-async function askAI(
-env,
-prompt,
-maxTokens = 900
-) {
-try {
+async function askAI(env, messages, options = {}) {
+  const safeMessages = safeArray(messages)
+    .slice(-LIMITS.messages)
+    .map(message => ({
+      role: message?.role === "assistant"
+        ? "assistant"
+        : "user",
+      content: cleanText(
+        message?.content || message?.text || "",
+        LIMITS.message
+      )
+    }))
+    .filter(message => message.content);
 
-const result =
-await env.IA.run(
-MODEL,
-{
-messages: [
-{
-role: "system",
+  if (!safeMessages.length) {
+    return "";
+  }
 
-content:
-systemPrompt()
-},
+  const result = await env.IA.run(
+    MODEL,
+    {
+      messages: safeMessages,
+      max_tokens: Math.min(
+        Number(options.max_tokens || 1600),
+        3000
+      ),
+      temperature:
+        typeof options.temperature === "number"
+          ? Math.min(Math.max(options.temperature, 0), 0.5)
+          : 0.15
+    }
+  );
 
-{
-role: "user",
-
-content:
-texte(
-prompt,
-60000
-)
-}
-],
-
-max_tokens:
-maxTokens,
-
-temperature:
-0.15
-}
-);
-
-if (
-typeof result === "string"
-) {
-return result;
-}
-
-if (result?.response) {
-return result.response;
-}
-
-if (
-result?.result?.response
-) {
-return result.result.response;
-}
-
-return "";
-
-} catch (error) {
-
-return "";
-
-}
+  return cleanText(
+    result?.response || "",
+    18000
+  );
 }
 
 /* =========================================================
-ORIENTATION EMPLOI
-========================================================= */
+   EMPLOYMENT ORIENTATION
+   ========================================================= */
 
-function construireOrientationEmploi(
-informations
-) {
-const zone =
-getInfo(
-informations,
-"zone_recherche"
-)?.valeur || "";
+function construireOrientationEmploi(etat) {
+  const info = etat.informations || {};
 
-const type =
-getInfo(
-informations,
-"type_emploi"
-)?.valeur || "";
+  return {
+    domaine: "emploi",
+    faits_confirmes: confirmed(etat),
 
-const mobilite =
-getInfo(
-informations,
-"mobilite"
-)?.valeur || "";
+    profil: {
+      diplome: info.diplome || null,
+      experience: info.experience || null,
+      zone_recherche: info.zone_recherche || null,
+      type_emploi: info.type_emploi || null,
+      mobilite: info.mobilite || null,
+      horaires: info.horaires || null,
+      ouvert_tous_secteurs:
+        info.ouvert_tous_secteurs === true
+    },
 
-const horaires =
-getInfo(
-informations,
-"horaires"
-)?.valeur || "";
+    prochaines_actions: actions(etat),
 
-const diplome =
-getInfo(
-informations,
-"diplome"
-)?.valeur || "";
+    verification_documents: documents(etat),
 
-const experience =
-getInfo(
-informations,
-"experience"
-)?.valeur || "";
-
-const lignes = [];
-
-lignes.push(
-`Zone de recherche : ${zone || "non précisée"}`
-);
-
-lignes.push(
-`Type d'emploi : ${type || "non précisé"}`
-);
-
-lignes.push(
-`Mobilité : ${mobilite || "non précisée"}`
-);
-
-lignes.push(
-`Horaires : ${horaires || "non précisés"}`
-);
-
-if (diplome) {
-lignes.push(
-`Diplôme : ${diplome}`
-);
-}
-
-if (experience) {
-lignes.push(
-`Expérience : ${experience}`
-);
-}
-
-return lignes.join("\n");
+    pistes: recommendations(etat)
+  };
 }
 
 /* =========================================================
-MESSAGES
-========================================================= */
+   MESSAGE MODE
+   ========================================================= */
 
-function messagePrompt(
-contenu,
-mode,
-langue
-) {
-const instructions = {
+function messagePrompt(mode, text, langue) {
+  const instructions = {
+    analyse: `
+Analyse le contenu fourni.
+Identifie les éléments importants, les faits explicites,
+les informations manquantes et les points à vérifier.
+`,
 
-analyse:
-"Analyse le message : faits, demande, éléments importants, incertitudes et réponse possible.",
+    reponse: `
+Rédige une réponse claire et naturelle au message fourni.
+Ne crée aucune information qui n'est pas présente.
+`,
 
-reponse:
-"Prépare une réponse claire, polie et adaptée. N'invente aucun fait.",
+    reformulation: `
+Reformule le texte de manière plus claire et professionnelle
+sans modifier son sens.
+`,
 
-reformulation:
-"Réécris le message plus clairement sans changer son sens.",
+    correction: `
+Corrige les fautes de langue et améliore légèrement la formulation
+sans changer le contenu.
+`,
 
-correction:
-"Corrige les fautes et améliore légèrement la formulation sans changer le sens.",
+    traduction: `
+Traduis fidèlement le texte.
+Conserve les noms propres, noms officiels et références importantes.
+`
+  };
 
-traduction:
-"Traduis fidèlement le contenu dans la langue demandée."
-};
-
-return `
-Langue souhaitée : ${langue || "français"}
+  return `
+Langue : ${normalizeLanguage(langue)}
 
 Mode :
 ${instructions[mode] || instructions.analyse}
 
-CONTENU :
-${texte(
-contenu,
-LIMITS.message
-)}
+Texte :
+${cleanText(text, LIMITS.message)}
 `;
 }
 
 /* =========================================================
-IMAGE
-========================================================= */
+   IMAGE ANALYSIS
+   ========================================================= */
 
-async function analyserImage(
-env,
-image,
-demande = ""
-) {
-if (
-!image ||
-typeof image !== "string"
-) {
-throw new Error(
-"Image absente."
-);
-}
+async function analyserImage(env, imageBase64, question = "", langue = "fr") {
+  const image = cleanText(imageBase64, LIMITS.image);
 
-if (
-image.length >
-LIMITS.image
-) {
-throw new Error(
-"Image trop volumineuse."
-);
-}
+  if (!image) {
+    throw new Error("Image manquante.");
+  }
 
-const result =
-await env.IA.run(
-MODEL_VISION,
-{
-messages: [
-{
-role: "system",
+  const prompt = `
+Tu es Go Rare AI.
 
-content:
-"Analyse uniquement ce qui est réellement visible ou lisible. Ne devine jamais un texte illisible. Indique clairement les éléments incertains."
-},
+Analyse uniquement ce qui est réellement visible ou lisible
+dans l'image.
 
-{
-role: "user",
+Ne devine pas les informations illisibles.
 
-content:
-demande ||
-"Lis et analyse cette image. Identifie les éléments visibles, explique leur contenu et indique ce qui reste incertain."
-}
-],
+Si l'image contient un document :
+- identifier les informations visibles,
+- distinguer les faits certains,
+- signaler les éléments difficiles à lire,
+- ne pas inventer les champs manquants.
 
-image,
+Si l'image contient une situation visuelle :
+- décrire les éléments utiles,
+- identifier les indices pertinents,
+- ne pas présenter une supposition comme un fait.
 
-max_tokens:
-2200,
+Langue de réponse : ${normalizeLanguage(langue)}
 
-temperature:
-0.1
-}
-);
+Question de l'utilisateur :
+${cleanText(question, 5000)}
+`;
 
-if (
-typeof result === "string"
-) {
-return result;
-}
+  const result = await env.IA.run(
+    MODEL_VISION,
+    {
+      messages: [
+        {
+          role: "system",
+          content: prompt
+        },
+        {
+          role: "user",
+          content: "Analyse cette image."
+        }
+      ],
+      image,
+      max_tokens: 2200,
+      temperature: 0.1
+    }
+  );
 
-if (result?.response) {
-return result.response;
-}
-
-if (
-result?.result?.response
-) {
-return result.result.response;
-}
-
-return typeof result?.result === "string"
-? result.result
-: JSON.stringify(result);
+  return cleanText(
+    result?.response || "",
+    18000
+  );
 }
 
 /* =========================================================
-AUDIO
-========================================================= */
+   AUDIO / WHISPER
+   ========================================================= */
 
-function base64FromDataURL(
-value
-) {
-const s =
-texte(
-value,
-LIMITS.audio
-);
+async function transcrireAudio(env, audioData, language = null) {
+  if (!audioData) {
+    throw new Error("Audio manquant.");
+  }
 
-const index =
-s.indexOf(",");
+  const payload = {
+    audio: audioData,
+    task: "transcribe",
+    condition_on_previous_text: false
+  };
 
-if (
-s.startsWith("data:") &&
-index >= 0
-) {
-return s.slice(
-index + 1
-);
-}
+  if (language) {
+    payload.language = normalizeLanguage(language);
+  }
 
-return s;
-}
+  const result = await env.IA.run(
+    MODEL_AUDIO,
+    payload
+  );
 
-async function transcrireAudio(
-env,
-audio,
-langue = "fr"
-) {
-if (!audio) {
-throw new Error(
-"Audio absent."
-);
-}
+  const transcription =
+    result?.transcription_info?.text ||
+    result?.text ||
+    "";
 
-if (
-audio.length >
-LIMITS.audio
-) {
-throw new Error(
-"Audio trop volumineux."
-);
-}
-
-const result =
-await env.IA.run(
-MODEL_AUDIO,
-{
-audio:
-base64FromDataURL(
-audio
-),
-
-task:
-"transcribe",
-
-language:
-langue,
-
-condition_on_previous_text:
-false
-}
-);
-
-const text =
-result?.transcription_info?.text ||
-result?.text ||
-result?.response ||
-result?.result?.text ||
-"";
-
-return texte(
-text,
-20000
-);
+  return cleanText(
+    transcription,
+    LIMITS.question
+  );
 }
 
 /* =========================================================
-ANALYSE PRINCIPALE
-========================================================= */
+   MAIN QUESTION ANALYSIS
+   ========================================================= */
 
-async function analyserQuestion(
-env,
-question,
-options = {}
-) {
-const baseQuestion =
-texte(
-question,
-LIMITS.question
-);
+async function analyserQuestion(env, payload) {
+  const question = cleanText(
+    payload?.question || "",
+    LIMITS.question
+  );
 
-const history =
-Array.isArray(
-options.history
-)
-? options.history.slice(-30)
-: [];
+  if (!question) {
+    throw new Error("Question vide.");
+  }
 
-const informationsInitiales =
-Array.isArray(
-options.informations
-)
-? options.informations
-: [];
+  const history = safeArray(payload?.history);
 
-const documentInfos =
-Array.isArray(
-options.documentInfos
-)
-? options.documentInfos
-: [];
+  const informations =
+    payload?.informations &&
+    typeof payload.informations === "object"
+      ? payload.informations
+      : {};
 
-const etat =
-construireEtatConversation({
-question:
-baseQuestion,
+  const documentInfo =
+    payload?.documentInfo &&
+    typeof payload.documentInfo === "object"
+      ? payload.documentInfo
+      : {};
 
-history,
+  const profil = cleanText(
+    payload?.profil || "",
+    100
+  ) || null;
 
-informations:
-informationsInitiales,
+  const situation = cleanText(
+    payload?.situation || "",
+    100
+  ) || null;
 
-documentInfos,
+  const langue = normalizeLanguage(
+    payload?.langue ||
+    detectLanguage(question)
+  );
 
-profil:
-options.profil,
+  const etat = construireEtatConversation({
+    question,
+    history,
+    informations,
+    documentInfo,
+    profil,
+    situation,
+    langue
+  });
 
-situation:
-options.situation,
+  let decision = construireDecision(etat);
 
-questionsPosees:
-options.questionsPosees
-});
+  decision = appliquerProtectionsEmploi(
+    etat,
+    decision
+  );
 
-const langue =
-langueQuestion(
-options.langue || "fr"
-);
+  /* ---------------------------------------------------------
+     QUESTION MODE
+     --------------------------------------------------------- */
 
-const decision =
-construireDecision(
-etat,
-langue
-);
+  if (decision.etape === "question") {
+    return {
+      version: VERSION,
+      decision_version: DECISION_VERSION,
 
-const sources =
-selectSources(
-etat.contexte
-);
+      etape: "question",
 
-/*
-* =======================================================
-* QUESTION DÉTERMINISTE
-* =======================================================
-*/
+      question: decision.question,
 
-if (
-decision.etape === "question"
-) {
+      questionKey: decision.questionKey,
 
-const nouvellesQuestions =
-unique([
-...(etat.questionsPosees || []),
-decision.questionKey
-]);
+      champsManquants:
+        decision.champsManquants,
 
-let compris =
-"Je comprends votre demande. Pour avancer correctement, j'ai besoin d'une information supplémentaire.";
+      informations:
+        etat.informations,
 
-if (
-etat.contexte.travail &&
-decision.questionKey ===
-"zone_recherche"
-) {
-compris =
-"Je comprends que vous recherchez un emploi. Je commence par préciser votre zone de recherche.";
-}
+      contexte:
+        etat.contexte,
 
-if (
-etat.contexte.travail &&
-decision.questionKey ===
-"type_emploi"
-) {
-compris =
-"J'ai compris votre zone de recherche. Je précise maintenant le type d'emploi que vous recherchez.";
-}
+      sources:
+        selectSources(etat),
 
-if (
-etat.contexte.travail &&
-decision.questionKey ===
-"mobilite"
-) {
-compris =
-"J'ai compris le type d'emploi recherché. Je vérifie maintenant votre possibilité de déplacement.";
-}
+      confirmed:
+        confirmed(etat),
 
-if (
-etat.contexte.travail &&
-decision.questionKey ===
-"horaires"
-) {
-compris =
-"J'ai compris votre zone, votre recherche et votre mobilité. Je vérifie maintenant votre disponibilité concernant les horaires.";
-}
+      documents:
+        documents(etat),
 
-return {
-success: true,
+      actions:
+        actions(etat),
 
-version:
-VERSION,
+      recommendations:
+        recommendations(etat)
+    };
+  }
 
-decisionVersion:
-DECISION_VERSION,
+  /* ---------------------------------------------------------
+     ORIENTATION MODE
+     --------------------------------------------------------- */
 
-compris,
+  let orientation;
 
-orientation:
-"Nous allons avancer étape par étape afin de construire une orientation adaptée.",
+  if (
+    etat.contexte.emploi ||
+    etat.contexte.travail
+  ) {
+    orientation =
+      construireOrientationEmploi(etat);
+  } else {
+    orientation = {
+      domaine:
+        etat.contexte.entreprise
+          ? "entreprise"
+          : etat.contexte.immigration
+            ? "immigration"
+            : "general",
 
-confirmed:
-confirmed(
-etat.informations,
-etat.contexte
-),
+      faits_confirmes:
+        confirmed(etat),
 
-toVerify: [],
+      prochaines_actions:
+        actions(etat),
 
-recommendations: [],
+      verification_documents:
+        documents(etat),
 
-actions: [],
+      pistes:
+        recommendations(etat)
+    };
+  }
 
-documents: [],
+  const aiMessages = [
+    {
+      role: "system",
+      content: systemPrompt(
+        etat,
+        decision
+      )
+    },
+    {
+      role: "user",
+      content: `
+Voici la situation de l'utilisateur.
 
-risks: [],
+Produis une orientation utile à partir
+des informations confirmées.
 
-professional: [],
+Ne repose pas les questions déjà résolues.
 
-nextAction:
-decision.question,
+Structure la réponse en :
+1. Compréhension de la situation
+2. Ce qui est confirmé
+3. Ce qui doit être vérifié
+4. Prochaines étapes
+5. Pistes ou transformations possibles
 
-questionSuivante:
-decision.question,
-
-questionKey:
-decision.questionKey,
-
-questionsPosees:
-nouvellesQuestions,
-
-informations:
-etat.informations,
-
-etat: {
-informations:
-etat.informations,
-
-questionsPosees:
-nouvellesQuestions,
-
-contexte:
-etat.contexte,
-
-parcoursEmploi:
-etat.parcoursEmploi
-},
-
-decision,
-
-sources:
-sources.map(
-source => ({
-id:
-source.id,
-
-titre:
-source.titre,
-
-organisme:
-source.organisme,
-
-url:
-source.url
-})
-)
-};
-}
-
-/*
-* =======================================================
-* ORIENTATION FINALE
-* =======================================================
-*/
-
-let orientation = "";
-
-if (
-etat.contexte.travail
-) {
-
-const emploiFacts =
-construireOrientationEmploi(
-etat.informations
-);
-
-orientation =
-await askAI(
-env,
-
+Situation :
+${JSON.stringify(orientation)}
 `
-Tu dois produire une orientation professionnelle courte et concrète.
+    }
+  ];
 
-IMPORTANT :
-- Utilise uniquement les informations confirmées ci-dessous.
-- Ne crée aucune information personnelle.
-- Ne prétends pas connaître l'éligibilité à une offre précise.
-- Ne donne pas de promesse d'emploi.
-- Ne cite pas d'URL.
-- Si l'utilisateur n'a pas de diplôme ou d'expérience, respecte cette information.
-- Ne transforme pas "ouvert à tout secteur" en métier précis.
-- Propose des pistes générales cohérentes avec les informations disponibles.
+  let aiResponse = "";
 
-INFORMATIONS CONFIRMÉES :
-${emploiFacts}
+  try {
+    aiResponse = await askAI(
+      env,
+      aiMessages,
+      {
+        max_tokens: 1800,
+        temperature: 0.15
+      }
+    );
+  } catch (error) {
+    /*
+     * AI failure must not destroy the deterministic result.
+     */
+    aiResponse = "";
+  }
 
-Réponds en français avec :
-1. une courte synthèse ;
-2. quelques pistes correspondant aux informations ;
-3. une prochaine action concrète.
-`,
+  return {
+    version: VERSION,
+    decision_version: DECISION_VERSION,
 
-1000
-);
+    etape: "orientation",
 
-if (!orientation) {
-orientation =
-"Votre profil permet maintenant de commencer à rechercher des possibilités d'emploi correspondant à votre zone, votre recherche, votre mobilité et vos disponibilités. Les conditions exactes doivent être vérifiées pour chaque offre.";
-}
+    informations:
+      etat.informations,
 
-} else if (
-etat.contexte.immigration
-) {
+    contexte:
+      etat.contexte,
 
-orientation =
-await askAI(
-env,
+    confirmed:
+      confirmed(etat),
 
-`
-Analyse la situation administrative suivante.
+    documents:
+      documents(etat),
 
-Informations confirmées :
-${JSON.stringify(
-etat.informations
-)}
+    actions:
+      actions(etat),
 
-Contexte :
-${JSON.stringify(
-etat.contexte
-)}
+    recommendations:
+      recommendations(etat),
 
-Donne une orientation prudente.
-Ne déduis aucun droit non confirmé.
-Ne donne aucune conclusion juridique définitive.
-Indique les éléments qui doivent être vérifiés.
-`,
+    orientation,
 
-900
-);
-
-if (!orientation) {
-orientation =
-"La situation administrative a été identifiée. Il faut maintenant vérifier la procédure exacte et les documents réellement détenus avant toute conclusion.";
-}
-
-} else if (
-etat.contexte.entreprise
-) {
-
-orientation =
-await askAI(
-env,
-
-`
-Analyse ce projet d'entreprise uniquement à partir des informations confirmées :
-
-${JSON.stringify(
-etat.informations
-)}
-
-Donne une orientation pratique et prudente.
-Ne choisis pas automatiquement un statut juridique.
-`,
-
-900
-);
-
-if (!orientation) {
-orientation =
-"Votre projet d'entreprise a été identifié. La prochaine étape consiste à préciser l'activité et les formalités correspondant exactement au projet.";
-}
-
-} else {
-
-orientation =
-await askAI(
-env,
-
-`
-Analyse la demande suivante :
-
-${baseQuestion}
-
-Informations confirmées :
-${JSON.stringify(
-etat.informations
-)}
-
-Donne une orientation pratique sans inventer de faits.
-`,
-
-900
-);
-
-if (!orientation) {
-orientation =
-"GouRare AI a identifié votre demande. Les informations disponibles permettent de poursuivre l'analyse.";
-}
-}
-
-const nextAction =
-etat.contexte.travail
-? "Vous pouvez maintenant commencer les recherches correspondant à votre profil et vérifier les conditions de chaque opportunité."
-: "Vérifiez les éléments importants et poursuivez avec l'action indiquée.";
-
-return {
-success: true,
-
-version:
-VERSION,
-
-decisionVersion:
-DECISION_VERSION,
-
-compris:
-etat.contexte.travail
-? "Votre situation de recherche d'emploi est maintenant suffisamment précisée pour commencer l'orientation."
-: "Votre demande a été analysée à partir des informations disponibles.",
-
-orientation,
-
-confirmed:
-confirmed(
-etat.informations,
-etat.contexte
-),
-
-toVerify:
-etat.contexte.immigration
-? [
-"Vérifier les documents et le statut exacts.",
-"Vérifier la procédure officielle correspondant à votre situation."
-]
-: [],
-
-recommendations:
-recommendations(
-etat.informations,
-etat.contexte
-),
-
-actions:
-actions(
-etat.informations,
-etat.contexte
-),
-
-documents:
-documents(
-etat.informations,
-etat.contexte
-),
-
-risks: [],
-
-professional: [],
-
-nextAction,
-
-questionSuivante:
-nextAction,
-
-questionKey: null,
-
-questionsPosees:
-etat.questionsPosees || [],
-
-informations:
-etat.informations,
-
-etat: {
-informations:
-etat.informations,
-
-questionsPosees:
-etat.questionsPosees || [],
-
-contexte:
-etat.contexte,
-
-parcoursEmploi:
-etat.parcoursEmploi
-},
-
-decision,
-
-sources:
-sources.map(
-source => ({
-id:
-source.id,
-
-titre:
-source.titre,
-
-organisme:
-source.organisme,
-
-url:
-source.url
-})
-)
-};
+    aiResponse
+  };
 }
 
 /* =========================================================
-HTML
-========================================================= */
+   HTML ESCAPING
+   ========================================================= */
+
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+/* =========================================================
+   SOURCE HTML
+   ========================================================= */
+
+function sourceHTML(sources) {
+  const list = safeArray(sources);
+
+  if (!list.length) {
+    return "";
+  }
+
+  return `
+    <div class="sources">
+      <h3>Sources</h3>
+      <ul>
+        ${list.map(source => `
+          <li>
+            <a
+              href="${escapeHTML(source.url)}"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              ${escapeHTML(source.name)}
+            </a>
+          </li>
+        `).join("")}
+      </ul>
+    </div>
+  `;
+}
+
+/* =========================================================
+   RESULT HTML
+   ========================================================= */
+
+function resultHTML(data) {
+  const confirmedData =
+    safeArray(data.confirmed);
+
+  const actionsData =
+    safeArray(data.actions);
+
+  const recommendationsData =
+    safeArray(data.recommendations);
+
+  const documentsData =
+    safeArray(data.documents);
+
+  let html = "";
+
+  if (data.etape === "question") {
+    html += `
+      <div class="result-card question-result">
+        <div class="eyebrow">Étape suivante</div>
+        <h2>${escapeHTML(data.question)}</h2>
+
+        ${
+          data.champsManquants?.length
+            ? `
+              <div class="missing">
+                Informations encore nécessaires :
+                ${escapeHTML(
+                  data.champsManquants.join(", ")
+                )}
+              </div>
+            `
+            : ""
+        }
+      </div>
+    `;
+
+    html += sourceHTML(data.sources);
+
+    return html;
+  }
+
+  html += `
+    <div class="result-card">
+      <div class="eyebrow">Go Rare AI</div>
+      <h2>Analyse de votre situation</h2>
+
+      ${
+        data.aiResponse
+          ? `
+            <div class="ai-response">
+              ${escapeHTML(data.aiResponse)
+                .replace(/\n/g, "<br>")}
+            </div>
+          `
+          : ""
+      }
+    </div>
+  `;
+
+  if (confirmedData.length) {
+    html += `
+      <div class="result-card">
+        <h3>Informations confirmées</h3>
+
+        <div class="confirmed-grid">
+          ${confirmedData.map(item => `
+            <div class="confirmed-item">
+              <strong>
+                ${escapeHTML(item.label)}
+              </strong>
+
+              <span>
+                ${escapeHTML(item.value)}
+              </span>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  if (actionsData.length) {
+    html += `
+      <div class="result-card">
+        <h3>Prochaines étapes</h3>
+
+        <ul>
+          ${actionsData.map(item => `
+            <li>${escapeHTML(item)}</li>
+          `).join("")}
+        </ul>
+      </div>
+    `;
+  }
+
+  if (documentsData.length) {
+    html += `
+      <div class="result-card">
+        <h3>Points à vérifier</h3>
+
+        ${documentsData.map(group => `
+          <div class="document-group">
+            <strong>
+              ${escapeHTML(group.title)}
+            </strong>
+
+            <ul>
+              ${safeArray(group.items).map(item => `
+                <li>${escapeHTML(item)}</li>
+              `).join("")}
+            </ul>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  if (recommendationsData.length) {
+    html += `
+      <div class="result-card">
+        <h3>Pistes possibles</h3>
+
+        ${recommendationsData.map(item => `
+          <div class="recommendation">
+            <strong>
+              ${escapeHTML(item.title)}
+            </strong>
+
+            <p>
+              ${escapeHTML(item.text)}
+            </p>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  html += sourceHTML(
+    data.sources ||
+    []
+  );
+
+  return html;
+}
+
+/* =========================================================
+   MAIN HTML PAGE
+   ========================================================= */
 
 function pageHTML() {
-return `<!doctype html>
+  return `<!DOCTYPE html>
 <html lang="fr">
-
 <head>
-
-<meta charset="utf-8">
-
-<meta
-name="viewport"
-content="width=device-width,initial-scale=1"
->
+<meta charset="UTF-8">
 
 <meta
-name="theme-color"
-content="#111827"
->
+  name="viewport"
+  content="width=device-width, initial-scale=1.0"
+/>
 
-<title>GouRare AI</title>
+<title>Go Rare AI</title>
+
+<meta
+  name="description"
+  content="Go Rare AI — intelligence de situation, orientation et transformation."
+/>
 
 <style>
 
+:root{
+  --bg:#f7f8fa;
+  --card:#ffffff;
+  --text:#111827;
+  --muted:#6b7280;
+  --border:#e5e7eb;
+  --accent:#111827;
+  --gold:#c9a227;
+}
+
 *{
-box-sizing:border-box;
+  box-sizing:border-box;
 }
 
 html{
-scroll-behavior:smooth;
+  scroll-behavior:smooth;
 }
 
 body{
-margin:0;
-font-family:
--apple-system,
-BlinkMacSystemFont,
-"Segoe UI",
-Roboto,
-Arial,
-sans-serif;
-background:#f4f6f8;
-color:#111827;
+  margin:0;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  background:var(--bg);
+  color:var(--text);
+}
+
+body::selection{
+  background:#111827;
+  color:#fff;
+}
+
+.container{
+  width:min(1100px,92%);
+  margin:auto;
 }
 
 header{
-background:#111827;
-color:white;
-padding:28px 18px;
-text-align:center;
+  padding:34px 0 20px;
 }
 
-header h1{
-margin:0 0 8px;
-font-size:32px;
+.brand{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:28px;
+  font-weight:800;
+  letter-spacing:-.7px;
 }
 
-header p{
-margin:0;
-opacity:.85;
+.brand .rare{
+  position:relative;
 }
 
-.container{
-max-width:950px;
-margin:25px auto;
-padding:0 15px 80px;
+.brand .spark{
+  position:absolute;
+  width:4px;
+  height:4px;
+  border-radius:50%;
+  background:var(--gold);
+  box-shadow:
+    0 0 7px rgba(201,162,39,.65);
 }
 
-.card,
-.result-card{
-background:white;
-border-radius:18px;
-padding:20px;
-margin-bottom:18px;
-box-shadow:
-0 8px 30px rgba(0,0,0,.07);
+.brand .spark.one{
+  top:-5px;
+  left:1px;
 }
 
-h2{
-margin-top:0;
+.brand .spark.two{
+  top:4px;
+  left:8px;
+  width:3px;
+  height:3px;
 }
 
-.welcome{
-text-align:center;
+.brand .spark.three{
+  top:-1px;
+  left:14px;
+  width:2px;
+  height:2px;
 }
 
-.choices{
-display:grid;
-grid-template-columns:
-repeat(2,1fr);
-gap:14px;
+.tagline{
+  margin-top:7px;
+  color:var(--muted);
+  font-size:14px;
 }
 
-.choice{
-padding:22px 16px;
-border:1px solid #e5e7eb;
-border-radius:16px;
-background:white;
-text-align:left;
-cursor:pointer;
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:18px;
+  padding:20px;
+  margin:18px 0;
 }
 
-.choice strong{
-display:block;
-font-size:19px;
-margin-bottom:7px;
+.profile-grid{
+  display:grid;
+  grid-template-columns:
+    repeat(auto-fit,minmax(180px,1fr));
+  gap:12px;
 }
 
-.choice span{
-color:#6b7280;
-}
-
-textarea,
-input,
-select{
-width:100%;
-padding:13px;
-border:1px solid #d1d5db;
-border-radius:11px;
-font-size:16px;
-background:white;
-}
-
+button,
+select,
 textarea{
-min-height:130px;
-resize:vertical;
+  font:inherit;
 }
 
 button{
-border:0;
-border-radius:11px;
-padding:12px 16px;
-font-size:15px;
-cursor:pointer;
-background:#111827;
-color:white;
+  border:0;
+  border-radius:12px;
+  padding:12px 15px;
+  cursor:pointer;
+}
+
+.primary{
+  background:#111827;
+  color:white;
 }
 
 .secondary{
-background:#e5e7eb;
-color:#111827;
+  background:#f3f4f6;
+  color:#111827;
 }
 
-.back{
-margin-bottom:15px;
+button:hover{
+  opacity:.9;
+}
+
+textarea{
+  width:100%;
+  min-height:120px;
+  resize:vertical;
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:14px;
+  outline:none;
+}
+
+textarea:focus{
+  border-color:#9ca3af;
 }
 
 .actions{
-display:flex;
-flex-wrap:wrap;
-gap:10px;
-margin-top:12px;
-}
-
-.actions button{
-flex:1;
-}
-
-.result-card{
-border-left:5px solid #111827;
-scroll-margin-top:20px;
-}
-
-#result{
-scroll-margin-top:20px;
-}
-
-.ai-result{
-white-space:pre-wrap;
-line-height:1.65;
-}
-
-.result-card ul{
-padding-left:22px;
-}
-
-.source{
-padding:11px;
-background:#f3f4f6;
-border-radius:10px;
-margin:8px 0;
-}
-
-.source a{
-color:#111827;
-font-weight:600;
-}
-
-.status{
-margin-top:10px;
-color:#4b5563;
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:10px;
 }
 
 .hidden{
-display:none;
+  display:none !important;
 }
 
 /*
-=======================================================
-COMPOSER STICKY
-=======================================================
-*/
-
+ * Sticky composer.
+ * Kept deliberately subtle so it feels like a modern
+ * conversational interface rather than an intrusive popup.
+ */
 #outil{
-position:sticky;
-bottom:12px;
-z-index:15;
-border:1px solid #e5e7eb;
-box-shadow:
-0 12px 35px rgba(0,0,0,.14);
+  position:sticky;
+  bottom:12px;
+  z-index:15;
+
+  border:1px solid #e5e7eb;
+
+  box-shadow:
+    0 12px 35px rgba(0,0,0,.14);
 }
 
 #outil::before{
-content:"";
-position:absolute;
-inset:-1px;
-border-radius:18px;
-background:rgba(255,255,255,.72);
-backdrop-filter:blur(10px);
--webkit-backdrop-filter:blur(10px);
-z-index:-1;
+  content:"";
+  position:absolute;
+  inset:-1px;
+  border-radius:18px;
+  background:rgba(255,255,255,.72);
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+  z-index:-1;
+}
+
+#result{
+  scroll-margin-top:20px;
+}
+
+.result-card{
+  background:white;
+  border:1px solid var(--border);
+  border-radius:18px;
+  padding:20px;
+  margin:16px 0;
+  scroll-margin-top:20px;
+}
+
+.result-card h2{
+  margin-top:6px;
+}
+
+.result-card h3{
+  margin-top:0;
+}
+
+.eyebrow{
+  color:var(--muted);
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+
+.confirmed-grid{
+  display:grid;
+  grid-template-columns:
+    repeat(auto-fit,minmax(200px,1fr));
+  gap:10px;
+}
+
+.confirmed-item{
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:12px;
+}
+
+.confirmed-item strong{
+  display:block;
+  font-size:13px;
+  color:var(--muted);
+}
+
+.confirmed-item span{
+  display:block;
+  margin-top:4px;
+}
+
+.sources{
+  background:#f9fafb;
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:15px;
+  margin:16px 0;
+}
+
+.sources h3{
+  margin-top:0;
+}
+
+.sources a{
+  color:#111827;
 }
 
 .cancer{
-position:fixed;
-right:12px;
-bottom:12px;
-background:white;
-border:1px solid #e5e7eb;
-padding:10px 13px;
-border-radius:999px;
-box-shadow:
-0 5px 20px rgba(0,0,0,.12);
-font-size:13px;
-z-index:20;
+  position:fixed;
+  right:14px;
+  bottom:14px;
+  z-index:30;
+
+  background:#fff;
+  border:1px solid #e5e7eb;
+  border-radius:14px;
+  padding:10px 13px;
+
+  font-size:12px;
+  box-shadow:0 8px 25px rgba(0,0,0,.12);
 }
 
-footer{
-text-align:center;
-color:#6b7280;
-padding:25px 10px;
-}
+@media(max-width:600px){
 
-@media(max-width:650px){
+  header{
+    padding-top:24px;
+  }
 
-.container{
-padding-bottom:100px;
-}
+  .brand{
+    font-size:24px;
+  }
 
-.choices{
-grid-template-columns:1fr;
-}
+  .card,
+  .result-card{
+    border-radius:15px;
+    padding:16px;
+  }
 
-header h1{
-font-size:27px;
-}
+  #outil{
+    bottom:8px;
+  }
 
-.actions{
-gap:8px;
-}
-
-.actions button{
-width:100%;
-flex-basis:100%;
-}
-
-#outil{
-bottom:8px;
-margin-left:-3px;
-margin-right:-3px;
-padding:15px;
-border-radius:16px;
-}
-
-#outil::before{
-border-radius:16px;
-}
-
-#outil textarea{
-min-height:105px;
-}
-
-.cancer{
-bottom:8px;
-right:8px;
-font-size:12px;
-}
-
+  .cancer{
+    right:8px;
+    bottom:8px;
+  }
 }
 
 </style>
-
 </head>
 
 <body>
 
-<header>
-<h1>GouRare AI</h1>
-<p>Votre intelligence d'orientation</p>
-</header>
-
 <div class="container">
 
-<div
-id="parcours"
-class="card welcome"
-></div>
+<header>
+  <div class="brand">
+    <span>Go</span>
 
-<div
-id="assistant"
-class="card hidden"
->
+    <span class="rare">
+      Rare
 
-<button
-class="secondary back"
-id="retour"
->
-← Retour
-</button>
+      <span class="spark one"></span>
+      <span class="spark two"></span>
+      <span class="spark three"></span>
+    </span>
 
-<h2 id="titreParcours"></h2>
+    <span>AI</span>
+  </div>
 
-<p id="descriptionParcours"></p>
+  <div class="tagline">
+    Comprendre votre situation. Trouver les possibilités. Agir.
+  </div>
+</header>
 
-<div
-id="situations"
-class="choices"
-></div>
+<div id="accueil" class="card">
 
-</div>
+  <h2>Que pouvons-nous comprendre ensemble ?</h2>
 
-<div
-id="outil"
-class="card hidden"
->
+  <div class="profile-grid">
 
-<button
-class="secondary back"
-id="retourOutil"
->
-← Retour
-</button>
+    <button
+      class="secondary"
+      onclick="openProfil('particulier')"
+    >
+      👤 Particulier
+    </button>
 
-<h2>🧠 Votre demande</h2>
+    <button
+      class="secondary"
+      onclick="openProfil('emploi')"
+    >
+      💼 Emploi
+    </button>
 
-<textarea
-id="question"
-placeholder="Expliquez votre situation..."
-></textarea>
+    <button
+      class="secondary"
+      onclick="openProfil('migrant')"
+    >
+      🌍 Immigration
+    </button>
 
-<div class="actions">
+    <button
+      class="secondary"
+      onclick="openProfil('entreprise')"
+    >
+      🏢 Entreprise
+    </button>
 
-<button id="analyser">
-Analyser
-</button>
-
-<button
-id="micro"
-class="secondary"
->
-🎙️ Parler
-</button>
-
-<button
-id="photo"
-class="secondary"
->
-📷 Analyser une image
-</button>
+  </div>
 
 </div>
 
-<div
-id="status"
-class="status"
-></div>
+<div id="outil" class="card hidden">
 
-<input
-id="imageInput"
-type="file"
-accept="image/*"
-capture="environment"
-class="hidden"
->
+  <button
+    class="secondary"
+    onclick="retourAccueil()"
+  >
+    ← Retour
+  </button>
 
-</div>
+  <div style="margin-top:12px">
 
-<div
-id="messageCard"
-class="card hidden"
->
+    <textarea
+      id="question"
+      placeholder="Expliquez votre situation..."
+    ></textarea>
 
-<h2>✉️ Messages et emails</h2>
+    <div class="actions">
 
-<select id="messageMode">
+      <button
+        class="primary"
+        onclick="analyserTexte()"
+      >
+        Analyser
+      </button>
 
-<option value="">
-Mode normal
-</option>
+      <button
+        class="secondary"
+        onclick="document.getElementById('imageInput').click()"
+      >
+        📷 Image
+      </button>
 
-<option value="analyse">
-🔎 Analyser le message
-</option>
+      <button
+        class="secondary"
+        onclick="activerMicro()"
+      >
+        🎙️ Micro
+      </button>
 
-<option value="reponse">
-✍️ Préparer une réponse
-</option>
+    </div>
 
-<option value="reformulation">
-📝 Reformuler
-</option>
+    <input
+      id="imageInput"
+      type="file"
+      accept="image/*"
+      capture="environment"
+      hidden
+    >
 
-<option value="correction">
-✅ Corriger
-</option>
+    <div
+      id="status"
+      style="
+        margin-top:10px;
+        color:#6b7280;
+        font-size:13px;
+      "
+    ></div>
 
-<option value="traduction">
-🌍 Traduire
-</option>
-
-</select>
-
-<input
-id="langue"
-placeholder="Langue souhaitée pour une traduction (français, arabe, anglais)"
-style="margin-top:10px"
->
+  </div>
 
 </div>
 
@@ -2722,1963 +2688,1072 @@ style="margin-top:10px"
 </div>
 
 <div class="cancer">
-🎗️ Avec vous contre le cancer
+  🎗️ Avec vous contre le cancer
 </div>
-
-<footer>
-🎗️ Notre soutien aux personnes touchées par le cancer.
-<br><br>
-GouRare AI — Version ${VERSION}
-</footer>
 
 <script>
 
-const parcours =
-document.getElementById("parcours");
-
-const assistant =
-document.getElementById("assistant");
-
-const outil =
-document.getElementById("outil");
-
-const messageCard =
-document.getElementById("messageCard");
-
-const situations =
-document.getElementById("situations");
-
-const titre =
-document.getElementById("titreParcours");
-
-const desc =
-document.getElementById("descriptionParcours");
-
-const question =
-document.getElementById("question");
-
-const result =
-document.getElementById("result");
-
-const status =
-document.getElementById("status");
-
-const messageMode =
-document.getElementById("messageMode");
-
-const langue =
-document.getElementById("langue");
-
-const imageInput =
-document.getElementById("imageInput");
-
-let profil = null;
-
-let situation = null;
-
+let profilActuel = null;
+let situationActuelle = null;
 let historique = [];
 
-let informations = [];
+const question =
+  document.getElementById("question");
 
-let documentInfos = [];
+const result =
+  document.getElementById("result");
 
-let questionsPosees = [];
+const status =
+  document.getElementById("status");
 
-let etape = 0;
+const outil =
+  document.getElementById("outil");
 
-let mediaRecorder = null;
+const accueil =
+  document.getElementById("accueil");
 
-let audioChunks = [];
-
-let recording = false;
-
-
-/* =======================================================
-UTILITAIRES FRONTEND
-======================================================= */
-
-function esc(v){
-return String(v || "")
-.replace(/&/g,"&amp;")
-.replace(/</g,"&lt;")
-.replace(/>/g,"&gt;")
-.replace(/"/g,"&quot;")
-.replace(/'/g,"&#039;");
-}
-
+const imageInput =
+  document.getElementById("imageInput");
 
 /* =======================================================
-HOME
-======================================================= */
+   PROFILE
+   ======================================================= */
 
-function showHome(){
+function openProfil(profil){
 
-profil = null;
+  profilActuel = profil;
+  situationActuelle = null;
 
-situation = null;
+  historique = [];
 
-historique = [];
+  accueil.classList.add("hidden");
+  outil.classList.remove("hidden");
 
-informations = [];
+  result.innerHTML = "";
 
-documentInfos = [];
+  setTimeout(function(){
 
-questionsPosees = [];
+    try{
+      question.focus({
+        preventScroll:true
+      });
+    }catch(e){
+      question.focus();
+    }
 
-etape = 0;
-
-parcours.classList.remove("hidden");
-
-assistant.classList.add("hidden");
-
-outil.classList.add("hidden");
-
-messageCard.classList.add("hidden");
-
-result.innerHTML = "";
-
-parcours.innerHTML =
-"<h2>Comment pouvons-nous vous orienter ?</h2>" +
-"<p>Choisissez le parcours qui correspond le mieux à votre situation.</p>" +
-"<div class='choices' id='profils'></div>" +
-"<p style='margin-top:18px'>" +
-"<button id='inconnu' class='secondary'>" +
-"✨ Je ne sais pas où aller — GouRare AI m'oriente" +
-"</button>" +
-"</p>";
-
-const p =
-document.getElementById("profils");
-
-const parcoursData =
-${JSON.stringify(PARCOURS)};
-
-Object.keys(parcoursData)
-.forEach(function(k){
-
-const x =
-parcoursData[k];
-
-p.innerHTML +=
-"<div class='choice' data-p='" +
-esc(k) +
-"'>" +
-
-"<strong>" +
-esc(x.titre) +
-"</strong>" +
-
-"<span>" +
-esc(x.description) +
-"</span>" +
-
-"</div>";
-
-});
-
-p.querySelectorAll(".choice")
-.forEach(function(button){
-
-button.onclick =
-function(){
-
-openProfil(
-button.dataset.p
-);
-
-};
-
-});
-
-document
-.getElementById("inconnu")
-.onclick =
-function(){
-
-openProfil(
-"particulier"
-);
-
-question.value =
-"Je ne sais pas quel parcours correspond à ma situation. Aidez-moi à m'orienter.";
-
-outil.classList.remove(
-"hidden"
-);
-
-messageCard.classList.add(
-"hidden"
-);
-
-assistant.classList.add(
-"hidden"
-);
-
-};
-
+  },100);
 }
-
 
 /* =======================================================
-PROFIL
-======================================================= */
+   RETURN
+   ======================================================= */
 
-function openProfil(k){
+function retourAccueil(){
 
-profil = k;
+  profilActuel = null;
+  situationActuelle = null;
+  historique = [];
 
-const parcoursData =
-${JSON.stringify(PARCOURS)};
-const x =
-parcoursData[k];
+  outil.classList.add("hidden");
+  accueil.classList.remove("hidden");
 
-parcours.classList.add(
-"hidden"
-);
+  result.innerHTML = "";
 
-outil.classList.add(
-"hidden"
-);
-
-messageCard.classList.add(
-"hidden"
-);
-
-assistant.classList.remove(
-"hidden"
-);
-
-titre.textContent =
-x.titre;
-
-desc.textContent =
-x.description;
-
-situations.innerHTML =
-"";
-
-x.situations.forEach(
-function(item){
-
-const b =
-document.createElement(
-"div"
-);
-
-b.className =
-"choice";
-
-b.innerHTML =
-"<strong>" +
-esc(item[1]) +
-"</strong>";
-
-b.dataset.s =
-item[0];
-
-b.onclick =
-function(){
-
-openSituation(
-item[0],
-item[1]
-);
-
-};
-
-situations.appendChild(
-b
-);
-
+  window.scrollTo({
+    top:0,
+    behavior:"smooth"
+  });
 }
-);
-
-}
-
 
 /* =======================================================
-SITUATION
-======================================================= */
-
-function openSituation(
-s,
-label
-){
-
-situation = s;
-
-historique = [];
-
-informations = [];
-
-documentInfos = [];
-
-questionsPosees = [];
-
-etape = 0;
-
-assistant.classList.add(
-"hidden"
-);
-
-outil.classList.remove(
-"hidden"
-);
-
-messageCard.classList.remove(
-"hidden"
-);
-
-question.value =
-"";
-
-result.innerHTML =
-"";
-
-status.textContent =
-"Parcours sélectionné : " +
-label;
-
-messageMode.value =
-"";
-
-if(
-s === "message" ||
-s === "document"
-){
-
-messageMode.value =
-"analyse";
-
-}
-
-}
-
-
-/* =======================================================
-RETOUR
-======================================================= */
-
-document
-.getElementById("retour")
-.onclick =
-showHome;
-
-document
-.getElementById("retourOutil")
-.onclick =
-function(){
-
-outil.classList.add(
-"hidden"
-);
-
-messageCard.classList.add(
-"hidden"
-);
-
-assistant.classList.remove(
-"hidden"
-);
-
-result.innerHTML =
-"";
-
-};
-
-
-showHome();
-
-
-/* =======================================================
-ENVOI
-======================================================= */
+   ANALYZE
+   ======================================================= */
 
 async function analyserTexte(){
 
-const q =
-question.value.trim();
+  const text =
+    question.value.trim();
 
-if(!q){
+  if(!text){
 
-status.textContent =
-"Veuillez écrire ou dire votre demande.";
+    status.textContent =
+      "Veuillez décrire votre situation.";
 
-return;
+    return;
+  }
 
+  status.textContent =
+    "Analyse en cours…";
+
+  const previous =
+    historique.slice(-20);
+
+  try{
+
+    const response =
+      await fetch("/api/analyze",{
+
+        method:"POST",
+
+        headers:{
+          "Content-Type":
+            "application/json"
+        },
+
+        body:JSON.stringify({
+
+          question:text,
+
+          history:previous,
+
+          profil:profilActuel,
+
+          situation:situationActuelle,
+
+          langue:
+            navigator.language || "fr"
+
+        })
+
+      });
+
+    const data =
+      await response.json();
+
+    if(!response.ok){
+
+      throw new Error(
+        data?.error ||
+        "Erreur d'analyse."
+      );
+
+    }
+
+    historique.push({
+      role:"user",
+      content:text
+    });
+
+    if(data.question){
+
+      historique.push({
+        role:"assistant",
+        content:data.question
+      });
+
+    }
+
+    afficher(data);
+
+    question.value = "";
+
+    status.textContent = "";
+
+    setTimeout(function(){
+
+      try{
+        question.focus({
+          preventScroll:true
+        });
+      }catch(e){
+        question.focus();
+      }
+
+    },500);
+
+  }catch(error){
+
+    status.textContent =
+      error?.message ||
+      "Une erreur est survenue.";
+  }
 }
-
-status.textContent =
-"Analyse en cours...";
-
-result.innerHTML =
-"";
-
-try{
-
-const historyPayload =
-historique
-.slice(-30)
-.map(function(item){
-
-return {
-
-role:
-item.role,
-
-content:
-String(
-item.content || ""
-).slice(
-0,
-6000
-)
-
-};
-
-});
-
-const r =
-await fetch(
-"/api/analyze",
-{
-
-method:
-"POST",
-
-headers:{
-"content-type":
-"application/json"
-},
-
-body:
-JSON.stringify({
-
-type:
-messageMode.value
-? "message"
-: "question",
-
-question:
-q,
-
-historique:
-historyPayload,
-
-informations:
-informations,
-
-documentInfos:
-documentInfos,
-
-questionsPosees:
-questionsPosees,
-
-profil:
-profil,
-
-situation:
-situation,
-
-etape:
-etape,
-
-messageMode:
-messageMode.value ||
-null,
-
-langue:
-langue.value.trim()
-
-})
-
-}
-);
-
-const d =
-await r.json();
-
-if(
-!r.ok ||
-!d.success
-){
-
-throw new Error(
-d.error ||
-"Erreur."
-);
-
-}
-
-
-/*
-USER uniquement.
-*/
-
-historique.push({
-
-role:
-"user",
-
-content:
-q
-
-});
-
-
-/*
-Réponse assistant.
-Le backend ne l'utilise jamais
-comme preuve personnelle.
-*/
-
-historique.push({
-
-role:
-"assistant",
-
-content:
-d.questionSuivante ||
-d.orientation ||
-""
-
-});
-
-
-/*
-État canonique.
-*/
-
-informations =
-d.informations ||
-d.etat?.informations ||
-informations;
-
-questionsPosees =
-d.questionsPosees ||
-d.etat?.questionsPosees ||
-questionsPosees;
-
-
-if(
-historique.length >
-40
-){
-
-historique =
-historique.slice(-40);
-
-}
-
-
-etape++;
-
-afficher(d);
-
-question.value =
-"";
-
-status.textContent =
-d.decision?.etape === "question"
-? "Répondez à la question suivante pour continuer."
-: "Analyse terminée.";
-
-
-/*
-=======================================================
-UX : REPLACER LE CURSEUR DANS LA ZONE DE SAISIE
-SANS FAIRE REMONTER LA PAGE
-=======================================================
-*/
-
-setTimeout(function(){
-
-try{
-
-question.focus({
-preventScroll:true
-});
-
-}catch(e){
-
-question.focus();
-
-}
-
-},500);
-
-}catch(e){
-
-status.textContent =
-e.message ||
-"Erreur.";
-
-}
-
-}
-
 
 /* =======================================================
-LISTES
-======================================================= */
+   DISPLAY
+   ======================================================= */
 
-function liste(a){
+function afficher(data){
 
-if(
-!a ||
-!a.length
-){
+  result.innerHTML =
+    resultHTMLClient(data);
 
-return (
-"<p>Aucun élément précis à présenter à ce stade.</p>"
-);
+  requestAnimationFrame(function(){
 
+    const firstResult =
+      result.querySelector(".result-card");
+
+    if(firstResult){
+
+      firstResult.scrollIntoView({
+
+        behavior:"smooth",
+
+        block:"start"
+
+      });
+
+    }
+
+  });
 }
-
-return (
-"<ul>" +
-
-a.map(
-function(x){
-
-const v =
-typeof x === "string"
-? x
-: (
-x?.texte ||
-JSON.stringify(x)
-);
-
-return (
-"<li>" +
-esc(v) +
-"</li>"
-);
-
-}
-).join("") +
-
-"</ul>"
-);
-
-}
-
-
-/* =======================================================
-AFFICHAGE
-======================================================= */
-
-function afficher(d){
-
-let h =
-"";
-
-h +=
-"<div class='result-card'>" +
-"<h2>🧭 Ce que j'ai compris</h2>" +
-"<div class='ai-result'>" +
-esc(d.compris) +
-"</div>" +
-"</div>";
-
-
-h +=
-"<div class='result-card'>" +
-"<h2>💡 Orientation</h2>" +
-"<div class='ai-result'>" +
-esc(d.orientation) +
-"</div>" +
-"</div>";
-
-
-h +=
-"<div class='result-card'>" +
-"<h2>✅ Informations confirmées</h2>" +
-liste(d.confirmed) +
-"</div>";
-
-
-h +=
-"<div class='result-card'>" +
-"<h2>🔎 À vérifier</h2>" +
-liste(d.toVerify) +
-"</div>";
-
-
-h +=
-"<div class='result-card'>" +
-"<h2>💭 Recommandations</h2>" +
-liste(d.recommendations) +
-"</div>";
-
-
-h +=
-"<div class='result-card'>" +
-"<h2>📋 Actions concrètes</h2>" +
-liste(d.actions) +
-"</div>";
-
-
-h +=
-"<div class='result-card'>" +
-"<h2>📄 Documents</h2>" +
-
-(
-d.documents &&
-d.documents.length
-? liste(d.documents)
-: "<p>Aucun document précis à présenter à ce stade.</p>"
-) +
-
-"</div>";
-
-
-h +=
-"<div class='result-card'>" +
-"<h2>🚀 Prochaine action</h2>" +
-
-"<div class='ai-result'>" +
-esc(d.nextAction) +
-"</div>" +
-
-(
-d.decision?.etape === "question"
-? "<p style='margin-bottom:0;color:#4b5563'>" +
-"Répondez à cette question dans la zone ci-dessus, puis appuyez sur « Analyser » pour continuer." +
-"</p>"
-: ""
-) +
-
-"</div>";
-
-
-if(
-d.sources &&
-d.sources.length
-){
-
-h +=
-"<div class='result-card'>" +
-"<h2>📚 Sources consultées</h2>";
-
-d.sources.forEach(
-function(s){
-
-h +=
-"<div class='source'>" +
-
-"<strong>" +
-esc(s.organisme) +
-"</strong>" +
-
-" — " +
-
-esc(s.titre) +
-
-"<br>" +
-
-"<a href='" +
-esc(s.url) +
-"' " +
-"target='_blank' " +
-"rel='noopener noreferrer'>" +
-
-"Consulter la source officielle ↗" +
-
-"</a>" +
-
-"</div>";
-
-}
-);
-
-h +=
-"</div>";
-
-}
-
-
-result.innerHTML =
-h;
-
 
 /*
-=======================================================
-UX : APRÈS L'AFFICHAGE, ALLER AUTOMATIQUEMENT
-VERS أول بطاقة نتيجة
-=======================================================
-*/
+ * Client-side rendering.
+ * We keep this separate from server-side resultHTML()
+ * so user-provided content is escaped again in the browser.
+ */
 
-requestAnimationFrame(function(){
+function resultHTMLClient(data){
 
-const firstResult =
-result.querySelector(
-".result-card"
-);
+  let html = "";
 
-if(firstResult){
+  if(data.etape === "question"){
 
-firstResult.scrollIntoView({
-behavior:"smooth",
-block:"start"
-});
+    html += `
+      <div class="result-card">
 
+        <div class="eyebrow">
+          Étape suivante
+        </div>
+
+        <h2>
+          ${escapeClient(
+            data.question || ""
+          )}
+        </h2>
+
+      </div>
+    `;
+
+    if(
+      Array.isArray(data.sources) &&
+      data.sources.length
+    ){
+
+      html += sourcesClient(
+        data.sources
+      );
+
+    }
+
+    return html;
+  }
+
+  if(data.aiResponse){
+
+    html += `
+      <div class="result-card">
+
+        <div class="eyebrow">
+          Go Rare AI
+        </div>
+
+        <h2>
+          Analyse de votre situation
+        </h2>
+
+        <div>
+          ${escapeClient(
+            data.aiResponse
+          ).replace(/\n/g,"<br>")}
+        </div>
+
+      </div>
+    `;
+  }
+
+  if(
+    Array.isArray(data.confirmed) &&
+    data.confirmed.length
+  ){
+
+    html += `
+      <div class="result-card">
+
+        <h3>
+          Informations confirmées
+        </h3>
+
+        <div class="confirmed-grid">
+
+          ${data.confirmed.map(item => `
+
+            <div class="confirmed-item">
+
+              <strong>
+                ${escapeClient(
+                  item.label
+                )}
+              </strong>
+
+              <span>
+                ${escapeClient(
+                  item.value
+                )}
+              </span>
+
+            </div>
+
+          `).join("")}
+
+        </div>
+
+      </div>
+    `;
+  }
+
+  if(
+    Array.isArray(data.actions) &&
+    data.actions.length
+  ){
+
+    html += `
+      <div class="result-card">
+
+        <h3>
+          Prochaines étapes
+        </h3>
+
+        <ul>
+
+          ${data.actions.map(item => `
+            <li>
+              ${escapeClient(item)}
+            </li>
+          `).join("")}
+
+        </ul>
+
+      </div>
+    `;
+  }
+
+  if(
+    Array.isArray(data.recommendations) &&
+    data.recommendations.length
+  ){
+
+    html += `
+      <div class="result-card">
+
+        <h3>
+          Pistes possibles
+        </h3>
+
+        ${data.recommendations.map(item => `
+
+          <div
+            style="
+              margin-bottom:14px;
+              padding-bottom:14px;
+              border-bottom:
+                1px solid #e5e7eb;
+            "
+          >
+
+            <strong>
+              ${escapeClient(
+                item.title || ""
+              )}
+            </strong>
+
+            <p>
+              ${escapeClient(
+                item.text || ""
+              )}
+            </p>
+
+          </div>
+
+        `).join("")}
+
+      </div>
+    `;
+  }
+
+  if(
+    Array.isArray(data.sources) &&
+    data.sources.length
+  ){
+
+    html += sourcesClient(
+      data.sources
+    );
+
+  }
+
+  return html;
 }
-
-});
-
-}
-
 
 /* =======================================================
-BOUTON ANALYSER
-======================================================= */
+   SAFE CLIENT ESCAPE
+   ======================================================= */
 
-document
-.getElementById("analyser")
-.onclick =
-analyserTexte;
+function escapeClient(value){
 
+  return String(value ?? "")
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#039;");
+}
 
 /* =======================================================
-IMAGE
-======================================================= */
+   SOURCES
+   ======================================================= */
 
-document
-.getElementById("photo")
-.onclick =
-function(){
+function sourcesClient(sources){
 
-imageInput.click();
+  return `
+    <div class="sources">
 
-};
+      <h3>
+        Sources
+      </h3>
 
+      <ul>
 
-imageInput.onchange =
-function(){
+        ${sources.map(source => `
 
-const f =
-imageInput.files &&
-imageInput.files[0];
+          <li>
 
-if(!f) return;
+            <a
+              href="${escapeClient(
+                source.url || "#"
+              )}"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              ${escapeClient(
+                source.name || ""
+              )}
+            </a>
 
-if(
-!f.type.startsWith(
-"image/"
-)
-){
+          </li>
 
-status.textContent =
-"Veuillez sélectionner une image.";
+        `).join("")}
 
-return;
+      </ul>
 
+    </div>
+  `;
 }
-
-if(
-f.size >
-5500000
-){
-
-status.textContent =
-"Image trop volumineuse.";
-
-return;
-
-}
-
-const reader =
-new FileReader();
-
-status.textContent =
-"📷 Analyse de l'image...";
-
-reader.onloadend =
-async function(){
-
-try{
-
-const r =
-await fetch(
-"/api/image",
-{
-
-method:
-"POST",
-
-headers:{
-"content-type":
-"application/json"
-},
-
-body:
-JSON.stringify({
-
-image:
-reader.result,
-
-demande:
-question.value.trim()
-
-})
-
-}
-);
-
-const d =
-await r.json();
-
-if(
-!r.ok ||
-!d.success
-){
-
-throw new Error(
-d.error ||
-"Erreur image."
-);
-
-}
-
-question.value =
-d.texte || "";
-
-await analyserTexte();
-
-}catch(e){
-
-status.textContent =
-e.message ||
-"Erreur image.";
-
-}
-
-};
-
-reader.readAsDataURL(f);
-
-};
-
 
 /* =======================================================
-MICROPHONE
-======================================================= */
+   IMAGE
+   ======================================================= */
 
-document
-.getElementById("micro")
-.onclick =
-async function(){
+imageInput.addEventListener(
+  "change",
+  async function(){
 
-if(
-recording &&
-mediaRecorder
-){
+    const file =
+      imageInput.files?.[0];
 
-mediaRecorder.stop();
+    if(!file){
+      return;
+    }
 
-return;
+    status.textContent =
+      "Analyse de l'image…";
 
-}
+    try{
 
-if(
-!navigator.mediaDevices?.getUserMedia
-){
+      const base64 =
+        await fileToBase64(file);
 
-status.textContent =
-"Microphone indisponible.";
+      const response =
+        await fetch("/api/image",{
 
-return;
+          method:"POST",
 
-}
+          headers:{
+            "Content-Type":
+              "application/json"
+          },
 
-try{
+          body:JSON.stringify({
 
-const stream =
-await navigator.mediaDevices
-.getUserMedia({
-audio:true
-});
+            image:base64,
 
-audioChunks =
-[];
+            question:
+              question.value.trim(),
 
-mediaRecorder =
-new MediaRecorder(
-stream
+            langue:
+              navigator.language || "fr"
+
+          })
+
+        });
+
+      const data =
+        await response.json();
+
+      if(!response.ok){
+
+        throw new Error(
+          data?.error ||
+          "Impossible d'analyser l'image."
+        );
+
+      }
+
+      result.innerHTML = `
+        <div class="result-card">
+
+          <div class="eyebrow">
+            Analyse visuelle
+          </div>
+
+          <h2>
+            Résultat
+          </h2>
+
+          <div>
+            ${escapeClient(
+              data.response || ""
+            ).replace(/\n/g,"<br>")}
+          </div>
+
+        </div>
+      `;
+
+      requestAnimationFrame(function(){
+
+        const firstResult =
+          result.querySelector(".result-card");
+
+        if(firstResult){
+
+          firstResult.scrollIntoView({
+
+            behavior:"smooth",
+
+            block:"start"
+
+          });
+
+        }
+
+      });
+
+    }catch(error){
+
+      status.textContent =
+        error?.message ||
+        "Erreur lors de l'analyse de l'image.";
+
+    }finally{
+
+      imageInput.value = "";
+
+    }
+
+  }
 );
 
-recording =
-true;
+/* =======================================================
+   FILE → BASE64
+   ======================================================= */
 
-this.textContent =
-"⏹️ Arrêter";
+function fileToBase64(file){
 
-status.textContent =
-"🎙️ Je vous écoute...";
+  return new Promise(
+    function(resolve,reject){
 
+      const reader =
+        new FileReader();
 
-mediaRecorder.ondataavailable =
-function(e){
+      reader.onload =
+        function(){
 
-if(e.data.size){
+          const value =
+            String(reader.result || "");
 
-audioChunks.push(
-e.data
-);
+          const comma =
+            value.indexOf(",");
 
+          resolve(
+            comma >= 0
+              ? value.slice(comma + 1)
+              : value
+          );
+
+        };
+
+      reader.onerror =
+        reject;
+
+      reader.readAsDataURL(file);
+
+    }
+  );
 }
 
-};
+/* =======================================================
+   MICROPHONE
+   ======================================================= */
 
+async function activerMicro(){
 
-mediaRecorder.onstop =
-async function(){
+  if(!navigator.mediaDevices?.getUserMedia){
 
-recording =
-false;
+    status.textContent =
+      "Le microphone n'est pas disponible sur cet appareil.";
 
-document
-.getElementById(
-"micro"
-)
-.textContent =
-"🎙️ Parler";
+    return;
+  }
 
-stream
-.getTracks()
-.forEach(
-track =>
-track.stop()
-);
+  status.textContent =
+    "Préparation du microphone…";
 
+  let stream;
 
-const blob =
-new Blob(
-audioChunks,
-{
-type:
-mediaRecorder.mimeType ||
-"audio/webm"
+  try{
+
+    stream =
+      await navigator.mediaDevices.getUserMedia({
+        audio:true
+      });
+
+    const recorder =
+      new MediaRecorder(stream);
+
+    const chunks = [];
+
+    recorder.ondataavailable =
+      function(event){
+
+        if(event.data.size){
+          chunks.push(event.data);
+        }
+
+      };
+
+    recorder.onstop =
+      async function(){
+
+        stream
+          .getTracks()
+          .forEach(track => track.stop());
+
+        const blob =
+          new Blob(
+            chunks,
+            {
+              type:
+                recorder.mimeType ||
+                "audio/webm"
+            }
+          );
+
+        status.textContent =
+          "Transcription…";
+
+        try{
+
+          const base64 =
+            await blobToBase64(blob);
+
+          const response =
+            await fetch(
+              "/api/transcribe",
+              {
+
+                method:"POST",
+
+                headers:{
+                  "Content-Type":
+                    "application/json"
+                },
+
+                body:JSON.stringify({
+
+                  audio:base64,
+
+                  language:
+                    navigator.language || "fr"
+
+                })
+
+              }
+            );
+
+          const data =
+            await response.json();
+
+          if(!response.ok){
+
+            throw new Error(
+              data?.error ||
+              "Erreur de transcription."
+            );
+
+          }
+
+          question.value =
+            data.text || "";
+
+          status.textContent =
+            "Transcription terminée.";
+
+          try{
+            question.focus({
+              preventScroll:true
+            });
+          }catch(e){
+            question.focus();
+          }
+
+        }catch(error){
+
+          status.textContent =
+            error?.message ||
+            "Erreur de transcription.";
+
+        }
+
+      };
+
+    recorder.start();
+
+    status.textContent =
+      "🎙️ Enregistrement… Appuyez de nouveau sur Micro pour arrêter.";
+
+    window.__goRareRecorder =
+      recorder;
+
+    window.__goRareRecording =
+      true;
+
+  }catch(error){
+
+    status.textContent =
+      "Autorisation microphone refusée ou indisponible.";
+
+  }
 }
-);
 
+/*
+ * Second press stops the current recording.
+ */
+const originalMicro =
+  activerMicro;
 
-const reader =
-new FileReader();
+window.activerMicro =
+  function(){
 
+    if(
+      window.__goRareRecording &&
+      window.__goRareRecorder
+    ){
 
-reader.onloadend =
-async function(){
+      window.__goRareRecorder.stop();
 
-try{
+      window.__goRareRecorder = null;
+      window.__goRareRecording = false;
 
-const r =
-await fetch(
-"/api/transcribe",
-{
+      return;
+    }
 
-method:
-"POST",
+    originalMicro();
 
-headers:{
-"content-type":
-"application/json"
-},
+  };
 
-body:
-JSON.stringify({
+/* =======================================================
+   BLOB → BASE64
+   ======================================================= */
 
-audio:
-reader.result,
+function blobToBase64(blob){
 
-langue:
-"fr"
+  return new Promise(
+    function(resolve,reject){
 
-})
+      const reader =
+        new FileReader();
 
+      reader.onload =
+        function(){
+
+          const value =
+            String(reader.result || "");
+
+          const comma =
+            value.indexOf(",");
+
+          resolve(
+            comma >= 0
+              ? value.slice(comma + 1)
+              : value
+          );
+
+        };
+
+      reader.onerror =
+        reject;
+
+      reader.readAsDataURL(blob);
+
+    }
+  );
 }
-);
-
-
-const d =
-await r.json();
-
-
-if(
-!r.ok ||
-!d.success
-){
-
-throw new Error(
-d.error ||
-"Erreur audio."
-);
-
-}
-
-
-question.value =
-d.text || "";
-
-
-await analyserTexte();
-
-
-}catch(e){
-
-status.textContent =
-e.message ||
-"Erreur audio.";
-
-}
-
-};
-
-
-reader.readAsDataURL(
-blob
-);
-
-};
-
-
-mediaRecorder.start();
-
-}catch(e){
-
-status.textContent =
-"L'accès au microphone a été refusé ou est indisponible.";
-
-}
-
-};
 
 </script>
 
 </body>
-
 </html>`;
 }
 
 /* =========================================================
-API ANALYZE
-========================================================= */
-
-async function handleAnalyze(
-request,
-env
-) {
-
-if(
-!(
-request.headers.get(
-"content-type"
-) || ""
-).includes(
-"application/json"
-)
-){
-
-return jsonResponse(
-{
-success:false,
-
-error:
-"Le contenu doit être envoyé au format JSON."
-},
-
-415
-);
-
-}
-
-let body;
-
-try{
-
-body =
-await request.json();
-
-}catch{
-
-return jsonResponse(
-{
-success:false,
-
-error:
-"JSON invalide."
-},
-
-400
-);
-
-}
-
-
-const q =
-texte(
-body.question,
-LIMITS.question
-);
-
-
-if(!q){
-
-return jsonResponse(
-{
-success:false,
-
-error:
-"Question vide."
-},
-
-400
-);
-
-}
-
-
-try{
-
-let history =
-Array.isArray(
-body.historique
-)
-? body.historique
-: [];
-
-
-history =
-history
-.slice(-30)
-.map(
-item => ({
-
-role:
-item?.role ===
-"assistant"
-? "assistant"
-: "user",
-
-content:
-texte(
-item?.content,
-6000
-)
-
-})
-)
-.filter(
-item =>
-item.content
-);
-
-
-const informations =
-Array.isArray(
-body.informations
-)
-? body.informations
-: [];
-
-
-const documentInfos =
-Array.isArray(
-body.documentInfos
-)
-? body.documentInfos
-: [];
-
-
-const questionsPosees =
-Array.isArray(
-body.questionsPosees
-)
-? body.questionsPosees
-: [];
-
-
-return jsonResponse(
-await analyserQuestion(
-env,
-
-q,
-
-{
-
-history,
-
-informations,
-
-documentInfos,
-
-questionsPosees,
-
-profil:
-texte(
-body.profil,
-100
-),
-
-situation:
-texte(
-body.situation,
-100
-),
-
-etape:
-Number.isFinite(
-Number(
-body.etape
-)
-)
-? Number(
-body.etape
-)
-: 0,
-
-messageMode:
-body.type ===
-"message"
-? texte(
-body.messageMode,
-50
-)
-: null,
-
-langue:
-texte(
-body.langue,
-50
-)
-
-}
-)
-);
-
-}catch(error){
-
-return jsonResponse(
-{
-success:false,
-
-error:
-error?.message ||
-"Erreur d'analyse.",
-
-version:
-VERSION,
-
-decisionVersion:
-DECISION_VERSION
-},
-
-500
-);
-
-}
-
-}
-/* =========================================================
-API TRANSCRIPTION
-========================================================= */
-
-async function handleTranscribe(
-request,
-env
-){
-
-let body;
-
-try{
-
-body =
-await request.json();
-
-}catch{
-
-return jsonResponse(
-{
-success:false,
-
-error:
-"JSON invalide."
-},
-
-400
-);
-
-}
-
-
-try{
-
-const text =
-await transcrireAudio(
-env,
-
-texte(
-body.audio,
-LIMITS.audio
-),
-
-texte(
-body.langue,
-10
-) ||
-"fr"
-);
-
-
-if(!text){
-
-return jsonResponse(
-{
-success:false,
-
-error:
-"Aucun texte détecté."
-},
-
-422
-);
-
-}
-
-
-return jsonResponse(
-{
-success:true,
-
-text,
-
-version:
-VERSION
-}
-);
-
-}catch(error){
-
-return jsonResponse(
-{
-success:false,
-
-error:
-error?.message ||
-"Erreur audio.",
-
-version:
-VERSION,
-
-decisionVersion:
-DECISION_VERSION
-},
-
-500
-);
-
-}
-
-}
-
-
-/* =========================================================
-API IMAGE
-========================================================= */
-
-async function handleImage(
-request,
-env
-){
-
-let body;
-
-try{
-
-body =
-await request.json();
-
-}catch{
-
-return jsonResponse(
-{
-success:false,
-
-error:
-"JSON invalide."
-},
-
-400
-);
-
-}
-
-
-try{
-
-const image =
-texte(
-body.image,
-LIMITS.image
-);
-
-
-if(!image){
-
-return jsonResponse(
-{
-success:false,
-
-error:
-"Image absente."
-},
-
-400
-);
-
-}
-
-
-const text =
-await analyserImage(
-env,
-
-image,
-
-texte(
-body.demande,
-5000
-)
-);
-
-
-return jsonResponse(
-{
-success:true,
-
-texte:
-text,
-
-version:
-VERSION
-}
-);
-
-}catch(error){
-
-return jsonResponse(
-{
-success:false,
-
-error:
-error?.message ||
-"Erreur image.",
-
-version:
-VERSION,
-
-decisionVersion:
-DECISION_VERSION
-},
-
-500
-);
-
-}
-
-}
-
-
-/* =========================================================
-ROUTER PRINCIPAL
-========================================================= */
+   ROUTER
+   ========================================================= */
 
 export default {
 
-async fetch(
-request,
-env
-) {
+  async fetch(request, env) {
+
+    const url =
+      new URL(request.url);
 
-const url =
-new URL(
-request.url
-);
+    const method =
+      request.method.toUpperCase();
 
+    /*
+     * Basic rate limiting for API endpoints.
+     */
+    if(
+      url.pathname.startsWith("/api/") &&
+      !checkRateLimit(request)
+    ){
+
+      return json(
+        {
+          error:
+            "Trop de requêtes. Veuillez patienter."
+        },
+        429,
+        {
+          "Retry-After":"60"
+        }
+      );
+
+    }
 
-/*
-CORS preflight / OPTIONS
-*/
+    /* -----------------------------------------------------
+       HOME
+       ----------------------------------------------------- */
 
-if(
-request.method ===
-"OPTIONS"
-){
+    if(
+      url.pathname === "/" &&
+      method === "GET"
+    ){
+
+      return new Response(
+        pageHTML(),
+        {
+          status:200,
+          headers:{
+            ...securityHeaders(),
+            "Content-Type":
+              "text/html; charset=utf-8"
+          }
+        }
+      );
+
+    }
 
-return new Response(
-null,
+    /* -----------------------------------------------------
+       HEALTH
+       ----------------------------------------------------- */
+
+    if(
+      url.pathname === "/health" &&
+      method === "GET"
+    ){
+
+      return json({
+
+        ok:true,
 
-{
-status:
-204,
+        service:"Go Rare AI",
+
+        version:VERSION,
+
+        decision_version:
+          DECISION_VERSION,
+
+        models:{
+          text:MODEL,
+          vision:MODEL_VISION,
+          audio:MODEL_AUDIO
+        }
+
+      });
+
+    }
+
+    /* -----------------------------------------------------
+       ANALYZE
+       ----------------------------------------------------- */
+
+    if(
+      url.pathname === "/api/analyze" &&
+      method === "POST"
+    ){
+
+      try{
 
-headers:
-securityHeaders()
-}
-);
+        const payload =
+          await request.json();
 
-}
+        const result =
+          await analyserQuestion(
+            env,
+            payload
+          );
 
+        return json(result);
 
-/*
-Health
-*/
+      }catch(error){
 
-if(
-url.pathname ===
-"/health"
-){
+        return json(
+          {
+            error:
+              error?.message ||
+              "Erreur d'analyse."
+          },
+          400
+        );
 
-return new Response(
-JSON.stringify({
+      }
 
-success:true,
+    }
 
-service:
-"GouRare AI",
+    /* -----------------------------------------------------
+       IMAGE
+       ----------------------------------------------------- */
 
-status:
-"OK",
+    if(
+      url.pathname === "/api/image" &&
+      method === "POST"
+    ){
 
-version:
-VERSION,
+      try{
 
-decisionVersion:
-DECISION_VERSION,
+        const payload =
+          await request.json();
 
-modules:{
+        const image =
+          cleanText(
+            payload?.image || "",
+            LIMITS.image
+          );
 
-texte:true,
+        if(!image){
 
-parcours:true,
+          return json(
+            {
+              error:"Image manquante."
+            },
+            400
+          );
 
-messages:true,
+        }
 
-image:true,
+        const response =
+          await analyserImage(
+            env,
+            image,
+            payload?.question || "",
+            payload?.langue || "fr"
+          );
 
-voix:true,
+        return json({
+          response
+        });
 
-moteurDeDecision:true,
+      }catch(error){
 
-moteurDeVerite:true
+        return json(
+          {
+            error:
+              error?.message ||
+              "Erreur d'analyse de l'image."
+          },
+          400
+        );
 
-}
+      }
 
-}),
+    }
 
-{
+    /* -----------------------------------------------------
+       TRANSCRIBE
+       ----------------------------------------------------- */
 
-status:
-200,
+    if(
+      url.pathname === "/api/transcribe" &&
+      method === "POST"
+    ){
 
-headers:{
+      try{
 
-...securityHeaders(),
+        const payload =
+          await request.json();
 
-"content-type":
-"application/json; charset=utf-8"
+        const audio =
+          payload?.audio || "";
 
-}
+        if(!audio){
 
-}
-);
+          return json(
+            {
+              error:"Audio manquant."
+            },
+            400
+          );
 
-}
+        }
 
+        const text =
+          await transcrireAudio(
+            env,
+            audio,
+            payload?.language || null
+          );
 
-/*
-Rate limit uniquement sur les API.
-*/
+        return json({
+          text
+        });
 
-if(
-url.pathname.startsWith(
-"/api/"
-)
-){
+      }catch(error){
 
-if(
-!checkRateLimit(
-request
-)
-){
+        return json(
+          {
+            error:
+              error?.message ||
+              "Erreur de transcription."
+          },
+          400
+        );
 
-return jsonResponse(
-{
-success:false,
+      }
 
-error:
-"Trop de requêtes. Veuillez patienter quelques instants."
-},
+    }
 
-429,
+    /* -----------------------------------------------------
+       404
+       ----------------------------------------------------- */
 
-{
-"Retry-After":
-"60"
-}
-);
+    return json(
+      {
+        error:"Not found"
+      },
+      404
+    );
 
-}
-
-}
-
-
-/*
-Analyze
-*/
-
-if(
-url.pathname ===
-"/api/analyze"
-){
-
-if(
-request.method !==
-"POST"
-){
-
-return jsonResponse(
-{
-success:false,
-
-error:
-"Méthode non autorisée."
-},
-
-405
-);
-
-}
-
-
-const response =
-await handleAnalyze(
-request,
-env
-);
-
-
-const headers =
-new Headers(
-response.headers
-);
-
-
-Object
-.entries(
-securityHeaders()
-)
-.forEach(
-([key,value]) =>
-headers.set(
-key,
-value
-)
-);
-
-
-return new Response(
-response.body,
-
-{
-status:
-response.status,
-
-headers
-}
-);
-
-}
-
-
-/*
-Transcription
-*/
-
-if(
-url.pathname ===
-"/api/transcribe"
-){
-
-if(
-request.method !==
-"POST"
-){
-
-return jsonResponse(
-{
-success:false,
-
-error:
-"Méthode non autorisée."
-},
-
-405
-);
-
-}
-
-
-const response =
-await handleTranscribe(
-request,
-env
-);
-
-const headers =
-new Headers(
-response.headers
-);
-
-Object
-.entries(
-securityHeaders()
-)
-.forEach(
-([key,value]) =>
-headers.set(
-key,
-value
-)
-);
-
-return new Response(
-response.body,
-
-{
-status:
-response.status,
-
-headers
-}
-);
-
-}
-
-
-/*
-Image
-*/
-
-if(
-url.pathname ===
-"/api/image"
-){
-
-if(
-request.method !==
-"POST"
-){
-
-return jsonResponse(
-{
-success:false,
-
-error:
-"Méthode non autorisée."
-},
-
-405
-);
-
-}
-
-
-const response =
-await handleImage(
-request,
-env
-);
-
-const headers =
-new Headers(
-response.headers
-);
-
-Object
-.entries(
-securityHeaders()
-)
-.forEach(
-([key,value]) =>
-headers.set(
-key,
-value
-)
-);
-
-return new Response(
-response.body,
-
-{
-status:
-response.status,
-
-headers
-}
-);
-
-}
-
-
-/*
-Page principale
-*/
-
-if(
-url.pathname ===
-"/"
-){
-
-return new Response(
-pageHTML(),
-
-{
-
-status:
-200,
-
-headers:{
-
-...securityHeaders(),
-
-"content-type":
-"text/html; charset=utf-8"
-
-}
-
-}
-);
-
-
-}
-
-
-return new Response(
-"GouRare AI",
-
-{
-
-status:
-404,
-
-headers:
-securityHeaders()
-
-}
-);
-
-}
+  }
 
 };
