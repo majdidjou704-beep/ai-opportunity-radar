@@ -2,1054 +2,1475 @@ const MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
 const MODEL_VISION = "@cf/meta/llama-3.2-11b-vision-instruct";
 const MODEL_AUDIO = "@cf/openai/whisper-large-v3-turbo";
 
-const VERSION = "10.1.1";
-const DECISION_VERSION = "10.1.1";
+const VERSION = "10.1.2";
+const DECISION_VERSION = "10.1.2";
 
 const LIMITS = {
-  question: 12000,
-  history: 24000,
-  image: 7000000,
-  audio: 12000000,
-  message: 18000
+question: 12000,
+history: 24000,
+image: 7000000,
+audio: 12000000,
+message: 18000
 };
 
 /* =========================================================
-   RATE LIMIT
-   ========================================================= */
+RATE LIMIT
+========================================================= */
 
 const RATE_LIMIT = {
-  windowMs: 60 * 1000,
-  maxRequests: 30
+windowMs: 60 * 1000,
+maxRequests: 30
 };
 
 const rateMap = new Map();
 
 function getClientIP(request) {
-  return (
-    request.headers.get("CF-Connecting-IP") ||
-    request.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ||
-    "unknown"
-  );
+return (
+request.headers.get("CF-Connecting-IP") ||
+request.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ||
+"unknown"
+);
 }
 
 function checkRateLimit(request) {
-  const ip = getClientIP(request);
-  const now = Date.now();
+const ip = getClientIP(request);
+const now = Date.now();
 
-  let entry = rateMap.get(ip);
+let entry = rateMap.get(ip);
 
-  if (!entry || now - entry.start > RATE_LIMIT.windowMs) {
-    entry = {
-      start: now,
-      count: 0
-    };
-  }
+if (!entry || now - entry.start > RATE_LIMIT.windowMs) {
+entry = {
+start: now,
+count: 0
+};
+}
 
-  entry.count += 1;
-  rateMap.set(ip, entry);
+entry.count += 1;
+rateMap.set(ip, entry);
 
-  if (entry.count > RATE_LIMIT.maxRequests) {
-    return false;
-  }
+if (entry.count > RATE_LIMIT.maxRequests) {
+return false;
+}
 
-  /* Nettoyage périodique pour éviter que la Map grossisse */
-  if (rateMap.size > 5000) {
-    for (const [key, value] of rateMap.entries()) {
-      if (now - value.start > RATE_LIMIT.windowMs) {
-        rateMap.delete(key);
-      }
-    }
-  }
+if (rateMap.size > 5000) {
+for (const [key, value] of rateMap.entries()) {
+if (now - value.start > RATE_LIMIT.windowMs) {
+rateMap.delete(key);
+}
+}
+}
 
-  return true;
+return true;
 }
 
 /* =========================================================
-   SOURCES OFFICIELLES
-   ========================================================= */
+SOURCES OFFICIELLES
+========================================================= */
 
 const SOURCES = {
-  anef: {
-    id: "anef",
-    titre: "Faire une demande en ligne pour un titre de séjour ou un changement de situation",
-    organisme: "Service-Public.fr / ANEF",
-    url: "https://www.service-public.fr/particuliers/vosdroits/R59398"
-  },
+anef: {
+id: "anef",
+titre: "Faire une demande en ligne pour un titre de séjour ou un changement de situation",
+organisme: "Service-Public.fr / ANEF",
+url: "https://www.service-public.fr/particuliers/vosdroits/R59398"
+},
 
-  travail_etranger: {
-    id: "travail_etranger",
-    titre: "Autorisation de travail d'un salarié étranger en France",
-    organisme: "Service-Public.fr",
-    url: "https://www.service-public.fr/particuliers/vosdroits/F2728"
-  },
+travail_etranger: {
+id: "travail_etranger",
+titre: "Autorisation de travail d'un salarié étranger en France",
+organisme: "Service-Public.fr",
+url: "https://www.service-public.fr/particuliers/vosdroits/F2728"
+},
 
-  france_travail: {
-    id: "france_travail",
-    titre: "France Travail",
-    organisme: "France Travail",
-    url: "https://www.francetravail.fr/"
-  },
+france_travail: {
+id: "france_travail",
+titre: "France Travail",
+organisme: "France Travail",
+url: "https://www.francetravail.fr/"
+},
 
-  statut: {
-    id: "statut",
-    titre: "Trouver le statut juridique adapté à son activité",
-    organisme: "Service Public Entreprendre",
-    url: "https://entreprendre.service-public.fr/vosdroits/R18323"
-  },
+statut: {
+id: "statut",
+titre: "Trouver le statut juridique adapté à son activité",
+organisme: "Service Public Entreprendre",
+url: "https://entreprendre.service-public.fr/vosdroits/R18323"
+},
 
-  creation_ei: {
-    id: "creation_ei",
-    titre: "Création d'une entreprise individuelle",
-    organisme: "Service Public Entreprendre",
-    url: "https://entreprendre.service-public.fr/vosdroits/F36763"
-  },
+creation_ei: {
+id: "creation_ei",
+titre: "Création d'une entreprise individuelle",
+organisme: "Service Public Entreprendre",
+url: "https://entreprendre.service-public.fr/vosdroits/F36763"
+},
 
-  guichet: {
-    id: "guichet",
-    titre: "Guichet des formalités des entreprises",
-    organisme: "Service Public Entreprendre",
-    url: "https://entreprendre.service-public.fr/vosdroits/F23571"
-  }
+guichet: {
+id: "guichet",
+titre: "Guichet des formalités des entreprises",
+organisme: "Service Public Entreprendre",
+url: "https://entreprendre.service-public.fr/vosdroits/F23571"
+}
 };
 
 /* =========================================================
-   PARCOURS
-   ========================================================= */
+PARCOURS
+========================================================= */
 
 const PARCOURS = {
-  migrant: {
-    titre: "🌍 Migrant / Nouveau arrivant",
-    description: "Situation administrative, travail, logement, droits et démarches.",
-    situations: [
-      ["arrive", "🆕 Je viens d'arriver"],
-      ["administratif", "🪪 Ma situation administrative"],
-      ["emploi", "💼 Je cherche un emploi"],
-      ["logement", "🏠 Je cherche un logement"],
-      ["document", "📄 Je ne comprends pas un document"],
-      ["droits", "⚖️ Je veux connaître mes droits"],
-      ["social", "🤝 Je cherche une aide sociale"],
-      ["etudes", "🎓 Je veux étudier"],
-      ["famille", "👨‍👩‍👧 Famille / regroupement familial"],
-      ["asile", "🛂 Asile / protection"],
-      ["irreguliere", "❓ Situation irrégulière"],
-      ["autre", "❓ Autre situation"]
-    ]
-  },
+migrant: {
+titre: "🌍 Migrant / Nouveau arrivant",
+description: "Situation administrative, travail, logement, droits et démarches.",
+situations: [
+["arrive", "🆕 Je viens d'arriver"],
+["administratif", "🪪 Ma situation administrative"],
+["emploi", "💼 Je cherche un emploi"],
+["logement", "🏠 Je cherche un logement"],
+["document", "📄 Je ne comprends pas un document"],
+["droits", "⚖️ Je veux connaître mes droits"],
+["social", "🤝 Je cherche une aide sociale"],
+["etudes", "🎓 Je veux étudier"],
+["famille", "👨‍👩‍👧 Famille / regroupement familial"],
+["asile", "🛂 Asile / protection"],
+["irreguliere", "❓ Situation irrégulière"],
+["autre", "❓ Autre situation"]
+]
+},
 
-  particulier: {
-    titre: "👤 Particulier / Résident",
-    description: "Vie quotidienne, droits, démarches et problèmes personnels.",
-    situations: [
-      ["administratif", "🧾 Démarches administratives"],
-      ["emploi", "💼 Travail / emploi"],
-      ["logement", "🏠 Logement"],
-      ["finance", "💰 Impôts / finances"],
-      ["social", "🤝 Aides sociales"],
-      ["juridique", "⚖️ Droits / problème juridique"],
-      ["message", "✉️ Lettre / email / message"],
-      ["document", "📷 Comprendre un document"],
-      ["opportunite", "🎯 Trouver une opportunité"],
-      ["autre", "❓ Autre"]
-    ]
-  },
+particulier: {
+titre: "👤 Particulier / Résident",
+description: "Vie quotidienne, droits, démarches et problèmes personnels.",
+situations: [
+["administratif", "🧾 Démarches administratives"],
+["emploi", "💼 Travail / emploi"],
+["logement", "🏠 Logement"],
+["finance", "💰 Impôts / finances"],
+["social", "🤝 Aides sociales"],
+["juridique", "⚖️ Droits / problème juridique"],
+["message", "✉️ Lettre / email / message"],
+["document", "📷 Comprendre un document"],
+["opportunite", "🎯 Trouver une opportunité"],
+["autre", "❓ Autre"]
+]
+},
 
-  emploi: {
-    titre: "💼 Chercheur d'emploi",
-    description: "Recherche d'emploi, candidature, CV et entretien.",
-    situations: [
-      ["offres", "🔎 Trouver des offres"],
-      ["cv", "📄 Créer / améliorer mon CV"],
-      ["candidature", "✉️ Candidature / lettre de motivation"],
-      ["annonce", "📩 Répondre à une annonce"],
-      ["entretien", "🎤 Préparer un entretien"],
-      ["entreprise", "🏢 Trouver une entreprise"],
-      ["adapte", "♿ Rechercher un emploi adapté à ma situation"],
-      ["comparaison", "🎯 Comparer plusieurs offres"],
-      ["autre", "❓ Autre"]
-    ]
-  },
+emploi: {
+titre: "💼 Chercheur d'emploi",
+description: "Recherche d'emploi, candidature, CV et entretien.",
+situations: [
+["offres", "🔎 Trouver des offres"],
+["cv", "📄 Créer / améliorer mon CV"],
+["candidature", "✉️ Candidature / lettre de motivation"],
+["annonce", "📩 Répondre à une annonce"],
+["entretien", "🎤 Préparer un entretien"],
+["entreprise", "🏢 Trouver une entreprise"],
+["adapte", "♿ Rechercher un emploi adapté à ma situation"],
+["comparaison", "🎯 Comparer plusieurs offres"],
+["autre", "❓ Autre"]
+]
+},
 
-  entreprise: {
-    titre: "🏢 Entreprise / Entrepreneur",
-    description: "Créer, gérer, développer et trouver des opportunités.",
-    situations: [
-      ["creation", "🚀 Créer mon entreprise"],
-      ["developpement", "📈 Développer mon activité"],
-      ["fiscalite", "💰 Fiscalité"],
-      ["comptabilite", "🧾 Comptabilité / obligations"],
-      ["salaries", "👥 Salariés"],
-      ["juridique", "⚖️ Problème juridique"],
-      ["fournisseurs", "🔎 Trouver des fournisseurs"],
-      ["offres", "💶 Comparer des offres / prix"],
-      ["opportunite", "🎯 Trouver des opportunités"],
-      ["ia", "🤖 Trouver une solution IA"],
-      ["autre", "❓ Autre"]
-    ]
-  }
+entreprise: {
+titre: "🏢 Entreprise / Entrepreneur",
+description: "Créer, gérer, développer et trouver des opportunités.",
+situations: [
+["creation", "🚀 Créer mon entreprise"],
+["developpement", "📈 Développer mon activité"],
+["fiscalite", "💰 Fiscalité"],
+["comptabilite", "🧾 Comptabilité / obligations"],
+["salaries", "👥 Salariés"],
+["juridique", "⚖️ Problème juridique"],
+["fournisseurs", "🔎 Trouver des fournisseurs"],
+["offres", "💶 Comparer des offres / prix"],
+["opportunite", "🎯 Trouver des opportunités"],
+["ia", "🤖 Trouver une solution IA"],
+["autre", "❓ Autre"]
+]
+}
 };
 
 /* =========================================================
-   UTILITAIRES
-   ========================================================= */
+UTILITAIRES
+========================================================= */
 
 function texte(v, max = 10000) {
-  if (v === null || v === undefined) return "";
+if (v === null || v === undefined) return "";
 
-  return String(v)
-    .replace(/\u0000/g, "")
-    .replace(/\r/g, "")
-    .trim()
-    .slice(0, max);
+return String(v)
+.replace(/\u0000/g, "")
+.replace(/\r/g, "")
+.trim()
+.slice(0, max);
 }
 
 function unique(a) {
-  return [...new Set((a || []).filter(Boolean))];
+return [...new Set((a || []).filter(Boolean))];
 }
 
 function escapeHTML(v) {
-  return texte(v, 50000)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+return texte(v, 50000)
+.replace(/&/g, "&amp;")
+.replace(/</g, "&lt;")
+.replace(/>/g, "&gt;")
+.replace(/"/g, "&quot;")
+.replace(/'/g, "&#039;");
 }
 
 function jsonResponse(data, status = 200, extraHeaders = {}) {
-  return new Response(
-    JSON.stringify(data),
-    {
-      status,
-      headers: {
-        "content-type": "application/json; charset=utf-8",
-        "cache-control": "no-store",
-        ...extraHeaders
-      }
-    }
-  );
+return new Response(
+JSON.stringify(data),
+{
+status,
+headers: {
+"content-type": "application/json; charset=utf-8",
+"cache-control": "no-store",
+...extraHeaders
+}
+}
+);
 }
 
 function securityHeaders() {
-  return {
-    "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
-    "Referrer-Policy": "strict-origin-when-cross-origin",
-    "Permissions-Policy": "camera=(self), microphone=(self), geolocation=()",
-    "Cache-Control": "no-store"
-  };
+return {
+"X-Content-Type-Options": "nosniff",
+"X-Frame-Options": "DENY",
+"Referrer-Policy": "strict-origin-when-cross-origin",
+"Permissions-Policy": "camera=(self), microphone=(self), geolocation=()",
+"Cache-Control": "no-store"
+};
 }
 
 function hasInfo(informations, type) {
-  return (informations || []).some(
-    item => item?.type === type && texte(item?.valeur)
-  );
+return (informations || []).some(
+item => item?.type === type && texte(item?.valeur)
+);
 }
 
 function getInfo(informations, type) {
-  return (informations || []).find(
-    item => item?.type === type && texte(item?.valeur)
-  ) || null;
+return (informations || []).find(
+item => item?.type === type && texte(item?.valeur)
+) || null;
 }
 
 function addInfo(list, type, valeur, confiance = "élevée") {
-  const v = texte(valeur, 500);
+const v = texte(valeur, 500);
 
-  if (!v) return;
+if (!v) return;
 
-  const exists = list.some(
-    item =>
-      item?.type === type &&
-      texte(item?.valeur).toLowerCase() === v.toLowerCase()
-  );
+const exists = list.some(
+item =>
+item?.type === type &&
+texte(item?.valeur).toLowerCase() === v.toLowerCase()
+);
 
-  if (!exists) {
-    list.push({
-      type,
-      valeur: v,
-      confiance
-    });
-  }
+if (!exists) {
+list.push({
+type,
+valeur: v,
+confiance
+});
+}
 }
 
 function informationsContient(informations, type) {
-  return hasInfo(informations, type);
+return hasInfo(informations, type);
 }
 
 function dedupeInformations(informations) {
-  const out = [];
+const out = [];
 
-  for (const item of informations || []) {
-    if (!item?.type || !texte(item?.valeur)) continue;
+for (const item of informations || []) {
+if (!item?.type || !texte(item?.valeur)) continue;
 
-    const exists = out.some(
-      x =>
-        x.type === item.type &&
-        texte(x.valeur).toLowerCase() ===
-          texte(item.valeur).toLowerCase()
-    );
+const exists = out.some(
+x =>
+x.type === item.type &&
+texte(x.valeur).toLowerCase() ===
+texte(item.valeur).toLowerCase()
+);
 
-    if (!exists) {
-      out.push({
-        type: item.type,
-        valeur: texte(item.valeur, 500),
-        confiance: item.confiance || "moyenne"
-      });
-    }
-  }
+if (!exists) {
+out.push({
+type: item.type,
+valeur: texte(item.valeur, 500),
+confiance: item.confiance || "moyenne"
+});
+}
+}
 
-  return out;
+return out;
 }
 
 /* =========================================================
-   NORMALISATION LOCALISATION
-   ========================================================= */
+NORMALISATION LOCALISATION
+========================================================= */
 
 function normaliserRecherche(v) {
-  return texte(v)
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[’']/g, "'")
-    .replace(/-/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+return texte(v)
+.toLowerCase()
+.normalize("NFD")
+.replace(/[\u0300-\u036f]/g, "")
+.replace(/[’']/g, "'")
+.replace(/-/g, " ")
+.replace(/\s+/g, " ")
+.trim();
 }
 
 const LOCATION_ALIASES = {
-  "vigneux sur seine": "Vigneux-sur-Seine",
-  "vignieux sur seine": "Vigneux-sur-Seine",
+"vigneux sur seine": "Vigneux-sur-Seine",
+"vignieux sur seine": "Vigneux-sur-Seine",
 
-  "paris": "Paris",
-  "creteil": "Créteil",
-  "evry": "Évry",
-  "evry courcouronnes": "Évry-Courcouronnes",
-  "montgeron": "Montgeron",
-  "draveil": "Draveil",
-  "athis mons": "Athis-Mons",
-  "juvisy sur orge": "Juvisy-sur-Orge",
-  "viry chatillon": "Viry-Châtillon",
-  "corbeil essonnes": "Corbeil-Essonnes",
+"paris": "Paris",
+"creteil": "Créteil",
+"evry": "Évry",
+"evry courcouronnes": "Évry-Courcouronnes",
+"montgeron": "Montgeron",
+"draveil": "Draveil",
+"athis mons": "Athis-Mons",
+"juvisy sur orge": "Juvisy-sur-Orge",
+"viry chatillon": "Viry-Châtillon",
+"corbeil essonnes": "Corbeil-Essonnes",
 
-  "essonne": "Essonne",
-  "val de marne": "Val-de-Marne",
-  "seine et marne": "Seine-et-Marne",
-  "hauts de seine": "Hauts-de-Seine"
+"essonne": "Essonne",
+"val de marne": "Val-de-Marne",
+"seine et marne": "Seine-et-Marne",
+"hauts de seine": "Hauts-de-Seine"
 };
 
 function trouverLocalisation(q) {
-  const normalise = normaliserRecherche(q);
+const normalise = normaliserRecherche(q);
 
-  for (const [alias, canonical] of Object.entries(LOCATION_ALIASES)) {
-    if (normalise.includes(alias)) {
-      return canonical;
-    }
-  }
+for (const [alias, canonical] of Object.entries(LOCATION_ALIASES)) {
+if (normalise.includes(alias)) {
+return canonical;
+}
+}
 
-  return null;
+return null;
 }
 
 /* =========================================================
-   EXTRACTION DES INFORMATIONS
-   ========================================================= */
+EXTRACTION DES INFORMATIONS
+========================================================= */
 
 function extraireInformations(q) {
-  const result = [];
-  const s = texte(q, LIMITS.question);
-  const lower = normaliserRecherche(s);
+const result = [];
+const s = texte(q, LIMITS.question);
 
-  /* France */
-  if (
-    /\bfrance\b/i.test(s) ||
-    /\ben france\b/i.test(s)
-  ) {
-    addInfo(result, "presence_france", "France");
-  }
+/* France */
+if (
+/\bfrance\b/i.test(s) ||
+/\ben france\b/i.test(s)
+) {
+addInfo(result, "presence_france", "France");
+}
 
-  /* Diplôme */
-  if (
-    /sans diplôme|sans diplome|pas de diplôme|pas de diplome|aucun diplôme|aucun diplome/i.test(s)
-  ) {
-    addInfo(result, "diplome", "Sans diplôme");
-  } else if (
-    /\b(bac|baccalauréat|baccalaureat|cap|bep|licence|master|doctorat|diplôme|diplome)\b/i.test(s)
-  ) {
-    const match = s.match(
-      /\b(bac(?:calauréat|calaureat)?|cap|bep|licence|master|doctorat|diplôme|diplome)\b/i
-    );
+/* Diplôme */
+if (
+/sans diplôme|sans diplome|pas de diplôme|pas de diplome|aucun diplôme|aucun diplome/i.test(s)
+) {
+addInfo(result, "diplome", "Sans diplôme");
+} else if (
+/\b(bac|baccalauréat|baccalaureat|cap|bep|licence|master|doctorat|diplôme|diplome)\b/i.test(s)
+) {
+const match = s.match(
+/\b(bac(?:calauréat|calaureat)?|cap|bep|licence|master|doctorat|diplôme|diplome)\b/i
+);
 
-    if (match) {
-      addInfo(result, "diplome", match[1], "moyenne");
-    }
-  }
+if (match) {
+addInfo(
+result,
+"diplome",
+match[1],
+"moyenne"
+);
+}
+}
 
-  /* Expérience */
-  if (
-    /sans expérience|sans experience|pas d'expérience|pas d'experience|aucune expérience|aucune experience/i.test(s)
-  ) {
-    addInfo(result, "experience", "Sans expérience");
-  } else if (
-    /\b\d+\s*(ans?|années?|annees?)\s+d'expérience/i.test(s)
-  ) {
-    const match = s.match(
-      /\b\d+\s*(ans?|années?|annees?)\s+d'expérience/i
-    );
+/* Expérience */
+if (
+/sans expérience|sans experience|pas d'expérience|pas d'experience|aucune expérience|aucune experience/i.test(s)
+) {
+addInfo(
+result,
+"experience",
+"Sans expérience"
+);
+} else if (
+/\b\d+\s*(ans?|années?|annees?)\s+d'expérience/i.test(s)
+) {
+const match = s.match(
+/\b\d+\s*(ans?|années?|annees?)\s+d'expérience/i
+);
 
-    if (match) {
-      addInfo(result, "experience", match[0], "élevée");
-    }
-  }
+if (match) {
+addInfo(
+result,
+"experience",
+match[0],
+"élevée"
+);
+}
+}
 
-  /* Objectif emploi */
-  if (
-    /cherche un emploi|cherche du travail|recherche un emploi|recherche du travail|trouver un emploi|trouver du travail|cherche principalement un emploi/i.test(s)
-  ) {
-    addInfo(result, "objectif", "Recherche d'emploi");
-  }
+/* Objectif emploi */
+if (
+/cherche un emploi|cherche du travail|recherche un emploi|recherche du travail|trouver un emploi|trouver du travail|cherche principalement un emploi/i.test(s)
+) {
+addInfo(
+result,
+"objectif",
+"Recherche d'emploi"
+);
+}
 
-  /* Localisation */
-  const localisation = trouverLocalisation(s);
+/* Localisation */
+const localisation = trouverLocalisation(s);
 
-  if (localisation) {
-    addInfo(result, "zone_recherche", localisation);
-  }
+if (localisation) {
+addInfo(
+result,
+"zone_recherche",
+localisation
+);
+}
 
-  /* =======================================================
-     TYPE D'EMPLOI
-     Important :
-     on ne prend PAS une phrase générique après "emploi".
-     ======================================================= */
+/* =======================================================
+TYPE D'EMPLOI
+======================================================= */
 
-  const typeExpressions = [
-    {
-      regex: /\bposte\s+(?:de|comme|en tant que)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]{2,40}(?:\s+[A-Za-zÀ-ÿ'’-]{2,40}){0,3})/i
-    },
-    {
-      regex: /\bemploi\s+(?:de|comme|en tant que)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]{2,40}(?:\s+[A-Za-zÀ-ÿ'’-]{2,40}){0,3})/i
-    },
-    {
-      regex: /\btravail\s+(?:de|comme|en tant que)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]{2,40}(?:\s+[A-Za-zÀ-ÿ'’-]{2,40}){0,3})/i
-    }
-  ];
+const typeExpressions = [
+{
+regex:
+/\bposte\s+(?:de|comme|en tant que)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]{2,40}(?:\s+[A-Za-zÀ-ÿ'’-]{2,40}){0,3})/i
+},
 
-  for (const item of typeExpressions) {
-    const match = s.match(item.regex);
+{
+regex:
+/\bemploi\s+(?:de|comme|en tant que)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]{2,40}(?:\s+[A-Za-zÀ-ÿ'’-]{2,40}){0,3})/i
+},
 
-    if (match?.[1]) {
-      const metier = texte(match[1]).trim();
+{
+regex:
+/\btravail\s+(?:de|comme|en tant que)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]{2,40}(?:\s+[A-Za-zÀ-ÿ'’-]{2,40}){0,3})/i
+}
+];
 
-      const interdit = [
-        "diplôme",
-        "diplome",
-        "expérience",
-        "experience",
-        "sans diplôme",
-        "sans diplome",
-        "sans expérience",
-        "sans experience",
-        "france"
-      ];
+for (const item of typeExpressions) {
+const match = s.match(item.regex);
 
-      const fauxPositif = interdit.some(term =>
-        metier.toLowerCase().includes(term.toLowerCase())
-      );
+if (match?.[1]) {
+const metier = texte(match[1]).trim();
 
-      if (!fauxPositif) {
-        addInfo(
-          result,
-          "type_emploi",
-          metier,
-          "moyenne"
-        );
-      }
+const interdit = [
+"diplôme",
+"diplome",
+"expérience",
+"experience",
+"sans diplôme",
+"sans diplome",
+"sans expérience",
+"sans experience",
+"france"
+];
 
-      break;
-    }
-  }
+const fauxPositif = interdit.some(
+term =>
+metier
+.toLowerCase()
+.includes(term.toLowerCase())
+);
 
-  /* Secteur quelconque */
-  if (
-    /n'importe quel travail|n’importe quel travail|n'importe quel emploi|n’importe quel emploi|tout type d'emploi|tout type de travail|tout secteur|tous les secteurs|peu importe le secteur|peu importe le travail|peu importe l'emploi|je suis ouvert à tout|je suis ouverte à tout|je prends tout/i.test(s)
-  ) {
-    addInfo(
-      result,
-      "type_emploi",
-      "Ouvert à tout secteur",
-      "élevée"
-    );
-  }
+if (!fauxPositif) {
+addInfo(
+result,
+"type_emploi",
+metier,
+"moyenne"
+);
+}
 
-  /* Mobilité */
-  if (
-    /je peux me déplacer|je peux me deplacer|je suis mobile|je peux travailler dans les environs|je peux me rendre|je peux me déplacer pour travailler|je peux me deplacer pour travailler/i.test(s) ||
-    /\bmobile\b/i.test(s)
-  ) {
-    addInfo(result, "mobilite", "Flexible");
-  }
+break;
+}
+}
 
-  if (
-    /je ne peux pas me déplacer|je ne peux pas me deplacer|sans déplacement|sans deplacement|je ne suis pas mobile/i.test(s)
-  ) {
-    addInfo(result, "mobilite", "Limitée");
-  }
+/* Secteur quelconque */
+if (
+/n'importe quel travail|n’importe quel travail|n'importe quel emploi|n’importe quel emploi|tout type d'emploi|tout type de travail|tout secteur|tous les secteurs|peu importe le secteur|peu importe le travail|peu importe l'emploi|je suis ouvert à tout|je suis ouverte à tout|je prends tout/i.test(s)
+) {
+addInfo(
+result,
+"type_emploi",
+"Ouvert à tout secteur",
+"élevée"
+);
+}
 
-  /* Horaires */
-  if (
-    /flexible sur les horaires|flexible pour les horaires|horaires flexibles|peu importe les horaires|peu importe l'horaire|n'importe quels horaires|n’importe quels horaires|disponible à tout moment|disponible a tout moment/i.test(s)
-  ) {
-    addInfo(result, "horaires", "Flexible");
-  }
+/* Mobilité */
+if (
+/je peux me déplacer|je peux me deplacer|je suis mobile|je peux travailler dans les environs|je peux me rendre|je peux me déplacer pour travailler|je peux me deplacer pour travailler/i.test(s) ||
+/\bmobile\b/i.test(s)
+) {
+addInfo(
+result,
+"mobilite",
+"Flexible"
+);
+}
 
-  /* Titre de séjour */
-  if (
-    /titre de séjour|titre de sejour|carte de séjour|carte de sejour/i.test(s)
-  ) {
-    addInfo(result, "titre_sejour", "Titre de séjour", "moyenne");
-  }
+if (
+/je ne peux pas me déplacer|je ne peux pas me deplacer|sans déplacement|sans deplacement|je ne suis pas mobile/i.test(s)
+) {
+addInfo(
+result,
+"mobilite",
+"Limitée"
+);
+}
 
-  /* Statut salarié */
-  if (
-    /\bsalarié\b|\bsalarie\b/i.test(s)
-  ) {
-    addInfo(result, "statut_sejour", "Salarié", "moyenne");
-  }
+/* Horaires */
+if (
+/flexible sur les horaires|flexible pour les horaires|horaires flexibles|peu importe les horaires|peu importe l'horaire|n'importe quels horaires|n’importe quels horaires|disponible à tout moment|disponible a tout moment/i.test(s)
+) {
+addInfo(
+result,
+"horaires",
+"Flexible"
+);
+}
 
-  /* Récépissé */
-  if (
-    /récépissé|recepisse/i.test(s)
-  ) {
-    addInfo(result, "recepisse", "Récépissé");
-  }
+/* Titre de séjour */
+if (
+/titre de séjour|titre de sejour|carte de séjour|carte de sejour/i.test(s)
+) {
+addInfo(
+result,
+"titre_sejour",
+"Titre de séjour",
+"moyenne"
+);
+}
 
-  /* Renouvellement */
-  if (
-    /renouvellement|renouveler|expire|expiration|fin de validité|fin de validite/i.test(s)
-  ) {
-    addInfo(result, "renouvellement", "Renouvellement", "moyenne");
-  }
+/* Statut salarié */
+if (
+/\bsalarié\b|\bsalarie\b/i.test(s)
+) {
+addInfo(
+result,
+"statut_sejour",
+"Salarié",
+"moyenne"
+);
+}
 
-  /* Asile */
-  if (
-    /demande d'asile|demande d asile|demandeur d'asile|demandeuse d'asile/i.test(s)
-  ) {
-    addInfo(result, "asile", "Demande d'asile");
-  }
+/* Récépissé */
+if (
+/récépissé|recepisse/i.test(s)
+) {
+addInfo(
+result,
+"recepisse",
+"Récépissé"
+);
+}
 
-  /* Entreprise */
-  if (
-    /créer une entreprise|creer une entreprise|création d'entreprise|creation d'entreprise|lancer mon entreprise|ouvrir une entreprise|je veux créer mon entreprise|je veux creer mon entreprise/i.test(s)
-  ) {
-    addInfo(result, "objectif", "Création d'entreprise");
-  }
+/* Renouvellement */
+if (
+/renouvellement|renouveler|expire|expiration|fin de validité|fin de validite/i.test(s)
+) {
+addInfo(
+result,
+"renouvellement",
+"Renouvellement",
+"moyenne"
+);
+}
 
-  return dedupeInformations(result);
+/* Asile */
+if (
+/demande d'asile|demande d asile|demandeur d'asile|demandeuse d'asile/i.test(s)
+) {
+addInfo(
+result,
+"asile",
+"Demande d'asile"
+);
+}
+
+/* Entreprise */
+if (
+/créer une entreprise|creer une entreprise|création d'entreprise|creation d'entreprise|lancer mon entreprise|ouvrir une entreprise|je veux créer mon entreprise|je veux creer mon entreprise/i.test(s)
+) {
+addInfo(
+result,
+"objectif",
+"Création d'entreprise"
+);
+}
+
+return dedupeInformations(result);
 }
 
 /* =========================================================
-   CONTEXTE
-   ========================================================= */
+CONTEXTE
+========================================================= */
 
 function detectContext(q) {
-  const s = normaliserRecherche(q);
+const s = normaliserRecherche(q);
 
-  return {
-    nettoyage: /nettoyage|menage|proprete|cleaning/.test(s),
+return {
+nettoyage:
+/nettoyage|menage|proprete|cleaning/.test(s),
 
-    entreprise:
-      /creer|creation|lancer|ouvrir|entreprise|societe|activite/.test(s),
+entreprise:
+/creer|creation|lancer|ouvrir|entreprise|societe|activite/.test(s),
 
-    statut:
-      /statut|forme juridique|micro|micro entreprise|independant|ei|entreprise individuelle/.test(s),
+statut:
+/statut|forme juridique|micro|micro entreprise|independant|ei|entreprise individuelle/.test(s),
 
-    travail:
-      /travail|emploi|salarie|contrat|employeur|licenciement|salaire|cherche un emploi|recherche un emploi/.test(s),
+travail:
+/travail|emploi|salarie|contrat|employeur|licenciement|salaire|cherche un emploi|recherche un emploi/.test(s),
 
-    social:
-      /caf|rsa|aide|social|allocation|droits sociaux/.test(s),
+social:
+/caf|rsa|aide|social|allocation|droits sociaux/.test(s),
 
-    administratif:
-      /demarche|administratif|administrative|prefecture|mairie|document officiel/.test(s),
+administratif:
+/demarche|administratif|administrative|prefecture|mairie|document officiel/.test(s),
 
-    juridique:
-      /avocat|juridique|justice|tribunal|loi|legal|mise en demeure/.test(s),
+juridique:
+/avocat|juridique|justice|tribunal|loi|legal|mise en demeure/.test(s),
 
-    fiscalite:
-      /impot|fiscal|fiscalite|urssaf|tva|cfe|cotisation/.test(s),
+fiscalite:
+/impot|fiscal|fiscalite|urssaf|tva|cfe|cotisation/.test(s),
 
-    immigration:
-      /recepisse|titre de sejour|sejour|visa|anef|prefecture|etranger|demande d asile|asile|carte de sejour/.test(s),
+immigration:
+/recepisse|titre de sejour|sejour|visa|anef|prefecture|etranger|demande d asile|asile|carte de sejour/.test(s),
 
-    recepisse:
-      /recepisse/.test(s),
+recepisse:
+/recepisse/.test(s),
 
-    titreSejour:
-      /titre de sejour|carte de sejour/.test(s),
+titreSejour:
+/titre de sejour|carte de sejour/.test(s),
 
-    anef:
-      /\banef\b/.test(s),
+anef:
+/\banef\b/.test(s),
 
-    renouvellement:
-      /renouvellement|renouveler|expire|expiration|fin de validite/.test(s),
+renouvellement:
+/renouvellement|renouveler|expire|expiration|fin de validite/.test(s),
 
-    premiereDemande:
-      /premiere demande|premier titre|premiere carte|je viens d arriver/.test(s),
+premiereDemande:
+/premiere demande|premier titre|premiere carte|je viens d arriver/.test(s),
 
-    asile:
-      /asile|demandeur d asile|demandeuse d asile/.test(s)
-  };
+asile:
+/asile|demandeur d asile|demandeuse d asile/.test(s)
+};
 }
 
 /* =========================================================
-   HISTORIQUE UTILISATEUR UNIQUEMENT
-   ========================================================= */
+HISTORIQUE UTILISATEUR UNIQUEMENT
+========================================================= */
 
 function analyserHistorique(history) {
-  const result = [];
+const result = [];
 
-  for (const item of (history || []).slice(-30)) {
-    if (!item) continue;
+for (const item of (history || []).slice(-30)) {
+if (!item) continue;
 
-    /*
-      Règle importante :
-      les messages de l'assistant ne deviennent jamais
-      des faits utilisateur.
-    */
+/*
+Les messages de l'assistant ne deviennent jamais
+des faits utilisateur.
+*/
 
-    if (item.role !== "user") continue;
+if (item.role !== "user") continue;
 
-    const content = texte(item.content, LIMITS.question);
+const content =
+texte(
+item.content,
+LIMITS.question
+);
 
-    if (!content) continue;
+if (!content) continue;
 
-    result.push(
-      ...extraireInformations(content)
-    );
-  }
+result.push(
+...extraireInformations(content)
+);
+}
 
-  return dedupeInformations(result);
+return dedupeInformations(result);
 }
 
 /* =========================================================
-   ÉTAT DE CONVERSATION
-   ========================================================= */
+ÉTAT DE CONVERSATION
+========================================================= */
 
 function construireEtatConversation(options = {}) {
-  const history = Array.isArray(options.history)
-    ? options.history
-    : [];
+const history =
+Array.isArray(options.history)
+? options.history
+: [];
 
-  const historiqueInfos = analyserHistorique(history);
+const historiqueInfos =
+analyserHistorique(history);
 
-  const suppliedInfos = Array.isArray(options.informations)
-    ? options.informations
-    : [];
+const suppliedInfos =
+Array.isArray(options.informations)
+? options.informations
+: [];
 
-  const documentInfos = Array.isArray(options.documentInfos)
-    ? options.documentInfos
-    : [];
+const documentInfos =
+Array.isArray(options.documentInfos)
+? options.documentInfos
+: [];
 
-  const currentInfos = extraireInformations(
-    texte(options.question, LIMITS.question)
-  );
+const currentInfos =
+extraireInformations(
+texte(
+options.question,
+LIMITS.question
+)
+);
 
-  const toutes = dedupeInformations([
-    ...historiqueInfos,
-    ...suppliedInfos,
-    ...documentInfos,
-    ...currentInfos
-  ]);
+const toutes =
+dedupeInformations([
+...historiqueInfos,
+...suppliedInfos,
+...documentInfos,
+...currentInfos
+]);
 
-  const texteGlobal = [
-    ...history
-      .filter(x => x?.role === "user")
-      .map(x => texte(x.content, 6000)),
-    texte(options.question, LIMITS.question)
-  ]
-    .filter(Boolean)
-    .join("\n");
+const texteGlobal = [
+...history
+.filter(x => x?.role === "user")
+.map(x => texte(x.content, 6000)),
 
-  const contexte = detectContext(texteGlobal);
+texte(
+options.question,
+LIMITS.question
+)
+]
+.filter(Boolean)
+.join("\n");
 
-  /*
-    Les signaux structurés renforcent le contexte.
-  */
+const contexte =
+detectContext(texteGlobal);
 
-  if (
-    hasInfo(toutes, "objectif") &&
-    /recherche d'emploi/i.test(
-      getInfo(toutes, "objectif")?.valeur || ""
-    )
-  ) {
-    contexte.travail = true;
-  }
+/*
+=======================================================
+CONTEXTE STRUCTURÉ
+=======================================================
+*/
 
-  if (hasInfo(toutes, "titre_sejour")) {
-    contexte.immigration = true;
-  }
+if (
+hasInfo(toutes, "objectif") &&
+/recherche d'emploi/i.test(
+getInfo(
+toutes,
+"objectif"
+)?.valeur || ""
+)
+) {
+contexte.travail = true;
+}
 
-  if (hasInfo(toutes, "recepisse")) {
-    contexte.immigration = true;
-    contexte.recepisse = true;
-  }
+if (hasInfo(toutes, "titre_sejour")) {
+contexte.immigration = true;
+}
 
-  if (options.situation === "emploi") {
-    contexte.travail = true;
-  }
+if (hasInfo(toutes, "recepisse")) {
+contexte.immigration = true;
+contexte.recepisse = true;
+}
 
-  if (options.profil === "emploi") {
-    contexte.travail = true;
-  }
+/*
+=======================================================
+🔒 PROTECTION DU PARCOURS EMPLOI
+=======================================================
 
-  if (options.situation === "creation") {
-    contexte.entreprise = true;
-  }
+Le profil "emploi" est la sélection explicite
+de l'utilisateur.
 
-  return {
-    informations: toutes,
-    contexte,
-    questionsPosees: unique(
-      Array.isArray(options.questionsPosees)
-        ? options.questionsPosees
-        : []
-    )
-  };
+Tant que l'utilisateur est dans ce profil,
+les signaux textuels "entreprise", "activité",
+"services", etc. ne doivent pas faire basculer
+automatiquement le moteur vers entreprise.
+
+L'objectif ici est d'empêcher un changement de
+domaine provoqué par un simple mot dans la conversation.
+=======================================================
+*/
+
+const profilEmploi =
+options.profil === "emploi";
+
+const situationsEmploi = [
+"offres",
+"cv",
+"candidature",
+"annonce",
+"entretien",
+"entreprise",
+"adapte",
+"comparaison",
+"autre"
+];
+
+const situationEmploi =
+situationsEmploi.includes(
+texte(options.situation, 100)
+.toLowerCase()
+);
+
+const parcoursEmploi =
+profilEmploi ||
+situationEmploi;
+
+if (parcoursEmploi) {
+contexte.travail = true;
+
+/*
+Le parcours choisi explicitement
+garde la priorité sur les signaux
+génériques détectés dans le texte.
+*/
+
+contexte.entreprise = false;
+contexte.statut = false;
+}
+
+/*
+=======================================================
+ENTREPRISE EXPLICITE
+=======================================================
+*/
+
+if (
+options.profil === "entreprise" ||
+options.situation === "creation"
+) {
+contexte.entreprise = true;
+}
+
+/*
+=======================================================
+PROFIL PARTICULIER / MIGRANT
+=======================================================
+*/
+
+if (options.situation === "emploi") {
+contexte.travail = true;
+}
+
+return {
+informations: toutes,
+
+contexte,
+
+questionsPosees:
+unique(
+Array.isArray(
+options.questionsPosees
+)
+? options.questionsPosees
+: []
+),
+
+/*
+Information interne utile au moteur.
+*/
+
+parcoursEmploi,
+
+profil:
+texte(
+options.profil,
+100
+),
+
+situation:
+texte(
+options.situation,
+100
+)
+};
 }
 
 /* =========================================================
-   CATALOGUE DES QUESTIONS
-   ========================================================= */
+CATALOGUE DES QUESTIONS
+========================================================= */
 
 const QUESTIONS = {
 
-  zone_recherche: {
-    fr: "Dans quelle ville ou zone souhaitez-vous principalement rechercher un emploi ?",
-    ar: "في أي مدينة أو منطقة تريد البحث عن عمل بشكل أساسي؟",
-    en: "In which city or area would you mainly like to look for a job?"
-  },
+zone_recherche: {
+fr: "Dans quelle ville ou zone souhaitez-vous principalement rechercher un emploi ?",
+ar: "في أي مدينة أو منطقة تريد البحث عن عمل بشكل أساسي؟",
+en: "In which city or area would you mainly like to look for a job?"
+},
 
-  type_emploi: {
-    fr: "Quel type d'emploi recherchez-vous principalement ? Êtes-vous ouvert à différents secteurs ?",
-    ar: "ما نوع العمل الذي تبحث عنه أساساً؟ وهل أنت منفتح على قطاعات مختلفة؟",
-    en: "What type of job are you mainly looking for? Are you open to different sectors?"
-  },
+type_emploi: {
+fr: "Quel type d'emploi recherchez-vous principalement ? Êtes-vous ouvert à différents secteurs ?",
+ar: "ما نوع العمل الذي تبحث عنه أساساً؟ وهل أنت منفتح على قطاعات مختلفة؟",
+en: "What type of job are you mainly looking for? Are you open to different sectors?"
+},
 
-  mobilite: {
-    fr: "Êtes-vous prêt à vous déplacer pour travailler en dehors de votre zone principale ?",
-    ar: "هل يمكنك التنقل للعمل خارج منطقتك الرئيسية؟",
-    en: "Are you willing to travel outside your main area for work?"
-  },
+mobilite: {
+fr: "Êtes-vous prêt à vous déplacer pour travailler en dehors de votre zone principale ?",
+ar: "هل يمكنك التنقل للعمل خارج منطقتك الرئيسية؟",
+en: "Are you willing to travel outside your main area for work?"
+},
 
-  horaires: {
-    fr: "Êtes-vous flexible concernant les horaires de travail ?",
-    ar: "هل أنت مرن بالنسبة إلى أوقات العمل؟",
-    en: "Are you flexible regarding working hours?"
-  },
+horaires: {
+fr: "Êtes-vous flexible concernant les horaires de travail ?",
+ar: "هل أنت مرن بالنسبة إلى أوقات العمل؟",
+en: "Are you flexible regarding working hours?"
+},
 
-  presence_france: {
-    fr: "Êtes-vous actuellement en France ?",
-    ar: "هل أنت موجود حالياً في فرنسا؟",
-    en: "Are you currently in France?"
-  },
+presence_france: {
+fr: "Êtes-vous actuellement en France ?",
+ar: "هل أنت موجود حالياً في فرنسا؟",
+en: "Are you currently in France?"
+},
 
-  statut_sejour: {
-    fr: "Quel est votre statut ou votre titre de séjour actuel ?",
-    ar: "ما هو وضع إقامتك أو نوع تصريح الإقامة الحالي؟",
-    en: "What is your current residence status or permit?"
-  },
+statut_sejour: {
+fr: "Quel est votre statut ou votre titre de séjour actuel ?",
+ar: "ما هو وضع إقامتك أو نوع تصريح الإقامة الحالي؟",
+en: "What is your current residence status or permit?"
+},
 
-  entreprise: {
-    fr: "Quelle activité ou quels services souhaitez-vous proposer ?",
-    ar: "ما النشاط أو الخدمات التي تريد تقديمها؟",
-    en: "What activity or services would you like to offer?"
-  }
+entreprise: {
+fr: "Quelle activité ou quels services souhaitez-vous proposer ?",
+ar: "ما النشاط أو الخدمات التي تريد تقديمها؟",
+en: "What activity or services would you like to offer?"
+}
 };
 
 /* =========================================================
-   DÉCISION ENGINE
-   ========================================================= */
+DÉCISION ENGINE
+========================================================= */
 
 function candidatsQuestions(etat) {
-  const { informations, contexte } = etat;
+const {
+informations,
+contexte
+} = etat;
 
-  if (contexte.recepisse || contexte.immigration) {
-    return [
-      {
-        key: "presence_france",
-        required: true,
-        when: () =>
-          !hasInfo(informations, "presence_france")
-      },
+/*
+=======================================================
+🔒 EMPLOI PRIORITAIRE
+=======================================================
 
-      {
-        key: "statut_sejour",
-        required: true,
-        when: () =>
-          !hasInfo(informations, "statut_sejour") &&
-          !hasInfo(informations, "titre_sejour")
-      }
-    ];
-  }
+Si l'utilisateur a explicitement choisi
+le profil Chercheur d'emploi, le moteur commence
+par les questions d'emploi.
 
-  if (contexte.entreprise || contexte.statut) {
-    return [
-      {
-        key: "entreprise",
-        required: true,
-        when: () =>
-          !hasInfo(informations, "entreprise")
-      }
-    ];
-  }
+Cela empêche un signal secondaire dans le texte
+de provoquer immédiatement un passage vers
+le parcours entreprise.
+=======================================================
+*/
 
-  if (contexte.travail) {
-    return [
-      {
-        key: "zone_recherche",
-        required: true,
-        when: () =>
-          !hasInfo(informations, "zone_recherche")
-      },
+if (etat.parcoursEmploi) {
+return [
+{
+key: "zone_recherche",
 
-      {
-        key: "type_emploi",
-        required: true,
-        when: () =>
-          !hasInfo(informations, "type_emploi")
-      },
+required: true,
 
-      {
-        key: "mobilite",
-        required: false,
-        when: () =>
-          !hasInfo(informations, "mobilite")
-      },
+when: () =>
+!hasInfo(
+informations,
+"zone_recherche"
+)
+},
 
-      {
-        key: "horaires",
-        required: false,
-        when: () =>
-          !hasInfo(informations, "horaires")
-      }
-    ];
-  }
+{
+key: "type_emploi",
 
-  return [];
+required: true,
+
+when: () =>
+!hasInfo(
+informations,
+"type_emploi"
+)
+},
+
+{
+key: "mobilite",
+
+required: false,
+
+when: () =>
+!hasInfo(
+informations,
+"mobilite"
+)
+},
+
+{
+key: "horaires",
+
+required: false,
+
+when: () =>
+!hasInfo(
+informations,
+"horaires"
+)
+}
+];
+}
+
+/*
+=======================================================
+IMMIGRATION
+=======================================================
+*/
+
+if (
+contexte.recepisse ||
+contexte.immigration
+) {
+return [
+{
+key: "presence_france",
+
+required: true,
+
+when: () =>
+!hasInfo(
+informations,
+"presence_france"
+)
+},
+
+{
+key: "statut_sejour",
+
+required: true,
+
+when: () =>
+!hasInfo(
+informations,
+"statut_sejour"
+) &&
+!hasInfo(
+informations,
+"titre_sejour"
+)
+}
+];
+}
+
+/*
+=======================================================
+ENTREPRISE
+=======================================================
+*/
+
+if (
+contexte.entreprise ||
+contexte.statut
+) {
+return [
+{
+key: "entreprise",
+
+required: true,
+
+when: () =>
+!hasInfo(
+informations,
+"entreprise"
+)
+}
+];
+}
+
+/*
+=======================================================
+TRAVAIL GÉNÉRAL
+=======================================================
+*/
+
+if (contexte.travail) {
+return [
+{
+key: "zone_recherche",
+
+required: true,
+
+when: () =>
+!hasInfo(
+informations,
+"zone_recherche"
+)
+},
+
+{
+key: "type_emploi",
+
+required: true,
+
+when: () =>
+!hasInfo(
+informations,
+"type_emploi"
+)
+},
+
+{
+key: "mobilite",
+
+required: false,
+
+when: () =>
+!hasInfo(
+informations,
+"mobilite"
+)
+},
+
+{
+key: "horaires",
+
+required: false,
+
+when: () =>
+!hasInfo(
+informations,
+"horaires"
+)
+}
+];
+}
+
+return [];
 }
 
 function langueQuestion(langue) {
-  const l = texte(langue, 10).toLowerCase();
+const l =
+texte(
+langue,
+10
+).toLowerCase();
 
-  if (l.startsWith("ar")) return "ar";
-  if (l.startsWith("en")) return "en";
-
-  return "fr";
+if (l.startsWith("ar")) {
+return "ar";
 }
 
-function construireDecision(etat, langue = "fr") {
-  const candidates = candidatsQuestions(etat);
+if (l.startsWith("en")) {
+return "en";
+}
 
-  const asked = new Set(
-    etat.questionsPosees || []
-  );
+return "fr";
+}
 
-  for (const candidate of candidates) {
-    if (asked.has(candidate.key)) continue;
+function construireDecision(
+etat,
+langue = "fr"
+) {
+const candidates =
+candidatsQuestions(etat);
 
-    if (!candidate.when()) continue;
+const asked =
+new Set(
+etat.questionsPosees || []
+);
 
-    const lang = langueQuestion(langue);
+for (
+const candidate
+of candidates
+) {
+if (
+asked.has(
+candidate.key
+)
+) {
+continue;
+}
 
-    return {
-      etape: "question",
-      questionKey: candidate.key,
-      question:
-        QUESTIONS[candidate.key]?.[lang] ||
-        QUESTIONS[candidate.key]?.fr ||
-        "",
-      champsManquants: [candidate.key]
-    };
-  }
+if (!candidate.when()) {
+continue;
+}
 
-  return {
-    etape: "orientation",
-    questionKey: null,
-    question: "",
-    champsManquants: []
-  };
+const lang =
+langueQuestion(langue);
+
+return {
+etape: "question",
+
+questionKey:
+candidate.key,
+
+question:
+QUESTIONS[
+candidate.key
+]?.[lang] ||
+QUESTIONS[
+candidate.key
+]?.fr ||
+"",
+
+champsManquants:
+[candidate.key]
+};
+}
+
+return {
+etape: "orientation",
+
+questionKey: null,
+
+question: "",
+
+champsManquants: []
+};
 }
 
 /* =========================================================
-   SOURCES
-   ========================================================= */
+SOURCES
+========================================================= */
 
 function selectSources(contexte) {
-  const ids = [];
+const ids = [];
 
-  if (contexte.travail) {
-    ids.push("france_travail");
-  }
+if (contexte.travail) {
+ids.push(
+"france_travail"
+);
+}
 
-  if (contexte.immigration) {
-    ids.push("anef");
+if (contexte.immigration) {
+ids.push(
+"anef"
+);
 
-    if (contexte.travail) {
-      ids.push("travail_etranger");
-    }
-  }
+if (contexte.travail) {
+ids.push(
+"travail_etranger"
+);
+}
+}
 
-  if (contexte.entreprise || contexte.statut) {
-    ids.push("statut");
-  }
+if (
+contexte.entreprise ||
+contexte.statut
+) {
+ids.push(
+"statut"
+);
+}
 
-  if (contexte.entreprise && contexte.statut) {
-    ids.push("creation_ei");
-    ids.push("guichet");
-  }
+if (
+contexte.entreprise &&
+contexte.statut
+) {
+ids.push(
+"creation_ei"
+);
 
-  return unique(ids)
-    .map(id => SOURCES[id])
-    .filter(Boolean);
+ids.push(
+"guichet"
+);
+}
+
+return unique(ids)
+.map(
+id => SOURCES[id]
+)
+.filter(Boolean);
 }
 
 /* =========================================================
-   DOCUMENTS / ACTIONS / RECOMMANDATIONS
-   ========================================================= */
+DOCUMENTS / ACTIONS / RECOMMANDATIONS
+========================================================= */
 
-function confirmed(informations, contexte) {
-  const out = [];
+function confirmed(
+informations,
+contexte
+) {
+const out = [];
 
-  for (const item of informations || []) {
-    if (!item?.valeur) continue;
-
-    if (
-      item.type === "zone_recherche" ||
-      item.type === "type_emploi" ||
-      item.type === "mobilite" ||
-      item.type === "horaires" ||
-      item.type === "diplome" ||
-      item.type === "experience" ||
-      item.type === "objectif"
-    ) {
-      out.push(
-        `${item.type} : ${item.valeur}`
-      );
-    }
-  }
-
-  if (contexte.immigration) {
-    out.push(
-      "Une question liée au séjour ou à la situation administrative a été détectée."
-    );
-  }
-
-  return unique(out);
+for (
+const item
+of informations || []
+) {
+if (!item?.valeur) {
+continue;
 }
 
-function documents(informations, contexte) {
-  const out = [];
-
-  if (contexte.immigration) {
-    out.push({
-      statut: "à vérifier",
-      texte: "Le titre ou document de séjour réellement détenu et sa date de validité."
-    });
-  }
-
-  if (contexte.travail) {
-    out.push({
-      statut: "à vérifier",
-      texte: "Les justificatifs éventuellement demandés pour les candidatures ou l'inscription auprès des organismes concernés."
-    });
-  }
-
-  return out;
+if (
+item.type === "zone_recherche" ||
+item.type === "type_emploi" ||
+item.type === "mobilite" ||
+item.type === "horaires" ||
+item.type === "diplome" ||
+item.type === "experience" ||
+item.type === "objectif"
+) {
+out.push(
+`${item.type} : ${item.valeur}`
+);
+}
 }
 
-function actions(informations, contexte) {
-  const out = [];
-
-  if (contexte.travail) {
-    if (hasInfo(informations, "zone_recherche")) {
-      out.push(
-        "Rechercher les possibilités d'emploi correspondant à la zone indiquée."
-      );
-    }
-
-    if (hasInfo(informations, "type_emploi")) {
-      out.push(
-        "Cibler les métiers correspondant au type d'emploi indiqué."
-      );
-    }
-
-    if (
-      hasInfo(informations, "diplome") &&
-      /sans diplôme/i.test(
-        getInfo(informations, "diplome")?.valeur || ""
-      )
-    ) {
-      out.push(
-        "Privilégier les offres dont les conditions d'accès n'exigent pas de diplôme, sous réserve des exigences de chaque poste."
-      );
-    }
-
-    if (
-      hasInfo(informations, "experience") &&
-      /sans expérience/i.test(
-        getInfo(informations, "experience")?.valeur || ""
-      )
-    ) {
-      out.push(
-        "Privilégier les offres accessibles sans expérience, sous réserve des exigences de chaque employeur."
-      );
-    }
-
-    out.push(
-      "Vérifier les conditions exactes de chaque offre avant de candidater."
-    );
-  }
-
-  if (contexte.immigration) {
-    out.push(
-      "Vérifier la procédure administrative exacte à partir des documents réellement détenus."
-    );
-  }
-
-  return unique(out);
+if (contexte.immigration) {
+out.push(
+"Une question liée au séjour ou à la situation administrative a été détectée."
+);
 }
 
-function recommendations(informations, contexte) {
-  const out = [];
-
-  if (contexte.travail) {
-    out.push(
-      "Les possibilités d'emploi dépendent des exigences propres à chaque poste et employeur."
-    );
-
-    if (
-      hasInfo(informations, "diplome") &&
-      /sans diplôme/i.test(
-        getInfo(informations, "diplome")?.valeur || ""
-      )
-    ) {
-      out.push(
-        "L'absence de diplôme n'empêche pas nécessairement toute candidature, mais certaines professions restent soumises à des conditions particulières."
-      );
-    }
-  }
-
-  if (contexte.immigration) {
-    out.push(
-      "Les droits liés au séjour ou au travail doivent être vérifiés à partir du titre ou document exact et de la procédure concernée."
-    );
-  }
-
-  return unique(out);
+return unique(out);
 }
+
+function documents(
+informations,
+contexte
+) {
+const out = [];
+
+if (contexte.immigration) {
+out.push({
+statut: "à vérifier",
+
+texte:
+"Le titre ou document de séjour réellement détenu et sa date de validité."
+});
+}
+
+if (contexte.travail) {
+out.push({
+statut: "à vérifier",
+
+texte:
+"Les justificatifs éventuellement demandés pour les candidatures ou l'inscription auprès des organismes concernés."
+});
+}
+
+return out;
+}
+
+function actions(
+informations,
+contexte
+) {
+const out = [];
+
+if (contexte.travail) {
+
+if (
+hasInfo(
+informations,
+"zone_recherche"
+)
+) {
+out.push(
+"Rechercher les possibilités d'emploi correspondant à la zone indiquée."
+);
+}
+
+if (
+hasInfo(
+informations,
+"type_emploi"
+)
+) {
+out.push(
+"Cibler les métiers correspondant au type d'emploi indiqué."
+);
+}
+
+if (
+hasInfo(
+informations,
+"diplome"
+) &&
+/sans diplôme/i.test(
+getInfo(
+informations,
+"diplome"
+)?.valeur || ""
+)
+) {
+out.push(
+"Privilégier les offres dont les conditions d'accès n'exigent pas de diplôme, sous réserve des exigences de chaque poste."
+);
+}
+
+if (
+hasInfo(
+informations,
+"experience"
+) &&
+/sans expérience/i.test(
+getInfo(
+informations,
+"experience"
+)?.valeur || ""
+)
+) {
+out.push(
+"Privilégier les offres accessibles sans expérience, sous réserve des exigences de chaque employeur."
+);
+}
+
+out.push(
+"Vérifier les conditions exactes de chaque offre avant de candidater."
+);
+}
+
+if (contexte.immigration) {
+out.push(
+"Vérifier la procédure administrative exacte à partir des documents réellement détenus."
+);
+}
+
+return unique(out);
+}
+
+function recommendations(
+informations,
+contexte
+) {
+const out = [];
+
+if (contexte.travail) {
+
+out.push(
+"Les possibilités d'emploi dépendent des exigences propres à chaque poste et employeur."
+);
+
+if (
+hasInfo(
+informations,
+"diplome"
+) &&
+/sans diplôme/i.test(
+getInfo(
+informations,
+"diplome"
+)?.valeur || ""
+)
+) {
+out.push(
+"L'absence de diplôme n'empêche pas nécessairement toute candidature, mais certaines professions restent soumises à des conditions particulières."
+);
+}
+}
+
+if (contexte.immigration) {
+out.push(
+"Les droits liés au séjour ou au travail doivent être vérifiés à partir du titre ou document exact et de la procédure concernée."
+);
+}
+
+return unique(out);
+}
+
 /* =========================================================
-   SYSTEM PROMPT
-   ========================================================= */
+SYSTEM PROMPT
+========================================================= */
 
 function systemPrompt() {
-  return `
+return `
 Tu es GouRare AI, un assistant d'orientation et d'analyse multi-domaines.
 
 Tu n'es pas avocat, expert-comptable, médecin, administration ou travailleur social.
@@ -1088,409 +1509,582 @@ Réponds de manière claire, humaine, concise et pratique.
 }
 
 /* =========================================================
-   IA
-   ========================================================= */
+IA
+========================================================= */
 
-async function askAI(env, prompt, maxTokens = 900) {
-  try {
-    const result = await env.IA.run(
-      MODEL,
-      {
-        messages: [
-          {
-            role: "system",
-            content: systemPrompt()
-          },
-          {
-            role: "user",
-            content: texte(prompt, 60000)
-          }
-        ],
-        max_tokens: maxTokens,
-        temperature: 0.15
-      }
-    );
+async function askAI(
+env,
+prompt,
+maxTokens = 900
+) {
+try {
 
-    if (typeof result === "string") {
-      return result;
-    }
+const result =
+await env.IA.run(
+MODEL,
+{
+messages: [
+{
+role: "system",
 
-    if (result?.response) {
-      return result.response;
-    }
+content:
+systemPrompt()
+},
 
-    if (result?.result?.response) {
-      return result.result.response;
-    }
+{
+role: "user",
 
-    return "";
-  } catch (error) {
-    return "";
-  }
+content:
+texte(
+prompt,
+60000
+)
+}
+],
+
+max_tokens:
+maxTokens,
+
+temperature:
+0.15
+}
+);
+
+if (
+typeof result === "string"
+) {
+return result;
+}
+
+if (result?.response) {
+return result.response;
+}
+
+if (
+result?.result?.response
+) {
+return result.result.response;
+}
+
+return "";
+
+} catch (error) {
+
+return "";
+
+}
 }
 
 /* =========================================================
-   ORIENTATION EMPLOI
-   ========================================================= */
+ORIENTATION EMPLOI
+========================================================= */
 
-function construireOrientationEmploi(informations) {
-  const zone =
-    getInfo(informations, "zone_recherche")?.valeur ||
-    "";
+function construireOrientationEmploi(
+informations
+) {
+const zone =
+getInfo(
+informations,
+"zone_recherche"
+)?.valeur || "";
 
-  const type =
-    getInfo(informations, "type_emploi")?.valeur ||
-    "";
+const type =
+getInfo(
+informations,
+"type_emploi"
+)?.valeur || "";
 
-  const mobilite =
-    getInfo(informations, "mobilite")?.valeur ||
-    "";
+const mobilite =
+getInfo(
+informations,
+"mobilite"
+)?.valeur || "";
 
-  const horaires =
-    getInfo(informations, "horaires")?.valeur ||
-    "";
+const horaires =
+getInfo(
+informations,
+"horaires"
+)?.valeur || "";
 
-  const diplome =
-    getInfo(informations, "diplome")?.valeur ||
-    "";
+const diplome =
+getInfo(
+informations,
+"diplome"
+)?.valeur || "";
 
-  const experience =
-    getInfo(informations, "experience")?.valeur ||
-    "";
+const experience =
+getInfo(
+informations,
+"experience"
+)?.valeur || "";
 
-  const lignes = [];
+const lignes = [];
 
-  lignes.push(
-    `Zone de recherche : ${zone || "non précisée"}`
-  );
+lignes.push(
+`Zone de recherche : ${zone || "non précisée"}`
+);
 
-  lignes.push(
-    `Type d'emploi : ${type || "non précisé"}`
-  );
+lignes.push(
+`Type d'emploi : ${type || "non précisé"}`
+);
 
-  lignes.push(
-    `Mobilité : ${mobilite || "non précisée"}`
-  );
+lignes.push(
+`Mobilité : ${mobilite || "non précisée"}`
+);
 
-  lignes.push(
-    `Horaires : ${horaires || "non précisés"}`
-  );
+lignes.push(
+`Horaires : ${horaires || "non précisés"}`
+);
 
-  if (diplome) {
-    lignes.push(`Diplôme : ${diplome}`);
-  }
+if (diplome) {
+lignes.push(
+`Diplôme : ${diplome}`
+);
+}
 
-  if (experience) {
-    lignes.push(`Expérience : ${experience}`);
-  }
+if (experience) {
+lignes.push(
+`Expérience : ${experience}`
+);
+}
 
-  return lignes.join("\n");
+return lignes.join("\n");
 }
 
 /* =========================================================
-   MESSAGES
-   ========================================================= */
+MESSAGES
+========================================================= */
 
-function messagePrompt(contenu, mode, langue) {
-  const instructions = {
-    analyse:
-      "Analyse le message : faits, demande, éléments importants, incertitudes et réponse possible.",
+function messagePrompt(
+contenu,
+mode,
+langue
+) {
+const instructions = {
 
-    reponse:
-      "Prépare une réponse claire, polie et adaptée. N'invente aucun fait.",
+analyse:
+"Analyse le message : faits, demande, éléments importants, incertitudes et réponse possible.",
 
-    reformulation:
-      "Réécris le message plus clairement sans changer son sens.",
+reponse:
+"Prépare une réponse claire, polie et adaptée. N'invente aucun fait.",
 
-    correction:
-      "Corrige les fautes et améliore légèrement la formulation sans changer le sens.",
+reformulation:
+"Réécris le message plus clairement sans changer son sens.",
 
-    traduction:
-      "Traduis fidèlement le contenu dans la langue demandée."
-  };
+correction:
+"Corrige les fautes et améliore légèrement la formulation sans changer le sens.",
 
-  return `
+traduction:
+"Traduis fidèlement le contenu dans la langue demandée."
+};
+
+return `
 Langue souhaitée : ${langue || "français"}
 
 Mode :
 ${instructions[mode] || instructions.analyse}
 
 CONTENU :
-${texte(contenu, LIMITS.message)}
+${texte(
+contenu,
+LIMITS.message
+)}
 `;
 }
 
 /* =========================================================
-   IMAGE
-   ========================================================= */
+IMAGE
+========================================================= */
 
-async function analyserImage(env, image, demande = "") {
-  if (!image || typeof image !== "string") {
-    throw new Error("Image absente.");
-  }
+async function analyserImage(
+env,
+image,
+demande = ""
+) {
+if (
+!image ||
+typeof image !== "string"
+) {
+throw new Error(
+"Image absente."
+);
+}
 
-  if (image.length > LIMITS.image) {
-    throw new Error("Image trop volumineuse.");
-  }
+if (
+image.length >
+LIMITS.image
+) {
+throw new Error(
+"Image trop volumineuse."
+);
+}
 
-  const result = await env.IA.run(
-    MODEL_VISION,
-    {
-      messages: [
-        {
-          role: "system",
-          content:
-            "Analyse uniquement ce qui est réellement visible ou lisible. Ne devine jamais un texte illisible. Indique clairement les éléments incertains."
-        },
-        {
-          role: "user",
-          content:
-            demande ||
-            "Lis et analyse cette image. Identifie les éléments visibles, explique leur contenu et indique ce qui reste incertain."
-        }
-      ],
+const result =
+await env.IA.run(
+MODEL_VISION,
+{
+messages: [
+{
+role: "system",
 
-      image,
+content:
+"Analyse uniquement ce qui est réellement visible ou lisible. Ne devine jamais un texte illisible. Indique clairement les éléments incertains."
+},
 
-      max_tokens: 2200,
+{
+role: "user",
 
-      temperature: 0.1
-    }
-  );
+content:
+demande ||
+"Lis et analyse cette image. Identifie les éléments visibles, explique leur contenu et indique ce qui reste incertain."
+}
+],
 
-  if (typeof result === "string") {
-    return result;
-  }
+image,
 
-  if (result?.response) {
-    return result.response;
-  }
+max_tokens:
+2200,
 
-  if (result?.result?.response) {
-    return result.result.response;
-  }
+temperature:
+0.1
+}
+);
 
-  return typeof result?.result === "string"
-    ? result.result
-    : JSON.stringify(result);
+if (
+typeof result === "string"
+) {
+return result;
+}
+
+if (result?.response) {
+return result.response;
+}
+
+if (
+result?.result?.response
+) {
+return result.result.response;
+}
+
+return typeof result?.result === "string"
+? result.result
+: JSON.stringify(result);
 }
 
 /* =========================================================
-   AUDIO
-   ========================================================= */
+AUDIO
+========================================================= */
 
-function base64FromDataURL(value) {
-  const s = texte(value, LIMITS.audio);
-  const index = s.indexOf(",");
+function base64FromDataURL(
+value
+) {
+const s =
+texte(
+value,
+LIMITS.audio
+);
 
-  if (
-    s.startsWith("data:") &&
-    index >= 0
-  ) {
-    return s.slice(index + 1);
-  }
+const index =
+s.indexOf(",");
 
-  return s;
+if (
+s.startsWith("data:") &&
+index >= 0
+) {
+return s.slice(
+index + 1
+);
+}
+
+return s;
 }
 
 async function transcrireAudio(
-  env,
-  audio,
-  langue = "fr"
+env,
+audio,
+langue = "fr"
 ) {
-  if (!audio) {
-    throw new Error("Audio absent.");
-  }
+if (!audio) {
+throw new Error(
+"Audio absent."
+);
+}
 
-  if (audio.length > LIMITS.audio) {
-    throw new Error("Audio trop volumineux.");
-  }
+if (
+audio.length >
+LIMITS.audio
+) {
+throw new Error(
+"Audio trop volumineux."
+);
+}
 
-  const result = await env.IA.run(
-    MODEL_AUDIO,
-    {
-      audio: base64FromDataURL(audio),
-      task: "transcribe",
-      language: langue,
-      condition_on_previous_text: false
-    }
-  );
+const result =
+await env.IA.run(
+MODEL_AUDIO,
+{
+audio:
+base64FromDataURL(
+audio
+),
 
-  const text =
-    result?.transcription_info?.text ||
-    result?.text ||
-    result?.response ||
-    result?.result?.text ||
-    "";
+task:
+"transcribe",
 
-  return texte(text, 20000);
+language:
+langue,
+
+condition_on_previous_text:
+false
+}
+);
+
+const text =
+result?.transcription_info?.text ||
+result?.text ||
+result?.response ||
+result?.result?.text ||
+"";
+
+return texte(
+text,
+20000
+);
 }
 
 /* =========================================================
-   ANALYSE PRINCIPALE
-   ========================================================= */
+ANALYSE PRINCIPALE
+========================================================= */
 
-async function analyserQuestion(env, question, options = {}) {
-  const baseQuestion = texte(
-    question,
-    LIMITS.question
-  );
+async function analyserQuestion(
+env,
+question,
+options = {}
+) {
+const baseQuestion =
+texte(
+question,
+LIMITS.question
+);
 
-  const history = Array.isArray(options.history)
-    ? options.history.slice(-30)
-    : [];
+const history =
+Array.isArray(
+options.history
+)
+? options.history.slice(-30)
+: [];
 
-  const informationsInitiales =
-    Array.isArray(options.informations)
-      ? options.informations
-      : [];
+const informationsInitiales =
+Array.isArray(
+options.informations
+)
+? options.informations
+: [];
 
-  const documentInfos =
-    Array.isArray(options.documentInfos)
-      ? options.documentInfos
-      : [];
+const documentInfos =
+Array.isArray(
+options.documentInfos
+)
+? options.documentInfos
+: [];
 
-  const etat = construireEtatConversation({
-    question: baseQuestion,
-    history,
-    informations: informationsInitiales,
-    documentInfos,
-    profil: options.profil,
-    situation: options.situation,
-    questionsPosees: options.questionsPosees
-  });
+const etat =
+construireEtatConversation({
+question:
+baseQuestion,
 
-  const langue = langueQuestion(
-    options.langue || "fr"
-  );
+history,
 
-  const decision = construireDecision(
-    etat,
-    langue
-  );
+informations:
+informationsInitiales,
 
-  const sources = selectSources(
-    etat.contexte
-  );
+documentInfos,
 
-  /*
-   * =======================================================
-   * QUESTION DÉTERMINISTE
-   * =======================================================
-   */
+profil:
+options.profil,
 
-  if (decision.etape === "question") {
-    const nouvellesQuestions = unique([
-      ...(etat.questionsPosees || []),
-      decision.questionKey
-    ]);
+situation:
+options.situation,
 
-    let compris =
-      "Je comprends votre demande. Pour avancer correctement, j'ai besoin d'une information supplémentaire.";
+questionsPosees:
+options.questionsPosees
+});
 
-    if (
-      etat.contexte.travail &&
-      decision.questionKey === "zone_recherche"
-    ) {
-      compris =
-        "Je comprends que vous recherchez un emploi. Je commence par préciser votre zone de recherche.";
-    }
+const langue =
+langueQuestion(
+options.langue || "fr"
+);
 
-    if (
-      etat.contexte.travail &&
-      decision.questionKey === "type_emploi"
-    ) {
-      compris =
-        "J'ai compris votre zone de recherche. Je précise maintenant le type d'emploi que vous recherchez.";
-    }
+const decision =
+construireDecision(
+etat,
+langue
+);
 
-    if (
-      etat.contexte.travail &&
-      decision.questionKey === "mobilite"
-    ) {
-      compris =
-        "J'ai compris le type d'emploi recherché. Je vérifie maintenant votre possibilité de déplacement.";
-    }
+const sources =
+selectSources(
+etat.contexte
+);
 
-    if (
-      etat.contexte.travail &&
-      decision.questionKey === "horaires"
-    ) {
-      compris =
-        "J'ai compris votre zone, votre recherche et votre mobilité. Je vérifie maintenant votre disponibilité concernant les horaires.";
-    }
+/*
+* =======================================================
+* QUESTION DÉTERMINISTE
+* =======================================================
+*/
 
-    return {
-      success: true,
-      version: VERSION,
-      decisionVersion: DECISION_VERSION,
+if (
+decision.etape === "question"
+) {
 
-      compris,
+const nouvellesQuestions =
+unique([
+...(etat.questionsPosees || []),
+decision.questionKey
+]);
 
-      orientation:
-        "Nous allons avancer étape par étape afin de construire une orientation adaptée.",
+let compris =
+"Je comprends votre demande. Pour avancer correctement, j'ai besoin d'une information supplémentaire.";
 
-      confirmed: confirmed(
-        etat.informations,
-        etat.contexte
-      ),
+if (
+etat.contexte.travail &&
+decision.questionKey ===
+"zone_recherche"
+) {
+compris =
+"Je comprends que vous recherchez un emploi. Je commence par préciser votre zone de recherche.";
+}
 
-      toVerify: [],
+if (
+etat.contexte.travail &&
+decision.questionKey ===
+"type_emploi"
+) {
+compris =
+"J'ai compris votre zone de recherche. Je précise maintenant le type d'emploi que vous recherchez.";
+}
 
-      recommendations: [],
+if (
+etat.contexte.travail &&
+decision.questionKey ===
+"mobilite"
+) {
+compris =
+"J'ai compris le type d'emploi recherché. Je vérifie maintenant votre possibilité de déplacement.";
+}
 
-      actions: [],
+if (
+etat.contexte.travail &&
+decision.questionKey ===
+"horaires"
+) {
+compris =
+"J'ai compris votre zone, votre recherche et votre mobilité. Je vérifie maintenant votre disponibilité concernant les horaires.";
+}
 
-      documents: [],
+return {
+success: true,
 
-      risks: [],
+version:
+VERSION,
 
-      professional: [],
+decisionVersion:
+DECISION_VERSION,
 
-      nextAction: decision.question,
+compris,
 
-      questionSuivante: decision.question,
+orientation:
+"Nous allons avancer étape par étape afin de construire une orientation adaptée.",
 
-      questionKey: decision.questionKey,
+confirmed:
+confirmed(
+etat.informations,
+etat.contexte
+),
 
-      questionsPosees: nouvellesQuestions,
+toVerify: [],
 
-      informations: etat.informations,
+recommendations: [],
 
-      etat: {
-        informations: etat.informations,
-        questionsPosees: nouvellesQuestions,
-        contexte: etat.contexte
-      },
+actions: [],
 
-      decision,
+documents: [],
 
-      sources: sources.map(source => ({
-        id: source.id,
-        titre: source.titre,
-        organisme: source.organisme,
-        url: source.url
-      }))
-    };
-  }
+risks: [],
 
-  /*
-   * =======================================================
-   * ORIENTATION FINALE
-   * =======================================================
-   */
+professional: [],
 
-  let orientation = "";
+nextAction:
+decision.question,
 
-  if (etat.contexte.travail) {
-    const emploiFacts =
-      construireOrientationEmploi(
-        etat.informations
-      );
+questionSuivante:
+decision.question,
 
-    orientation = await askAI(
-      env,
-      `
+questionKey:
+decision.questionKey,
+
+questionsPosees:
+nouvellesQuestions,
+
+informations:
+etat.informations,
+
+etat: {
+informations:
+etat.informations,
+
+questionsPosees:
+nouvellesQuestions,
+
+contexte:
+etat.contexte,
+
+parcoursEmploi:
+etat.parcoursEmploi
+},
+
+decision,
+
+sources:
+sources.map(
+source => ({
+id:
+source.id,
+
+titre:
+source.titre,
+
+organisme:
+source.organisme,
+
+url:
+source.url
+})
+)
+};
+}
+
+/*
+* =======================================================
+* ORIENTATION FINALE
+* =======================================================
+*/
+
+let orientation = "";
+
+if (
+etat.contexte.travail
+) {
+
+const emploiFacts =
+construireOrientationEmploi(
+etat.informations
+);
+
+orientation =
+await askAI(
+env,
+
+`
 Tu dois produire une orientation professionnelle courte et concrète.
 
 IMPORTANT :
@@ -1511,163 +2105,216 @@ Réponds en français avec :
 2. quelques pistes correspondant aux informations ;
 3. une prochaine action concrète.
 `,
-      1000
-    );
 
-    if (!orientation) {
-      orientation =
-        "Votre profil permet maintenant de commencer à rechercher des possibilités d'emploi correspondant à votre zone, votre recherche, votre mobilité et vos disponibilités. Les conditions exactes doivent être vérifiées pour chaque offre.";
-    }
-  } else if (etat.contexte.immigration) {
-    orientation = await askAI(
-      env,
-      `
+1000
+);
+
+if (!orientation) {
+orientation =
+"Votre profil permet maintenant de commencer à rechercher des possibilités d'emploi correspondant à votre zone, votre recherche, votre mobilité et vos disponibilités. Les conditions exactes doivent être vérifiées pour chaque offre.";
+}
+
+} else if (
+etat.contexte.immigration
+) {
+
+orientation =
+await askAI(
+env,
+
+`
 Analyse la situation administrative suivante.
 
 Informations confirmées :
-${JSON.stringify(etat.informations)}
+${JSON.stringify(
+etat.informations
+)}
 
 Contexte :
-${JSON.stringify(etat.contexte)}
+${JSON.stringify(
+etat.contexte
+)}
 
 Donne une orientation prudente.
 Ne déduis aucun droit non confirmé.
 Ne donne aucune conclusion juridique définitive.
 Indique les éléments qui doivent être vérifiés.
 `,
-      900
-    );
 
-    if (!orientation) {
-      orientation =
-        "La situation administrative a été identifiée. Il faut maintenant vérifier la procédure exacte et les documents réellement détenus avant toute conclusion.";
-    }
-  } else if (etat.contexte.entreprise) {
-    orientation = await askAI(
-      env,
-      `
+900
+);
+
+if (!orientation) {
+orientation =
+"La situation administrative a été identifiée. Il faut maintenant vérifier la procédure exacte et les documents réellement détenus avant toute conclusion.";
+}
+
+} else if (
+etat.contexte.entreprise
+) {
+
+orientation =
+await askAI(
+env,
+
+`
 Analyse ce projet d'entreprise uniquement à partir des informations confirmées :
 
-${JSON.stringify(etat.informations)}
+${JSON.stringify(
+etat.informations
+)}
 
 Donne une orientation pratique et prudente.
 Ne choisis pas automatiquement un statut juridique.
 `,
-      900
-    );
 
-    if (!orientation) {
-      orientation =
-        "Votre projet d'entreprise a été identifié. La prochaine étape consiste à préciser l'activité et les formalités correspondant exactement au projet.";
-    }
-  } else {
-    orientation = await askAI(
-      env,
-      `
+900
+);
+
+if (!orientation) {
+orientation =
+"Votre projet d'entreprise a été identifié. La prochaine étape consiste à préciser l'activité et les formalités correspondant exactement au projet.";
+}
+
+} else {
+
+orientation =
+await askAI(
+env,
+
+`
 Analyse la demande suivante :
 
 ${baseQuestion}
 
 Informations confirmées :
-${JSON.stringify(etat.informations)}
+${JSON.stringify(
+etat.informations
+)}
 
 Donne une orientation pratique sans inventer de faits.
 `,
-      900
-    );
 
-    if (!orientation) {
-      orientation =
-        "GouRare AI a identifié votre demande. Les informations disponibles permettent de poursuivre l'analyse.";
-    }
-  }
+900
+);
 
-  const nextAction = etat.contexte.travail
-    ? "Vous pouvez maintenant commencer les recherches correspondant à votre profil et vérifier les conditions de chaque opportunité."
-    : "Vérifiez les éléments importants et poursuivez avec l'action indiquée.";
+if (!orientation) {
+orientation =
+"GouRare AI a identifié votre demande. Les informations disponibles permettent de poursuivre l'analyse.";
+}
+}
 
-  return {
-    success: true,
+const nextAction =
+etat.contexte.travail
+? "Vous pouvez maintenant commencer les recherches correspondant à votre profil et vérifier les conditions de chaque opportunité."
+: "Vérifiez les éléments importants et poursuivez avec l'action indiquée.";
 
-    version: VERSION,
+return {
+success: true,
 
-    decisionVersion: DECISION_VERSION,
+version:
+VERSION,
 
-    compris:
-      etat.contexte.travail
-        ? "Votre situation de recherche d'emploi est maintenant suffisamment précisée pour commencer l'orientation."
-        : "Votre demande a été analysée à partir des informations disponibles.",
+decisionVersion:
+DECISION_VERSION,
 
-    orientation,
+compris:
+etat.contexte.travail
+? "Votre situation de recherche d'emploi est maintenant suffisamment précisée pour commencer l'orientation."
+: "Votre demande a été analysée à partir des informations disponibles.",
 
-    confirmed: confirmed(
-      etat.informations,
-      etat.contexte
-    ),
+orientation,
 
-    toVerify:
-      etat.contexte.immigration
-        ? [
-            "Vérifier les documents et le statut exacts.",
-            "Vérifier la procédure officielle correspondant à votre situation."
-          ]
-        : [],
+confirmed:
+confirmed(
+etat.informations,
+etat.contexte
+),
 
-    recommendations: recommendations(
-      etat.informations,
-      etat.contexte
-    ),
+toVerify:
+etat.contexte.immigration
+? [
+"Vérifier les documents et le statut exacts.",
+"Vérifier la procédure officielle correspondant à votre situation."
+]
+: [],
 
-    actions: actions(
-      etat.informations,
-      etat.contexte
-    ),
+recommendations:
+recommendations(
+etat.informations,
+etat.contexte
+),
 
-    documents: documents(
-      etat.informations,
-      etat.contexte
-    ),
+actions:
+actions(
+etat.informations,
+etat.contexte
+),
 
-    risks: [],
+documents:
+documents(
+etat.informations,
+etat.contexte
+),
 
-    professional: [],
+risks: [],
 
-    nextAction,
+professional: [],
 
-    questionSuivante: nextAction,
+nextAction,
 
-    questionKey: null,
+questionSuivante:
+nextAction,
 
-    questionsPosees:
-      etat.questionsPosees || [],
+questionKey: null,
 
-    informations:
-      etat.informations,
+questionsPosees:
+etat.questionsPosees || [],
 
-    etat: {
-      informations: etat.informations,
-      questionsPosees:
-        etat.questionsPosees || [],
-      contexte: etat.contexte
-    },
+informations:
+etat.informations,
 
-    decision,
+etat: {
+informations:
+etat.informations,
 
-    sources: sources.map(source => ({
-      id: source.id,
-      titre: source.titre,
-      organisme: source.organisme,
-      url: source.url
-    }))
-  };
+questionsPosees:
+etat.questionsPosees || [],
+
+contexte:
+etat.contexte,
+
+parcoursEmploi:
+etat.parcoursEmploi
+},
+
+decision,
+
+sources:
+sources.map(
+source => ({
+id:
+source.id,
+
+titre:
+source.titre,
+
+organisme:
+source.organisme,
+
+url:
+source.url
+})
+)
+};
 }
 
 /* =========================================================
-   HTML
-   ========================================================= */
+HTML
+========================================================= */
 
 function pageHTML() {
-  return `<!doctype html>
+return `<!doctype html>
 <html lang="fr">
 
 <head>
@@ -1675,13 +2322,13 @@ function pageHTML() {
 <meta charset="utf-8">
 
 <meta
-  name="viewport"
-  content="width=device-width,initial-scale=1"
+name="viewport"
+content="width=device-width,initial-scale=1"
 >
 
 <meta
-  name="theme-color"
-  content="#111827"
+name="theme-color"
+content="#111827"
 >
 
 <title>GouRare AI</title>
@@ -1689,203 +2336,203 @@ function pageHTML() {
 <style>
 
 *{
-  box-sizing:border-box;
+box-sizing:border-box;
 }
 
 body{
-  margin:0;
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Roboto,
-    Arial,
-    sans-serif;
-  background:#f4f6f8;
-  color:#111827;
+margin:0;
+font-family:
+-apple-system,
+BlinkMacSystemFont,
+"Segoe UI",
+Roboto,
+Arial,
+sans-serif;
+background:#f4f6f8;
+color:#111827;
 }
 
 header{
-  background:#111827;
-  color:white;
-  padding:28px 18px;
-  text-align:center;
+background:#111827;
+color:white;
+padding:28px 18px;
+text-align:center;
 }
 
 header h1{
-  margin:0 0 8px;
-  font-size:32px;
+margin:0 0 8px;
+font-size:32px;
 }
 
 header p{
-  margin:0;
-  opacity:.85;
+margin:0;
+opacity:.85;
 }
 
 .container{
-  max-width:950px;
-  margin:25px auto;
-  padding:0 15px 80px;
+max-width:950px;
+margin:25px auto;
+padding:0 15px 80px;
 }
 
 .card,
 .result-card{
-  background:white;
-  border-radius:18px;
-  padding:20px;
-  margin-bottom:18px;
-  box-shadow:
-    0 8px 30px rgba(0,0,0,.07);
+background:white;
+border-radius:18px;
+padding:20px;
+margin-bottom:18px;
+box-shadow:
+0 8px 30px rgba(0,0,0,.07);
 }
 
 h2{
-  margin-top:0;
+margin-top:0;
 }
 
 .welcome{
-  text-align:center;
+text-align:center;
 }
 
 .choices{
-  display:grid;
-  grid-template-columns:
-    repeat(2,1fr);
-  gap:14px;
+display:grid;
+grid-template-columns:
+repeat(2,1fr);
+gap:14px;
 }
 
 .choice{
-  padding:22px 16px;
-  border:1px solid #e5e7eb;
-  border-radius:16px;
-  background:white;
-  text-align:left;
-  cursor:pointer;
+padding:22px 16px;
+border:1px solid #e5e7eb;
+border-radius:16px;
+background:white;
+text-align:left;
+cursor:pointer;
 }
 
 .choice strong{
-  display:block;
-  font-size:19px;
-  margin-bottom:7px;
+display:block;
+font-size:19px;
+margin-bottom:7px;
 }
 
 .choice span{
-  color:#6b7280;
+color:#6b7280;
 }
 
 textarea,
 input,
 select{
-  width:100%;
-  padding:13px;
-  border:1px solid #d1d5db;
-  border-radius:11px;
-  font-size:16px;
-  background:white;
+width:100%;
+padding:13px;
+border:1px solid #d1d5db;
+border-radius:11px;
+font-size:16px;
+background:white;
 }
 
 textarea{
-  min-height:130px;
-  resize:vertical;
+min-height:130px;
+resize:vertical;
 }
 
 button{
-  border:0;
-  border-radius:11px;
-  padding:12px 16px;
-  font-size:15px;
-  cursor:pointer;
-  background:#111827;
-  color:white;
+border:0;
+border-radius:11px;
+padding:12px 16px;
+font-size:15px;
+cursor:pointer;
+background:#111827;
+color:white;
 }
 
 .secondary{
-  background:#e5e7eb;
-  color:#111827;
+background:#e5e7eb;
+color:#111827;
 }
 
 .back{
-  margin-bottom:15px;
+margin-bottom:15px;
 }
 
 .actions{
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px;
-  margin-top:12px;
+display:flex;
+flex-wrap:wrap;
+gap:10px;
+margin-top:12px;
 }
 
 .actions button{
-  flex:1;
+flex:1;
 }
 
 .result-card{
-  border-left:5px solid #111827;
+border-left:5px solid #111827;
 }
 
 .ai-result{
-  white-space:pre-wrap;
-  line-height:1.65;
+white-space:pre-wrap;
+line-height:1.65;
 }
 
 .result-card ul{
-  padding-left:22px;
+padding-left:22px;
 }
 
 .source{
-  padding:11px;
-  background:#f3f4f6;
-  border-radius:10px;
-  margin:8px 0;
+padding:11px;
+background:#f3f4f6;
+border-radius:10px;
+margin:8px 0;
 }
 
 .source a{
-  color:#111827;
-  font-weight:600;
+color:#111827;
+font-weight:600;
 }
 
 .status{
-  margin-top:10px;
-  color:#4b5563;
+margin-top:10px;
+color:#4b5563;
 }
 
 .hidden{
-  display:none;
+display:none;
 }
 
 .cancer{
-  position:fixed;
-  right:12px;
-  bottom:12px;
-  background:white;
-  border:1px solid #e5e7eb;
-  padding:10px 13px;
-  border-radius:999px;
-  box-shadow:
-    0 5px 20px rgba(0,0,0,.12);
-  font-size:13px;
-  z-index:20;
+position:fixed;
+right:12px;
+bottom:12px;
+background:white;
+border:1px solid #e5e7eb;
+padding:10px 13px;
+border-radius:999px;
+box-shadow:
+0 5px 20px rgba(0,0,0,.12);
+font-size:13px;
+z-index:20;
 }
 
 footer{
-  text-align:center;
-  color:#6b7280;
-  padding:25px 10px;
+text-align:center;
+color:#6b7280;
+padding:25px 10px;
 }
 
 @media(max-width:650px){
 
-  .choices{
-    grid-template-columns:1fr;
-  }
+.choices{
+grid-template-columns:1fr;
+}
 
-  header h1{
-    font-size:27px;
-  }
+header h1{
+font-size:27px;
+}
 
-  .actions button{
-    width:100%;
-    flex-basis:100%;
-  }
+.actions button{
+width:100%;
+flex-basis:100%;
+}
 
 }
 
@@ -1896,193 +2543,193 @@ footer{
 <body>
 
 <header>
-  <h1>GouRare AI</h1>
-  <p>Votre intelligence d'orientation</p>
+<h1>GouRare AI</h1>
+<p>Votre intelligence d'orientation</p>
 </header>
 
 <div class="container">
 
-  <div
-    id="parcours"
-    class="card welcome"
-  ></div>
+<div
+id="parcours"
+class="card welcome"
+></div>
 
-  <div
-    id="assistant"
-    class="card hidden"
-  >
+<div
+id="assistant"
+class="card hidden"
+>
 
-    <button
-      class="secondary back"
-      id="retour"
-    >
-      ← Retour
-    </button>
+<button
+class="secondary back"
+id="retour"
+>
+← Retour
+</button>
 
-    <h2 id="titreParcours"></h2>
+<h2 id="titreParcours"></h2>
 
-    <p id="descriptionParcours"></p>
+<p id="descriptionParcours"></p>
 
-    <div
-      id="situations"
-      class="choices"
-    ></div>
+<div
+id="situations"
+class="choices"
+></div>
 
-  </div>
+</div>
 
-  <div
-    id="outil"
-    class="card hidden"
-  >
+<div
+id="outil"
+class="card hidden"
+>
 
-    <button
-      class="secondary back"
-      id="retourOutil"
-    >
-      ← Retour
-    </button>
+<button
+class="secondary back"
+id="retourOutil"
+>
+← Retour
+</button>
 
-    <h2>🧠 Votre demande</h2>
+<h2>🧠 Votre demande</h2>
 
-    <textarea
-      id="question"
-      placeholder="Expliquez votre situation..."
-    ></textarea>
+<textarea
+id="question"
+placeholder="Expliquez votre situation..."
+></textarea>
 
-    <div class="actions">
+<div class="actions">
 
-      <button id="analyser">
-        Analyser
-      </button>
+<button id="analyser">
+Analyser
+</button>
 
-      <button
-        id="micro"
-        class="secondary"
-      >
-        🎙️ Parler
-      </button>
+<button
+id="micro"
+class="secondary"
+>
+🎙️ Parler
+</button>
 
-      <button
-        id="photo"
-        class="secondary"
-      >
-        📷 Analyser une image
-      </button>
+<button
+id="photo"
+class="secondary"
+>
+📷 Analyser une image
+</button>
 
-    </div>
+</div>
 
-    <div
-      id="status"
-      class="status"
-    ></div>
+<div
+id="status"
+class="status"
+></div>
 
-    <input
-      id="imageInput"
-      type="file"
-      accept="image/*"
-      capture="environment"
-      class="hidden"
-    >
+<input
+id="imageInput"
+type="file"
+accept="image/*"
+capture="environment"
+class="hidden"
+>
 
-  </div>
+</div>
 
-  <div
-    id="messageCard"
-    class="card hidden"
-  >
+<div
+id="messageCard"
+class="card hidden"
+>
 
-    <h2>✉️ Messages et emails</h2>
+<h2>✉️ Messages et emails</h2>
 
-    <select id="messageMode">
+<select id="messageMode">
 
-      <option value="">
-        Mode normal
-      </option>
+<option value="">
+Mode normal
+</option>
 
-      <option value="analyse">
-        🔎 Analyser le message
-      </option>
+<option value="analyse">
+🔎 Analyser le message
+</option>
 
-      <option value="reponse">
-        ✍️ Préparer une réponse
-      </option>
+<option value="reponse">
+✍️ Préparer une réponse
+</option>
 
-      <option value="reformulation">
-        📝 Reformuler
-      </option>
+<option value="reformulation">
+📝 Reformuler
+</option>
 
-      <option value="correction">
-        ✅ Corriger
-      </option>
+<option value="correction">
+✅ Corriger
+</option>
 
-      <option value="traduction">
-        🌍 Traduire
-      </option>
+<option value="traduction">
+🌍 Traduire
+</option>
 
-    </select>
+</select>
 
-    <input
-      id="langue"
-      placeholder="Langue souhaitée pour une traduction (français, arabe, anglais)"
-      style="margin-top:10px"
-    >
+<input
+id="langue"
+placeholder="Langue souhaitée pour une traduction (français, arabe, anglais)"
+style="margin-top:10px"
+>
 
-  </div>
+</div>
 
-  <div id="result"></div>
+<div id="result"></div>
 
 </div>
 
 <div class="cancer">
-  🎗️ Avec vous contre le cancer
+🎗️ Avec vous contre le cancer
 </div>
 
 <footer>
-  🎗️ Notre soutien aux personnes touchées par le cancer.
-  <br><br>
-  GouRare AI — Version ${VERSION}
+🎗️ Notre soutien aux personnes touchées par le cancer.
+<br><br>
+GouRare AI — Version ${VERSION}
 </footer>
 
 <script>
 
 const parcours =
-  document.getElementById("parcours");
+document.getElementById("parcours");
 
 const assistant =
-  document.getElementById("assistant");
+document.getElementById("assistant");
 
 const outil =
-  document.getElementById("outil");
+document.getElementById("outil");
 
 const messageCard =
-  document.getElementById("messageCard");
+document.getElementById("messageCard");
 
 const situations =
-  document.getElementById("situations");
+document.getElementById("situations");
 
 const titre =
-  document.getElementById("titreParcours");
+document.getElementById("titreParcours");
 
 const desc =
-  document.getElementById("descriptionParcours");
+document.getElementById("descriptionParcours");
 
 const question =
-  document.getElementById("question");
+document.getElementById("question");
 
 const result =
-  document.getElementById("result");
+document.getElementById("result");
 
 const status =
-  document.getElementById("status");
+document.getElementById("status");
 
 const messageMode =
-  document.getElementById("messageMode");
+document.getElementById("messageMode");
 
 const langue =
-  document.getElementById("langue");
+document.getElementById("langue");
 
 const imageInput =
-  document.getElementById("imageInput");
+document.getElementById("imageInput");
 
 let profil = null;
 
@@ -2106,938 +2753,1016 @@ let recording = false;
 
 
 /* =======================================================
-   UTILITAIRES FRONTEND
-   ======================================================= */
+UTILITAIRES FRONTEND
+======================================================= */
 
 function esc(v){
-  return String(v || "")
-    .replace(/&/g,"&amp;")
-    .replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;")
-    .replace(/"/g,"&quot;")
-    .replace(/'/g,"&#039;");
+return String(v || "")
+.replace(/&/g,"&amp;")
+.replace(/</g,"&lt;")
+.replace(/>/g,"&gt;")
+.replace(/"/g,"&quot;")
+.replace(/'/g,"&#039;");
 }
 
 
 /* =======================================================
-   HOME
-   ======================================================= */
+HOME
+======================================================= */
 
 function showHome(){
 
-  profil = null;
+profil = null;
 
-  situation = null;
+situation = null;
 
-  historique = [];
+historique = [];
 
-  informations = [];
+informations = [];
 
-  documentInfos = [];
+documentInfos = [];
 
-  questionsPosees = [];
+questionsPosees = [];
 
-  etape = 0;
+etape = 0;
 
-  parcours.classList.remove("hidden");
+parcours.classList.remove("hidden");
 
-  assistant.classList.add("hidden");
+assistant.classList.add("hidden");
 
-  outil.classList.add("hidden");
+outil.classList.add("hidden");
 
-  messageCard.classList.add("hidden");
+messageCard.classList.add("hidden");
 
-  result.innerHTML = "";
+result.innerHTML = "";
 
-  parcours.innerHTML =
-    "<h2>Comment pouvons-nous vous orienter ?</h2>" +
-    "<p>Choisissez le parcours qui correspond le mieux à votre situation.</p>" +
-    "<div class='choices' id='profils'></div>" +
-    "<p style='margin-top:18px'>" +
-    "<button id='inconnu' class='secondary'>" +
-    "✨ Je ne sais pas où aller — GouRare AI m'oriente" +
-    "</button>" +
-    "</p>";
+parcours.innerHTML =
+"<h2>Comment pouvons-nous vous orienter ?</h2>" +
+"<p>Choisissez le parcours qui correspond le mieux à votre situation.</p>" +
+"<div class='choices' id='profils'></div>" +
+"<p style='margin-top:18px'>" +
+"<button id='inconnu' class='secondary'>" +
+"✨ Je ne sais pas où aller — GouRare AI m'oriente" +
+"</button>" +
+"</p>";
 
-  const p =
-    document.getElementById("profils");
+const p =
+document.getElementById("profils");
 
-  const parcoursData =
-    ${JSON.stringify(PARCOURS)};
+const parcoursData =
+${JSON.stringify(PARCOURS)};
 
-  Object.keys(parcoursData)
-    .forEach(function(k){
+Object.keys(parcoursData)
+.forEach(function(k){
 
-      const x = parcoursData[k];
+const x =
+parcoursData[k];
 
-      p.innerHTML +=
-        "<div class='choice' data-p='" +
-        esc(k) +
-        "'>" +
+p.innerHTML +=
+"<div class='choice' data-p='" +
+esc(k) +
+"'>" +
 
-        "<strong>" +
-        esc(x.titre) +
-        "</strong>" +
+"<strong>" +
+esc(x.titre) +
+"</strong>" +
 
-        "<span>" +
-        esc(x.description) +
-        "</span>" +
+"<span>" +
+esc(x.description) +
+"</span>" +
 
-        "</div>";
+"</div>";
 
-    });
+});
 
-  p.querySelectorAll(".choice")
-    .forEach(function(button){
+p.querySelectorAll(".choice")
+.forEach(function(button){
 
-      button.onclick =
-        function(){
+button.onclick =
+function(){
 
-          openProfil(
-            button.dataset.p
-          );
+openProfil(
+button.dataset.p
+);
 
-        };
+};
 
-    });
+});
 
-  document
-    .getElementById("inconnu")
-    .onclick =
-    function(){
+document
+.getElementById("inconnu")
+.onclick =
+function(){
 
-      openProfil("particulier");
+openProfil(
+"particulier"
+);
 
-      question.value =
-        "Je ne sais pas quel parcours correspond à ma situation. Aidez-moi à m'orienter.";
+question.value =
+"Je ne sais pas quel parcours correspond à ma situation. Aidez-moi à m'orienter.";
 
-      outil.classList.remove("hidden");
+outil.classList.remove(
+"hidden"
+);
 
-      messageCard.classList.add("hidden");
+messageCard.classList.add(
+"hidden"
+);
 
-      assistant.classList.add("hidden");
+assistant.classList.add(
+"hidden"
+);
 
-    };
+};
 
 }
 
 
 /* =======================================================
-   PROFIL
-   ======================================================= */
+PROFIL
+======================================================= */
 
 function openProfil(k){
 
-  profil = k;
+profil = k;
 
-  const parcoursData =
-    ${JSON.stringify(PARCOURS)};
+const parcoursData =
+${JSON.stringify(PARCOURS)};
 
-  const x =
-    parcoursData[k];
+const x =
+parcoursData[k];
 
-  parcours.classList.add("hidden");
+parcours.classList.add(
+"hidden"
+);
 
-  outil.classList.add("hidden");
+outil.classList.add(
+"hidden"
+);
 
-  messageCard.classList.add("hidden");
+messageCard.classList.add(
+"hidden"
+);
 
-  assistant.classList.remove("hidden");
+assistant.classList.remove(
+"hidden"
+);
 
-  titre.textContent =
-    x.titre;
+titre.textContent =
+x.titre;
 
-  desc.textContent =
-    x.description;
+desc.textContent =
+x.description;
 
-  situations.innerHTML = "";
+situations.innerHTML =
+"";
 
-  x.situations.forEach(
-    function(item){
+x.situations.forEach(
+function(item){
 
-      const b =
-        document.createElement("div");
+const b =
+document.createElement(
+"div"
+);
 
-      b.className = "choice";
+b.className =
+"choice";
 
-      b.innerHTML =
-        "<strong>" +
-        esc(item[1]) +
-        "</strong>";
+b.innerHTML =
+"<strong>" +
+esc(item[1]) +
+"</strong>";
 
-      b.dataset.s =
-        item[0];
+b.dataset.s =
+item[0];
 
-      b.onclick =
-        function(){
+b.onclick =
+function(){
 
-          openSituation(
-            item[0],
-            item[1]
-          );
+openSituation(
+item[0],
+item[1]
+);
 
-        };
+};
 
-      situations.appendChild(b);
+situations.appendChild(
+b
+);
 
-    }
-  );
+}
+);
 
 }
 
 
 /* =======================================================
-   SITUATION
-   ======================================================= */
+SITUATION
+======================================================= */
 
-function openSituation(s,label){
+function openSituation(
+s,
+label
+){
 
-  situation = s;
+situation = s;
 
-  historique = [];
+historique = [];
 
-  informations = [];
+informations = [];
 
-  documentInfos = [];
+documentInfos = [];
 
-  questionsPosees = [];
+questionsPosees = [];
 
-  etape = 0;
+etape = 0;
 
-  assistant.classList.add("hidden");
+assistant.classList.add(
+"hidden"
+);
 
-  outil.classList.remove("hidden");
+outil.classList.remove(
+"hidden"
+);
 
-  messageCard.classList.remove("hidden");
+messageCard.classList.remove(
+"hidden"
+);
 
-  question.value = "";
+question.value =
+"";
 
-  result.innerHTML = "";
+result.innerHTML =
+"";
 
-  status.textContent =
-    "Parcours sélectionné : " +
-    label;
+status.textContent =
+"Parcours sélectionné : " +
+label;
 
-  messageMode.value = "";
+messageMode.value =
+"";
 
-  if(
-    s === "message" ||
-    s === "document"
-  ){
-    messageMode.value =
-      "analyse";
-  }
+if(
+s === "message" ||
+s === "document"
+){
+
+messageMode.value =
+"analyse";
+
+}
 
 }
 
 
 /* =======================================================
-   RETOUR
-   ======================================================= */
+RETOUR
+======================================================= */
 
 document
-  .getElementById("retour")
-  .onclick =
-  showHome;
+.getElementById("retour")
+.onclick =
+showHome;
 
 document
-  .getElementById("retourOutil")
-  .onclick =
-  function(){
+.getElementById("retourOutil")
+.onclick =
+function(){
 
-    outil.classList.add("hidden");
+outil.classList.add(
+"hidden"
+);
 
-    messageCard.classList.add("hidden");
+messageCard.classList.add(
+"hidden"
+);
 
-    assistant.classList.remove("hidden");
+assistant.classList.remove(
+"hidden"
+);
 
-    result.innerHTML = "";
+result.innerHTML =
+"";
 
-  };
+};
 
 
 showHome();
 
 
 /* =======================================================
-   ENVOI
-   ======================================================= */
+ENVOI
+======================================================= */
 
 async function analyserTexte(){
 
-  const q =
-    question.value.trim();
+const q =
+question.value.trim();
 
-  if(!q){
+if(!q){
 
-    status.textContent =
-      "Veuillez écrire ou dire votre demande.";
+status.textContent =
+"Veuillez écrire ou dire votre demande.";
 
-    return;
+return;
 
-  }
+}
 
-  status.textContent =
-    "Analyse en cours...";
+status.textContent =
+"Analyse en cours...";
 
-  result.innerHTML = "";
+result.innerHTML =
+"";
 
-  try{
+try{
 
-    /*
-      On conserve uniquement les messages
-      nécessaires et on limite leur taille.
-    */
+const historyPayload =
+historique
+.slice(-30)
+.map(function(item){
 
-    const historyPayload =
-      historique
-        .slice(-30)
-        .map(function(item){
+return {
 
-          return {
-            role: item.role,
-            content:
-              String(item.content || "")
-                .slice(0,6000)
-          };
+role:
+item.role,
 
-        });
+content:
+String(
+item.content || ""
+).slice(
+0,
+6000
+)
 
-    const r =
-      await fetch(
-        "/api/analyze",
-        {
-          method:"POST",
+};
 
-          headers:{
-            "content-type":
-              "application/json"
-          },
+});
 
-          body:
-            JSON.stringify({
+const r =
+await fetch(
+"/api/analyze",
+{
 
-              type:
-                messageMode.value
-                  ? "message"
-                  : "question",
+method:
+"POST",
 
-              question:q,
+headers:{
+"content-type":
+"application/json"
+},
 
-              historique:
-                historyPayload,
+body:
+JSON.stringify({
 
-              informations:
-                informations,
+type:
+messageMode.value
+? "message"
+: "question",
 
-              documentInfos:
-                documentInfos,
+question:
+q,
 
-              questionsPosees:
-                questionsPosees,
+historique:
+historyPayload,
 
-              profil:
-                profil,
+informations:
+informations,
 
-              situation:
-                situation,
+documentInfos:
+documentInfos,
 
-              etape:
-                etape,
+questionsPosees:
+questionsPosees,
 
-              messageMode:
-                messageMode.value || null,
+profil:
+profil,
 
-              langue:
-                langue.value.trim()
+situation:
+situation,
 
-            })
+etape:
+etape,
 
-        }
-      );
+messageMode:
+messageMode.value ||
+null,
 
-    const d =
-      await r.json();
+langue:
+langue.value.trim()
 
-    if(
-      !r.ok ||
-      !d.success
-    ){
-      throw new Error(
-        d.error ||
-        "Erreur."
-      );
-    }
+})
 
+}
+);
 
-    /*
-      Le message de l'utilisateur
-      est conservé comme USER.
-    */
+const d =
+await r.json();
 
-    historique.push({
+if(
+!r.ok ||
+!d.success
+){
 
-      role:"user",
+throw new Error(
+d.error ||
+"Erreur."
+);
 
-      content:q
-
-    });
+}
 
 
-    /*
-      La réponse de l'assistant est conservée
-      pour le contexte de conversation,
-      mais le backend ne l'utilise jamais
-      comme preuve personnelle.
-    */
+/*
+USER uniquement.
+*/
 
-    historique.push({
+historique.push({
 
-      role:"assistant",
+role:
+"user",
 
-      content:
-        d.questionSuivante ||
-        d.orientation ||
-        ""
+content:
+q
 
-    });
+});
 
 
-    /*
-      Mise à jour de l'état canonique.
-    */
+/*
+Réponse assistant.
+Le backend ne l'utilise jamais
+comme preuve personnelle.
+*/
 
-    informations =
-      d.informations ||
-      d.etat?.informations ||
-      informations;
+historique.push({
 
-    questionsPosees =
-      d.questionsPosees ||
-      d.etat?.questionsPosees ||
-      questionsPosees;
+role:
+"assistant",
 
+content:
+d.questionSuivante ||
+d.orientation ||
+""
 
-    /*
-      Protection contre l'explosion de l'historique.
-    */
-
-    if(historique.length > 40){
-
-      historique =
-        historique.slice(-40);
-
-    }
+});
 
 
-    etape++;
+/*
+État canonique.
+*/
 
-    afficher(d);
+informations =
+d.informations ||
+d.etat?.informations ||
+informations;
 
-    question.value = "";
+questionsPosees =
+d.questionsPosees ||
+d.etat?.questionsPosees ||
+questionsPosees;
 
-    status.textContent =
-      d.decision?.etape === "question"
-        ? "Répondez à la question suivante pour continuer."
-        : "Analyse terminée.";
 
-  }catch(e){
+if(
+historique.length >
+40
+){
 
-    status.textContent =
-      e.message ||
-      "Erreur.";
+historique =
+historique.slice(-40);
 
-  }
+}
+
+
+etape++;
+
+afficher(d);
+
+question.value =
+"";
+
+status.textContent =
+d.decision?.etape === "question"
+? "Répondez à la question suivante pour continuer."
+: "Analyse terminée.";
+
+}catch(e){
+
+status.textContent =
+e.message ||
+"Erreur.";
+
+}
 
 }
 
 
 /* =======================================================
-   LISTES
-   ======================================================= */
+LISTES
+======================================================= */
 
 function liste(a){
 
-  if(
-    !a ||
-    !a.length
-  ){
+if(
+!a ||
+!a.length
+){
 
-    return (
-      "<p>Aucun élément précis à présenter à ce stade.</p>"
-    );
+return (
+"<p>Aucun élément précis à présenter à ce stade.</p>"
+);
 
-  }
+}
 
-  return (
-    "<ul>" +
+return (
+"<ul>" +
 
-    a.map(
-      function(x){
+a.map(
+function(x){
 
-        const v =
-          typeof x === "string"
-            ? x
-            : (
-                x?.texte ||
-                JSON.stringify(x)
-              );
+const v =
+typeof x === "string"
+? x
+: (
+x?.texte ||
+JSON.stringify(x)
+);
 
-        return (
-          "<li>" +
-          esc(v) +
-          "</li>"
-        );
+return (
+"<li>" +
+esc(v) +
+"</li>"
+);
 
-      }
-    ).join("") +
+}
+).join("") +
 
-    "</ul>"
-  );
+"</ul>"
+);
 
 }
 
 
 /* =======================================================
-   AFFICHAGE
-   ======================================================= */
+AFFICHAGE
+======================================================= */
 
 function afficher(d){
 
-  let h = "";
+let h =
+"";
 
-  h +=
-    "<div class='result-card'>" +
-      "<h2>🧭 Ce que j'ai compris</h2>" +
-      "<div class='ai-result'>" +
-        esc(d.compris) +
-      "</div>" +
-    "</div>";
-
-
-  h +=
-    "<div class='result-card'>" +
-      "<h2>💡 Orientation</h2>" +
-      "<div class='ai-result'>" +
-        esc(d.orientation) +
-      "</div>" +
-    "</div>";
+h +=
+"<div class='result-card'>" +
+"<h2>🧭 Ce que j'ai compris</h2>" +
+"<div class='ai-result'>" +
+esc(d.compris) +
+"</div>" +
+"</div>";
 
 
-  h +=
-    "<div class='result-card'>" +
-      "<h2>✅ Informations confirmées</h2>" +
-      liste(d.confirmed) +
-    "</div>";
+h +=
+"<div class='result-card'>" +
+"<h2>💡 Orientation</h2>" +
+"<div class='ai-result'>" +
+esc(d.orientation) +
+"</div>" +
+"</div>";
 
 
-  h +=
-    "<div class='result-card'>" +
-      "<h2>🔎 À vérifier</h2>" +
-      liste(d.toVerify) +
-    "</div>";
+h +=
+"<div class='result-card'>" +
+"<h2>✅ Informations confirmées</h2>" +
+liste(d.confirmed) +
+"</div>";
 
 
-  h +=
-    "<div class='result-card'>" +
-      "<h2>💭 Recommandations</h2>" +
-      liste(d.recommendations) +
-    "</div>";
+h +=
+"<div class='result-card'>" +
+"<h2>🔎 À vérifier</h2>" +
+liste(d.toVerify) +
+"</div>";
 
 
-  h +=
-    "<div class='result-card'>" +
-      "<h2>📋 Actions concrètes</h2>" +
-      liste(d.actions) +
-    "</div>";
+h +=
+"<div class='result-card'>" +
+"<h2>💭 Recommandations</h2>" +
+liste(d.recommendations) +
+"</div>";
 
 
-  h +=
-    "<div class='result-card'>" +
-      "<h2>📄 Documents</h2>" +
-
-      (
-        d.documents &&
-        d.documents.length
-          ? liste(d.documents)
-          : "<p>Aucun document précis à présenter à ce stade.</p>"
-      ) +
-
-    "</div>";
+h +=
+"<div class='result-card'>" +
+"<h2>📋 Actions concrètes</h2>" +
+liste(d.actions) +
+"</div>";
 
 
-  h +=
-    "<div class='result-card'>" +
-      "<h2>🚀 Prochaine action</h2>" +
+h +=
+"<div class='result-card'>" +
+"<h2>📄 Documents</h2>" +
 
-      "<div class='ai-result'>" +
-        esc(d.nextAction) +
-      "</div>" +
+(
+d.documents &&
+d.documents.length
+? liste(d.documents)
+: "<p>Aucun document précis à présenter à ce stade.</p>"
+) +
 
-      (
-        d.decision?.etape === "question"
-          ? "<p style='margin-bottom:0;color:#4b5563'>" +
-            "Répondez à cette question dans la zone ci-dessus, puis appuyez sur « Analyser » pour continuer." +
-            "</p>"
-          : ""
-      ) +
-
-    "</div>";
+"</div>";
 
 
-  /*
-    Sources officielles visibles
-  */
+h +=
+"<div class='result-card'>" +
+"<h2>🚀 Prochaine action</h2>" +
 
-  if(
-    d.sources &&
-    d.sources.length
-  ){
+"<div class='ai-result'>" +
+esc(d.nextAction) +
+"</div>" +
 
-    h +=
-      "<div class='result-card'>" +
-        "<h2>📚 Sources consultées</h2>";
+(
+d.decision?.etape === "question"
+? "<p style='margin-bottom:0;color:#4b5563'>" +
+"Répondez à cette question dans la zone ci-dessus, puis appuyez sur « Analyser » pour continuer." +
+"</p>"
+: ""
+) +
 
-    d.sources.forEach(
-      function(s){
-
-        h +=
-          "<div class='source'>" +
-
-            "<strong>" +
-              esc(s.organisme) +
-            "</strong>" +
-
-            " — " +
-
-            esc(s.titre) +
-
-            "<br>" +
-
-            "<a href='" +
-              esc(s.url) +
-              "' " +
-              "target='_blank' " +
-              "rel='noopener noreferrer'>" +
-
-              "Consulter la source officielle ↗" +
-
-            "</a>" +
-
-          "</div>";
-
-      }
-    );
-
-    h += "</div>";
-
-  }
+"</div>";
 
 
-  result.innerHTML = h;
+if(
+d.sources &&
+d.sources.length
+){
+
+h +=
+"<div class='result-card'>" +
+"<h2>📚 Sources consultées</h2>";
+
+d.sources.forEach(
+function(s){
+
+h +=
+"<div class='source'>" +
+
+"<strong>" +
+esc(s.organisme) +
+"</strong>" +
+
+" — " +
+
+esc(s.titre) +
+
+"<br>" +
+
+"<a href='" +
+esc(s.url) +
+"' " +
+"target='_blank' " +
+"rel='noopener noreferrer'>" +
+
+"Consulter la source officielle ↗" +
+
+"</a>" +
+
+"</div>";
+
+}
+);
+
+h +=
+"</div>";
+
+}
+
+
+result.innerHTML =
+h;
 
 }
 
 
 /* =======================================================
-   BOUTON ANALYSER
-   ======================================================= */
+BOUTON ANALYSER
+======================================================= */
 
 document
-  .getElementById("analyser")
-  .onclick =
-  analyserTexte;
+.getElementById("analyser")
+.onclick =
+analyserTexte;
 
 
 /* =======================================================
-   IMAGE
-   ======================================================= */
+IMAGE
+======================================================= */
 
 document
-  .getElementById("photo")
-  .onclick =
-  function(){
+.getElementById("photo")
+.onclick =
+function(){
 
-    imageInput.click();
+imageInput.click();
 
-  };
+};
 
 
 imageInput.onchange =
-  function(){
+function(){
 
-    const f =
-      imageInput.files &&
-      imageInput.files[0];
+const f =
+imageInput.files &&
+imageInput.files[0];
 
-    if(!f) return;
+if(!f) return;
 
-    if(
-      !f.type.startsWith("image/")
-    ){
+if(
+!f.type.startsWith(
+"image/"
+)
+){
 
-      status.textContent =
-        "Veuillez sélectionner une image.";
+status.textContent =
+"Veuillez sélectionner une image.";
 
-      return;
+return;
 
-    }
+}
 
-    if(
-      f.size > 5500000
-    ){
+if(
+f.size >
+5500000
+){
 
-      status.textContent =
-        "Image trop volumineuse.";
+status.textContent =
+"Image trop volumineuse.";
 
-      return;
+return;
 
-    }
+}
 
-    const reader =
-      new FileReader();
+const reader =
+new FileReader();
 
-    status.textContent =
-      "📷 Analyse de l'image...";
+status.textContent =
+"📷 Analyse de l'image...";
 
-    reader.onloadend =
-      async function(){
+reader.onloadend =
+async function(){
 
-        try{
+try{
 
-          const r =
-            await fetch(
-              "/api/image",
-              {
-                method:"POST",
+const r =
+await fetch(
+"/api/image",
+{
 
-                headers:{
-                  "content-type":
-                    "application/json"
-                },
+method:
+"POST",
 
-                body:
-                  JSON.stringify({
-                    image:
-                      reader.result,
+headers:{
+"content-type":
+"application/json"
+},
 
-                    demande:
-                      question.value.trim()
-                  })
-              }
-            );
+body:
+JSON.stringify({
 
-          const d =
-            await r.json();
+image:
+reader.result,
 
-          if(
-            !r.ok ||
-            !d.success
-          ){
+demande:
+question.value.trim()
 
-            throw new Error(
-              d.error ||
-              "Erreur image."
-            );
+})
 
-          }
+}
+);
 
-          question.value =
-            d.texte || "";
+const d =
+await r.json();
 
-          await analyserTexte();
+if(
+!r.ok ||
+!d.success
+){
 
-        }catch(e){
+throw new Error(
+d.error ||
+"Erreur image."
+);
 
-          status.textContent =
-            e.message ||
-            "Erreur image.";
+}
 
-        }
+question.value =
+d.texte || "";
 
-      };
+await analyserTexte();
 
-    reader.readAsDataURL(f);
+}catch(e){
 
-  };
+status.textContent =
+e.message ||
+"Erreur image.";
+
+}
+
+};
+
+reader.readAsDataURL(f);
+
+};
 
 
 /* =======================================================
-   MICROPHONE
-   ======================================================= */
+MICROPHONE
+======================================================= */
 
 document
-  .getElementById("micro")
-  .onclick =
-  async function(){
+.getElementById("micro")
+.onclick =
+async function(){
 
-    if(
-      recording &&
-      mediaRecorder
-    ){
+if(
+recording &&
+mediaRecorder
+){
 
-      mediaRecorder.stop();
+mediaRecorder.stop();
 
-      return;
+return;
 
-    }
+}
 
-    if(
-      !navigator.mediaDevices?.getUserMedia
-    ){
+if(
+!navigator.mediaDevices?.getUserMedia
+){
 
-      status.textContent =
-        "Microphone indisponible.";
+status.textContent =
+"Microphone indisponible.";
 
-      return;
+return;
 
-    }
+}
 
-    try{
+try{
 
-      const stream =
-        await navigator.mediaDevices
-          .getUserMedia({
-            audio:true
-          });
+const stream =
+await navigator.mediaDevices
+.getUserMedia({
+audio:true
+});
 
-      audioChunks = [];
+audioChunks =
+[];
 
-      mediaRecorder =
-        new MediaRecorder(stream);
+mediaRecorder =
+new MediaRecorder(
+stream
+);
 
-      recording = true;
+recording =
+true;
 
-      this.textContent =
-        "⏹️ Arrêter";
+this.textContent =
+"⏹️ Arrêter";
 
-      status.textContent =
-        "🎙️ Je vous écoute...";
-
-
-      mediaRecorder.ondataavailable =
-        function(e){
-
-          if(e.data.size){
-
-            audioChunks.push(e.data);
-
-          }
-
-        };
+status.textContent =
+"🎙️ Je vous écoute...";
 
 
-      mediaRecorder.onstop =
-        async function(){
+mediaRecorder.ondataavailable =
+function(e){
 
-          recording = false;
+if(e.data.size){
 
-          document
-            .getElementById("micro")
-            .textContent =
-              "🎙️ Parler";
+audioChunks.push(
+e.data
+);
 
-          stream
-            .getTracks()
-            .forEach(
-              track =>
-                track.stop()
-            );
+}
+
+};
 
 
-          const blob =
-            new Blob(
-              audioChunks,
-              {
-                type:
-                  mediaRecorder.mimeType ||
-                  "audio/webm"
-              }
-            );
+mediaRecorder.onstop =
+async function(){
+
+recording =
+false;
+
+document
+.getElementById(
+"micro"
+)
+.textContent =
+"🎙️ Parler";
+
+stream
+.getTracks()
+.forEach(
+track =>
+track.stop()
+);
 
 
-          const reader =
-            new FileReader();
+const blob =
+new Blob(
+audioChunks,
+{
+type:
+mediaRecorder.mimeType ||
+"audio/webm"
+}
+);
 
 
-          reader.onloadend =
-            async function(){
-
-              try{
-
-                const r =
-                  await fetch(
-                    "/api/transcribe",
-                    {
-                      method:"POST",
-
-                      headers:{
-                        "content-type":
-                          "application/json"
-                      },
-
-                      body:
-                        JSON.stringify({
-                          audio:
-                            reader.result,
-
-                          langue:
-                            "fr"
-                        })
-                    }
-                  );
+const reader =
+new FileReader();
 
 
-                const d =
-                  await r.json();
+reader.onloadend =
+async function(){
+
+try{
+
+const r =
+await fetch(
+"/api/transcribe",
+{
+
+method:
+"POST",
+
+headers:{
+"content-type":
+"application/json"
+},
+
+body:
+JSON.stringify({
+
+audio:
+reader.result,
+
+langue:
+"fr"
+
+})
+
+}
+);
 
 
-                if(
-                  !r.ok ||
-                  !d.success
-                ){
-
-                  throw new Error(
-                    d.error ||
-                    "Erreur audio."
-                  );
-
-                }
+const d =
+await r.json();
 
 
-                question.value =
-                  d.text || "";
+if(
+!r.ok ||
+!d.success
+){
+
+throw new Error(
+d.error ||
+"Erreur audio."
+);
+
+}
 
 
-                await analyserTexte();
+question.value =
+d.text || "";
 
 
-              }catch(e){
-
-                status.textContent =
-                  e.message ||
-                  "Erreur audio.";
-
-              }
-
-            };
+await analyserTexte();
 
 
-          reader.readAsDataURL(blob);
+}catch(e){
 
-        };
+status.textContent =
+e.message ||
+"Erreur audio.";
+
+}
+
+};
 
 
-      mediaRecorder.start();
+reader.readAsDataURL(
+blob
+);
 
-    }catch(e){
+};
 
-      status.textContent =
-        "L'accès au microphone a été refusé ou est indisponible.";
 
-    }
+mediaRecorder.start();
 
-  };
+}catch(e){
+
+status.textContent =
+"L'accès au microphone a été refusé ou est indisponible.";
+
+}
+
+};
 
 </script>
 
@@ -3047,640 +3772,824 @@ document
 }
 
 /* =========================================================
-   API ANALYZE
-   ========================================================= */
+API ANALYZE
+========================================================= */
 
-async function handleAnalyze(request, env) {
+async function handleAnalyze(
+request,
+env
+) {
 
-  if(
-    !(request.headers.get("content-type") || "")
-      .includes("application/json")
-  ){
+if(
+!(
+request.headers.get(
+"content-type"
+) || ""
+).includes(
+"application/json"
+)
+){
 
-    return jsonResponse(
-      {
-        success:false,
-        error:
-          "Le contenu doit être envoyé au format JSON."
-      },
-      415
-    );
+return jsonResponse(
+{
+success:false,
 
-  }
+error:
+"Le contenu doit être envoyé au format JSON."
+},
 
-  let body;
+415
+);
 
-  try{
+}
 
-    body =
-      await request.json();
+let body;
 
-  }catch{
+try{
 
-    return jsonResponse(
-      {
-        success:false,
-        error:"JSON invalide."
-      },
-      400
-    );
+body =
+await request.json();
 
-  }
+}catch{
 
+return jsonResponse(
+{
+success:false,
 
-  const q =
-    texte(
-      body.question,
-      LIMITS.question
-    );
+error:
+"JSON invalide."
+},
 
+400
+);
 
-  if(!q){
-
-    return jsonResponse(
-      {
-        success:false,
-        error:"Question vide."
-      },
-      400
-    );
-
-  }
+}
 
 
-  try{
-
-    let history =
-      Array.isArray(body.historique)
-        ? body.historique
-        : [];
-
-
-    /*
-      Nettoyage :
-      on garde uniquement une structure contrôlée.
-    */
-
-    history =
-      history
-        .slice(-30)
-        .map(
-          item => ({
-            role:
-              item?.role === "assistant"
-                ? "assistant"
-                : "user",
-
-            content:
-              texte(
-                item?.content,
-                6000
-              )
-          })
-        )
-        .filter(
-          item => item.content
-        );
+const q =
+texte(
+body.question,
+LIMITS.question
+);
 
 
-    /*
-      Informations déjà validées côté client.
-      Elles sont néanmoins re-fusionnées avec
-      l'extraction du backend.
-    */
+if(!q){
 
-    const informations =
-      Array.isArray(body.informations)
-        ? body.informations
-        : [];
+return jsonResponse(
+{
+success:false,
 
+error:
+"Question vide."
+},
 
-    const documentInfos =
-      Array.isArray(body.documentInfos)
-        ? body.documentInfos
-        : [];
+400
+);
+
+}
 
 
-    const questionsPosees =
-      Array.isArray(body.questionsPosees)
-        ? body.questionsPosees
-        : [];
+try{
+
+let history =
+Array.isArray(
+body.historique
+)
+? body.historique
+: [];
 
 
-    return jsonResponse(
-      await analyserQuestion(
-        env,
-        q,
-        {
-          history,
+history =
+history
+.slice(-30)
+.map(
+item => ({
 
-          informations,
+role:
+item?.role ===
+"assistant"
+? "assistant"
+: "user",
 
-          documentInfos,
+content:
+texte(
+item?.content,
+6000
+)
 
-          questionsPosees,
+})
+)
+.filter(
+item =>
+item.content
+);
 
-          profil:
-            texte(
-              body.profil,
-              100
-            ),
 
-          situation:
-            texte(
-              body.situation,
-              100
-            ),
+const informations =
+Array.isArray(
+body.informations
+)
+? body.informations
+: [];
 
-          etape:
-            Number.isFinite(
-              Number(body.etape)
-            )
-              ? Number(body.etape)
-              : 0,
 
-          messageMode:
-            body.type === "message"
-              ? texte(
-                  body.messageMode,
-                  50
-                )
-              : null,
+const documentInfos =
+Array.isArray(
+body.documentInfos
+)
+? body.documentInfos
+: [];
 
-          langue:
-            texte(
-              body.langue,
-              50
-            )
-        }
-      )
-    );
 
-  }catch(error){
+const questionsPosees =
+Array.isArray(
+body.questionsPosees
+)
+? body.questionsPosees
+: [];
 
-    return jsonResponse(
-      {
-        success:false,
-        error:
-          error?.message ||
-          "Erreur d'analyse.",
-        version:VERSION,
-        decisionVersion:DECISION_VERSION
-      },
-      500
-    );
 
-  }
+return jsonResponse(
+await analyserQuestion(
+env,
+
+q,
+
+{
+
+history,
+
+informations,
+
+documentInfos,
+
+questionsPosees,
+
+profil:
+texte(
+body.profil,
+100
+),
+
+situation:
+texte(
+body.situation,
+100
+),
+
+etape:
+Number.isFinite(
+Number(
+body.etape
+)
+)
+? Number(
+body.etape
+)
+: 0,
+
+messageMode:
+body.type ===
+"message"
+? texte(
+body.messageMode,
+50
+)
+: null,
+
+langue:
+texte(
+body.langue,
+50
+)
+
+}
+)
+);
+
+}catch(error){
+
+return jsonResponse(
+{
+success:false,
+
+error:
+error?.message ||
+"Erreur d'analyse.",
+
+version:
+VERSION,
+
+decisionVersion:
+DECISION_VERSION
+},
+
+500
+);
+
+}
 
 }
 
 
 /* =========================================================
-   API TRANSCRIPTION
-   ========================================================= */
+API TRANSCRIPTION
+========================================================= */
 
 async function handleTranscribe(
-  request,
-  env
+request,
+env
 ){
 
-  let body;
+let body;
 
-  try{
+try{
 
-    body =
-      await request.json();
+body =
+await request.json();
 
-  }catch{
+}catch{
 
-    return jsonResponse(
-      {
-        success:false,
-        error:"JSON invalide."
-      },
-      400
-    );
+return jsonResponse(
+{
+success:false,
 
-  }
+error:
+"JSON invalide."
+},
 
+400
+);
 
-  try{
-
-    const text =
-      await transcrireAudio(
-        env,
-
-        texte(
-          body.audio,
-          LIMITS.audio
-        ),
-
-        texte(
-          body.langue,
-          10
-        ) || "fr"
-      );
+}
 
 
-    if(!text){
+try{
 
-      return jsonResponse(
-        {
-          success:false,
-          error:
-            "Aucun texte détecté."
-        },
-        422
-      );
+const text =
+await transcrireAudio(
+env,
 
-    }
+texte(
+body.audio,
+LIMITS.audio
+),
+
+texte(
+body.langue,
+10
+) ||
+"fr"
+);
 
 
-    return jsonResponse(
-      {
-        success:true,
-        text,
-        version:VERSION
-      }
-    );
+if(!text){
 
-  }catch(error){
+return jsonResponse(
+{
+success:false,
 
-    return jsonResponse(
-      {
-        success:false,
-        error:
-          error?.message ||
-          "Erreur audio."
-      },
-      500
-    );
+error:
+"Aucun texte détecté."
+},
 
-  }
+422
+);
+
+}
+
+
+return jsonResponse(
+{
+success:true,
+
+text,
+
+version:
+VERSION
+}
+);
+
+}catch(error){
+
+return jsonResponse(
+{
+success:false,
+
+error:
+error?.message ||
+"Erreur audio.",
+
+version:
+VERSION,
+
+decisionVersion:
+DECISION_VERSION
+},
+
+500
+);
+
+}
 
 }
 
 
 /* =========================================================
-   API IMAGE
-   ========================================================= */
+API IMAGE
+========================================================= */
 
 async function handleImage(
-  request,
-  env
+request,
+env
 ){
 
-  let body;
+let body;
 
-  try{
+try{
 
-    body =
-      await request.json();
+body =
+await request.json();
 
-  }catch{
+}catch{
 
-    return jsonResponse(
-      {
-        success:false,
-        error:"JSON invalide."
-      },
-      400
-    );
+return jsonResponse(
+{
+success:false,
 
-  }
+error:
+"JSON invalide."
+},
 
+400
+);
 
-  try{
-
-    const image =
-      texte(
-        body.image,
-        LIMITS.image
-      );
+}
 
 
-    if(!image){
+try{
 
-      return jsonResponse(
-        {
-          success:false,
-          error:"Image absente."
-        },
-        400
-      );
-
-    }
+const image =
+texte(
+body.image,
+LIMITS.image
+);
 
 
-    const text =
-      await analyserImage(
-        env,
-        image,
-        texte(
-          body.demande,
-          5000
-        )
-      );
+if(!image){
+
+return jsonResponse(
+{
+success:false,
+
+error:
+"Image absente."
+},
+
+400
+);
+
+}
 
 
-    return jsonResponse(
-      {
-        success:true,
-        texte:text,
-        version:VERSION
-      }
-    );
+const text =
+await analyserImage(
+env,
 
-  }catch(error){
+image,
 
-    return jsonResponse(
-      {
-        success:false,
-        error:
-          error?.message ||
-          "Erreur image."
-      },
-      500
-    );
+texte(
+body.demande,
+5000
+)
+);
 
-  }
+
+return jsonResponse(
+{
+success:true,
+
+texte:
+text,
+
+version:
+VERSION
+}
+);
+
+}catch(error){
+
+return jsonResponse(
+{
+success:false,
+
+error:
+error?.message ||
+"Erreur image.",
+
+version:
+VERSION,
+
+decisionVersion:
+DECISION_VERSION
+},
+
+500
+);
+
+}
 
 }
 
 
 /* =========================================================
-   ROUTER PRINCIPAL
-   ========================================================= */
+ROUTER PRINCIPAL
+========================================================= */
 
 export default {
 
-  async fetch(request, env) {
+async fetch(
+request,
+env
+) {
 
-    const url =
-      new URL(request.url);
+const url =
+new URL(
+request.url
+);
 
 
-    /*
-      CORS preflight / OPTIONS
-    */
+/*
+CORS preflight / OPTIONS
+*/
 
-    if(
-      request.method === "OPTIONS"
-    ){
+if(
+request.method ===
+"OPTIONS"
+){
 
-      return new Response(
-        null,
-        {
-          status:204,
-          headers:
-            securityHeaders()
-        }
-      );
+return new Response(
+null,
 
-    }
+{
+status:
+204,
 
+headers:
+securityHeaders()
+}
+);
 
-    /*
-      Health
-    */
+}
 
-    if(
-      url.pathname === "/health"
-    ){
 
-      return new Response(
-        JSON.stringify({
+/*
+Health
+*/
 
-          success:true,
+if(
+url.pathname ===
+"/health"
+){
 
-          service:"GouRare AI",
+return new Response(
+JSON.stringify({
 
-          status:"OK",
+success:true,
 
-          version:VERSION,
+service:
+"GouRare AI",
 
-          decisionVersion:
-            DECISION_VERSION,
+status:
+"OK",
 
-          modules:{
-            texte:true,
-            parcours:true,
-            messages:true,
-            image:true,
-            voix:true,
-            moteurDeDecision:true,
-            moteurDeVerite:true
-          }
+version:
+VERSION,
 
-        }),
-        {
-          status:200,
+decisionVersion:
+DECISION_VERSION,
 
-          headers:{
-            ...securityHeaders(),
+modules:{
 
-            "content-type":
-              "application/json; charset=utf-8"
-          }
-        }
-      );
+texte:true,
 
-    }
+parcours:true,
 
+messages:true,
 
-    /*
-      Rate limit uniquement sur les API.
-    */
+image:true,
 
-    if(
-      url.pathname.startsWith("/api/")
-    ){
+voix:true,
 
-      if(
-        !checkRateLimit(request)
-      ){
+moteurDeDecision:true,
 
-        return jsonResponse(
-          {
-            success:false,
-            error:
-              "Trop de requêtes. Veuillez patienter quelques instants."
-          },
-          429,
-          {
-            "Retry-After":"60"
-          }
-        );
+moteurDeVerite:true
 
-      }
+}
 
-    }
+}),
 
+{
 
-    /*
-      Analyze
-    */
+status:
+200,
 
-    if(
-      url.pathname === "/api/analyze"
-    ){
+headers:{
 
-      if(
-        request.method !== "POST"
-      ){
+...securityHeaders(),
 
-        return jsonResponse(
-          {
-            success:false,
-            error:
-              "Méthode non autorisée."
-          },
-          405
-        );
+"content-type":
+"application/json; charset=utf-8"
 
-      }
+}
 
+}
+);
 
-      const response =
-        await handleAnalyze(
-          request,
-          env
-        );
+}
 
 
-      const headers =
-        new Headers(
-          response.headers
-        );
+/*
+Rate limit uniquement sur les API.
+*/
 
+if(
+url.pathname.startsWith(
+"/api/"
+)
+){
 
-      Object
-        .entries(
-          securityHeaders()
-        )
-        .forEach(
-          ([key,value]) =>
-            headers.set(
-              key,
-              value
-            )
-        );
+if(
+!checkRateLimit(
+request
+)
+){
 
+return jsonResponse(
+{
+success:false,
 
-      return new Response(
-        response.body,
-        {
-          status:
-            response.status,
+error:
+"Trop de requêtes. Veuillez patienter quelques instants."
+},
 
-          headers
-        }
-      );
+429,
 
-    }
+{
+"Retry-After":
+"60"
+}
+);
 
+}
 
-    /*
-      Transcription
-    */
+}
 
-    if(
-      url.pathname ===
-      "/api/transcribe"
-    ){
 
-      if(
-        request.method !== "POST"
-      ){
+/*
+Analyze
+*/
 
-        return jsonResponse(
-          {
-            success:false,
-            error:
-              "Méthode non autorisée."
-          },
-          405
-        );
+if(
+url.pathname ===
+"/api/analyze"
+){
 
-      }
+if(
+request.method !==
+"POST"
+){
 
+return jsonResponse(
+{
+success:false,
 
-      return handleTranscribe(
-        request,
-        env
-      );
+error:
+"Méthode non autorisée."
+},
 
-    }
+405
+);
 
+}
 
-    /*
-      Image
-    */
 
-    if(
-      url.pathname ===
-      "/api/image"
-    ){
+const response =
+await handleAnalyze(
+request,
+env
+);
 
-      if(
-        request.method !== "POST"
-      ){
 
-        return jsonResponse(
-          {
-            success:false,
-            error:
-              "Méthode non autorisée."
-          },
-          405
-        );
+const headers =
+new Headers(
+response.headers
+);
 
-      }
 
+Object
+.entries(
+securityHeaders()
+)
+.forEach(
+([key,value]) =>
+headers.set(
+key,
+value
+)
+);
 
-      return handleImage(
-        request,
-        env
-      );
 
-    }
+return new Response(
+response.body,
 
+{
+status:
+response.status,
 
-    /*
-      Page principale
-    */
+headers
+}
+);
 
-    if(
-      url.pathname === "/"
-    ){
+}
 
-      return new Response(
-        pageHTML(),
-        {
-          status:200,
 
-          headers:{
-            ...securityHeaders(),
+/*
+Transcription
+*/
 
-            "content-type":
-              "text/html; charset=utf-8"
-          }
-        }
-      );
+if(
+url.pathname ===
+"/api/transcribe"
+){
 
-    }
+if(
+request.method !==
+"POST"
+){
 
+return jsonResponse(
+{
+success:false,
 
-    return new Response(
-      "GouRare AI",
-      {
-        status:404,
+error:
+"Méthode non autorisée."
+},
 
-        headers:
-          securityHeaders()
-      }
-    );
+405
+);
 
-  }
+}
+
+
+const response =
+await handleTranscribe(
+request,
+env
+);
+
+const headers =
+new Headers(
+response.headers
+);
+
+Object
+.entries(
+securityHeaders()
+)
+.forEach(
+([key,value]) =>
+headers.set(
+key,
+value
+)
+);
+
+return new Response(
+response.body,
+
+{
+status:
+response.status,
+
+headers
+}
+);
+
+}
+
+
+/*
+Image
+*/
+
+if(
+url.pathname ===
+"/api/image"
+){
+
+if(
+request.method !==
+"POST"
+){
+
+return jsonResponse(
+{
+success:false,
+
+error:
+"Méthode non autorisée."
+},
+
+405
+);
+
+}
+
+
+const response =
+await handleImage(
+request,
+env
+);
+
+const headers =
+new Headers(
+response.headers
+);
+
+Object
+.entries(
+securityHeaders()
+)
+.forEach(
+([key,value]) =>
+headers.set(
+key,
+value
+)
+);
+
+return new Response(
+response.body,
+
+{
+status:
+response.status,
+
+headers
+}
+);
+
+}
+
+
+/*
+Page principale
+*/
+
+if(
+url.pathname ===
+"/"
+){
+
+return new Response(
+pageHTML(),
+
+{
+
+status:
+200,
+
+headers:{
+
+...securityHeaders(),
+
+"content-type":
+"text/html; charset=utf-8"
+
+}
+
+}
+);
+
+}
+
+
+return new Response(
+"GouRare AI",
+
+{
+
+status:
+404,
+
+headers:
+securityHeaders()
+
+}
+);
+
+}
 
 };
