@@ -676,14 +676,26 @@ function extraireInformations(text) {
   if (
     value.includes("peu importe les horaires") ||
     value.includes("n importe quels horaires") ||
-    value.includes("n'importe quels horaires") ||
     value.includes("horaires flexibles") ||
     value.includes("flexible pour les horaires") ||
-    value.includes("peu importe le temps")
+    value.includes("peu importe le temps") ||
+    value.includes("pas de contrainte concernant les horaires") ||
+    value.includes("aucune contrainte concernant les horaires") ||
+    value.includes("sans contrainte concernant les horaires") ||
+    value.includes("pas de contrainte horaire") ||
+    value.includes("aucune contrainte horaire") ||
+    value.includes("sans contrainte horaire") ||
+    value.includes("pas de contrainte pour les horaires") ||
+    value.includes("aucune contrainte pour les horaires") ||
+    value.includes("pas de contraintes concernant les horaires") ||
+    value.includes("aucune contrainte concernant les horaires") ||
+    value.includes("les horaires ne me posent pas de probleme") ||
+    value.includes("les horaires ne me posent pas de problème") ||
+    value.includes("je suis flexible concernant les horaires") ||
+    value.includes("je suis flexible pour les horaires")
   ) {
     info.horaires = "Flexible";
   }
-
   /* ---------------- Localisation ---------------- */
 
   const knownLocations = [
