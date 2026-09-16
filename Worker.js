@@ -1549,72 +1549,50 @@ function recommendations(etat) {
 function systemPrompt(etat, decision) {
   const langue = normalizeLanguage(etat.langue);
 
-  const languageInstruction = {
-    fr: "Répondre principalement en français.",
-    ar: "Répondre principalement en arabe. Conserver les noms officiels français lorsque nécessaire et expliquer leur sens en arabe.",
-    en: "Respond primarily in English. Preserve official French names when necessary and explain them in English."
-  }[langue] || "Répondre principalement en français.";
-
-  return `
-Tu es Go Rare AI, un moteur d'orientation et d'intelligence de situation.
-
-${languageInstruction}
-
-PRINCIPES ABSOLUS :
-
-1. Ne jamais inventer une loi, une procédure, une condition administrative,
-   un délai, un droit ou une obligation.
-
-2. Les informations certaines doivent être séparées des informations
-   à vérifier et des déductions.
-
-3. Les sources officielles sont prioritaires.
-
-4. Le Decision Engine déterministe contrôle le parcours conversationnel.
-   Le modèle IA ne doit jamais décider de remplacer une question
-   déterministe par une autre.
-
-5. Ne repose pas une question dont la réponse est déjà explicitement connue.
-
-6. Si l'utilisateur a explicitement indiqué :
-   - sans diplôme
-   - sans expérience
-   ne lui demande pas à nouveau ces informations.
-
-7. Ne transforme jamais automatiquement une recherche d'emploi en création
-   d'entreprise simplement parce qu'un mot comme "entreprise" apparaît.
-
-8. Pour les questions concernant l'immigration, le séjour ou le travail
-   d'un étranger, indique clairement ce qui doit être vérifié auprès
-   des sources officielles.
-
-9. Ne prétends jamais avoir consulté une source en temps réel si ce n'est
-   pas réellement le cas.
-
-10. Ne présente jamais une déduction comme un fait confirmé.
-
-11. Si une information manque, utilise la question fournie par le
-    Decision Engine.
-
-12. Les réponses doivent être concrètes, compréhensibles et orientées
-    vers les prochaines étapes.
-
-13. Go Rare AI cherche également les transformations possibles :
-    expérience informelle → compétence transférable,
-    contrainte → possibilité,
-    combinaison de plusieurs éléments → nouvelle piste.
-
-14. Toute piste de transformation doit rester explicable et ne doit pas
-    être présentée comme une garantie.
-
-DECISION ACTUELLE :
-${JSON.stringify(decision)}
-
-ÉTAT :
-${JSON.stringify(etat)}
-
-Réponds de manière concise mais utile.
-`;
+  return [
+    "Tu es Go Rare AI, un assistant d'orientation et d'intelligence de situation.",
+    "",
+    "LANGUE:",
+    "Réponds principalement dans la langue demandée par l'utilisateur.",
+    "Si la langue est l'arabe, explique clairement en arabe.",
+    "Conserve les noms officiels français lorsqu'ils sont importants.",
+    "",
+    "REGLE PRINCIPALE:",
+    "Le moteur de décision déterministe contrôle les questions.",
+    "Tu ne dois pas inventer une nouvelle question si une question déterministe est fournie.",
+    "",
+    "EVIDENCE:",
+    "Ne présente jamais une hypothèse comme un fait confirmé.",
+    "Ne fabrique jamais une loi, une procédure, une condition administrative, un salaire ou une offre d'emploi.",
+    "Lorsque la vérification officielle est nécessaire, indique-le clairement.",
+    "",
+    "SOURCES:",
+    "Privilégie les sources officielles sélectionnées par le serveur.",
+    "Ne remplace pas une source officielle par une affirmation non vérifiée.",
+    "",
+    "EMPLOI:",
+    "Si l'utilisateur cherche un emploi, respecte les informations déjà confirmées.",
+    "Ne redemande jamais une information déjà fournie.",
+    "Si l'utilisateur indique explicitement ne pas avoir de diplôme, considère cette information comme acquise.",
+    "Si l'utilisateur indique explicitement ne pas avoir d'expérience, considère cette information comme acquise.",
+    "",
+    "IMMIGRATION:",
+    "Ne conclus pas qu'un titre de séjour autorise une activité précise sans vérification officielle.",
+    "",
+    "DECISION:",
+    JSON.stringify(decision || {}),
+    "",
+    "ETAT:",
+    JSON.stringify({
+      informations: etat.informations || {},
+      contexte: etat.contexte || {},
+      profil: etat.profil || null,
+      situation: etat.situation || null
+    }),
+    "",
+    "LANGUE INTERNE:",
+    langue
+  ].join("\n");
 }
 
 /* =========================================================
@@ -1622,42 +1600,49 @@ Réponds de manière concise mais utile.
    ========================================================= */
 
 async function askAI(env, messages, options = {}) {
-  const safeMessages = safeArray(messages)
-    .slice(-LIMITS.messages)
-    .map(message => ({
-      role: message?.role === "assistant"
-        ? "assistant"
-        : "user",
-      content: cleanText(
-        message?.content || message?.text || "",
-        LIMITS.message
-      )
-    }))
-    .filter(message => message.content);
-
-  if (!safeMessages.length) {
-    return "";
+  if (!env || !env.IA) {
+    throw new Error("Binding IA indisponible.");
   }
 
-  const result = await env.IA.run(
+  const maxTokens = Math.min(
+    Number(options.max_tokens || 1800),
+    3000
+  );
+
+  const temperature =
+    typeof options.temperature === "number"
+      ? options.temperature
+      : 0.15;
+
+  const response = await env.IA.run(
     MODEL,
     {
-      messages: safeMessages,
-      max_tokens: Math.min(
-        Number(options.max_tokens || 1600),
-        3000
-      ),
-      temperature:
-        typeof options.temperature === "number"
-          ? Math.min(Math.max(options.temperature, 0), 0.5)
-          : 0.15
+      messages: safeArray(messages),
+      max_tokens: maxTokens,
+      temperature
     }
   );
 
-  return cleanText(
-    result?.response || "",
-    18000
-  );
+  if (!response) {
+    return "";
+  }
+
+  if (typeof response === "string") {
+    return response;
+  }
+
+  if (response.response) {
+    return String(response.response);
+  }
+
+  if (
+    response.result &&
+    typeof response.result === "string"
+  ) {
+    return response.result;
+  }
+
+  return "";
 }
 
 /* =========================================================
@@ -1667,27 +1652,41 @@ async function askAI(env, messages, options = {}) {
 function construireOrientationEmploi(etat) {
   const info = etat.informations || {};
 
-  return {
-    domaine: "emploi",
-    faits_confirmes: confirmed(etat),
+  const facts = [];
 
-    profil: {
-      diplome: info.diplome || null,
-      experience: info.experience || null,
-      zone_recherche: info.zone_recherche || null,
-      type_emploi: info.type_emploi || null,
-      mobilite: info.mobilite || null,
-      horaires: info.horaires || null,
-      ouvert_tous_secteurs:
-        info.ouvert_tous_secteurs === true
-    },
+  if (info.objectif) {
+    facts.push("Objectif : " + info.objectif);
+  }
 
-    prochaines_actions: actions(etat),
+  if (info.zone_recherche) {
+    facts.push("Zone : " + info.zone_recherche);
+  }
 
-    verification_documents: documents(etat),
+  if (info.type_emploi) {
+    facts.push("Type d'emploi : " + info.type_emploi);
+  }
 
-    pistes: recommendations(etat)
-  };
+  if (info.diplome) {
+    facts.push("Diplôme : " + info.diplome);
+  }
+
+  if (info.experience) {
+    facts.push("Expérience : " + info.experience);
+  }
+
+  if (info.mobilite) {
+    facts.push("Mobilité : " + info.mobilite);
+  }
+
+  if (info.horaires) {
+    facts.push("Horaires : " + info.horaires);
+  }
+
+  if (info.ouvert_tous_secteurs) {
+    facts.push("Ouvert à plusieurs secteurs : oui");
+  }
+
+  return facts.join("\n");
 }
 
 /* =========================================================
@@ -1695,182 +1694,181 @@ function construireOrientationEmploi(etat) {
    ========================================================= */
 
 function messagePrompt(mode, text, langue) {
+  const clean = cleanText(text, LIMITS.message);
+  const language = normalizeLanguage(langue);
+
   const instructions = {
-    analyse: `
-Analyse le contenu fourni.
-Identifie les éléments importants, les faits explicites,
-les informations manquantes et les points à vérifier.
-`,
+    analyse:
+      "Analyse le message de manière claire et structurée. Sépare les faits, les points à vérifier et les éléments importants.",
 
-    reponse: `
-Rédige une réponse claire et naturelle au message fourni.
-Ne crée aucune information qui n'est pas présente.
-`,
+    reponse:
+      "Rédige une réponse naturelle, claire et utile au message de l'utilisateur.",
 
-    reformulation: `
-Reformule le texte de manière plus claire et professionnelle
-sans modifier son sens.
-`,
+    reformulation:
+      "Reformule le texte de manière plus claire et professionnelle sans changer son sens.",
 
-    correction: `
-Corrige les fautes de langue et améliore légèrement la formulation
-sans changer le contenu.
-`,
+    correction:
+      "Corrige les fautes de langue et améliore légèrement la formulation sans changer le sens.",
 
-    traduction: `
-Traduis fidèlement le texte.
-Conserve les noms propres, noms officiels et références importantes.
-`
+    traduction:
+      "Traduis fidèlement le texte. Ne rajoute pas d'informations qui ne sont pas présentes."
   };
 
-  return `
-Langue : ${normalizeLanguage(langue)}
-
-Mode :
-${instructions[mode] || instructions.analyse}
-
-Texte :
-${cleanText(text, LIMITS.message)}
-`;
+  return [
+    "Langue cible : " + language,
+    instructions[mode] || instructions.reponse,
+    "",
+    clean
+  ].join("\n");
 }
 
 /* =========================================================
    IMAGE ANALYSIS
    ========================================================= */
 
-async function analyserImage(env, imageBase64, question = "", langue = "fr") {
-  const image = cleanText(imageBase64, LIMITS.image);
+async function analyserImage(env, imageBase64, question, langue) {
+  const image = cleanText(
+    imageBase64,
+    LIMITS.image
+  );
 
   if (!image) {
-    throw new Error("Image manquante.");
+    throw new Error("Image absente.");
   }
 
-  const prompt = `
-Tu es Go Rare AI.
+  const prompt = cleanText(
+    question ||
+    "Analyse cette image et identifie uniquement les informations visibles et lisibles qui peuvent être utiles à l'utilisateur.",
+    5000
+  );
 
-Analyse uniquement ce qui est réellement visible ou lisible
-dans l'image.
+  const language = normalizeLanguage(langue);
 
-Ne devine pas les informations illisibles.
-
-Si l'image contient un document :
-- identifier les informations visibles,
-- distinguer les faits certains,
-- signaler les éléments difficiles à lire,
-- ne pas inventer les champs manquants.
-
-Si l'image contient une situation visuelle :
-- décrire les éléments utiles,
-- identifier les indices pertinents,
-- ne pas présenter une supposition comme un fait.
-
-Langue de réponse : ${normalizeLanguage(langue)}
-
-Question de l'utilisateur :
-${cleanText(question, 5000)}
-`;
-
-  const result = await env.IA.run(
+  const response = await env.IA.run(
     MODEL_VISION,
     {
       messages: [
         {
           role: "system",
-          content: prompt
+          content:
+            "Tu es un assistant d'analyse visuelle de Go Rare AI. " +
+            "Analyse uniquement ce qui est réellement visible ou lisible. " +
+            "Ne devine pas les informations absentes. " +
+            "Signale clairement les éléments incertains."
         },
         {
           role: "user",
-          content: "Analyse cette image."
+          content:
+            "Langue de réponse : " +
+            language +
+            "\n\n" +
+            prompt
         }
       ],
-      image,
+      image: image,
       max_tokens: 2200,
       temperature: 0.1
     }
   );
 
-  return cleanText(
-    result?.response || "",
-    18000
-  );
+  if (!response) {
+    return "";
+  }
+
+  if (typeof response === "string") {
+    return response;
+  }
+
+  if (response.response) {
+    return String(response.response);
+  }
+
+  return "";
 }
 
 /* =========================================================
-   AUDIO / WHISPER
+   AUDIO TRANSCRIPTION
    ========================================================= */
 
-async function transcrireAudio(env, audioData, language = null) {
-  if (!audioData) {
-    throw new Error("Audio manquant.");
+async function transcrireAudio(env, audioBuffer, langue) {
+  if (!audioBuffer || !audioBuffer.byteLength) {
+    throw new Error("Audio absent.");
   }
 
-  const payload = {
-    audio: audioData,
-    task: "transcribe",
-    condition_on_previous_text: false
-  };
+  const language = normalizeLanguage(langue);
 
-  if (language) {
-    payload.language = normalizeLanguage(language);
-  }
+  const input = new Uint8Array(audioBuffer);
 
-  const result = await env.IA.run(
+  const response = await env.IA.run(
     MODEL_AUDIO,
-    payload
+    {
+      audio: input,
+      task: "transcribe",
+      language: language,
+      condition_on_previous_text: false
+    }
   );
 
-  const transcription =
-    result?.transcription_info?.text ||
-    result?.text ||
-    "";
+  if (!response) {
+    return "";
+  }
 
-  return cleanText(
-    transcription,
-    LIMITS.question
-  );
+  if (
+    response.transcription_info &&
+    response.transcription_info.text
+  ) {
+    return String(
+      response.transcription_info.text
+    );
+  }
+
+  if (response.text) {
+    return String(response.text);
+  }
+
+  if (response.transcription) {
+    return String(response.transcription);
+  }
+
+  if (response.response) {
+    return String(response.response);
+  }
+
+  return "";
 }
 
 /* =========================================================
-   MAIN QUESTION ANALYSIS
+   MAIN ANALYSIS ENGINE
    ========================================================= */
 
 async function analyserQuestion(env, payload) {
   const question = cleanText(
-    payload?.question || "",
+    payload.question || "",
     LIMITS.question
   );
 
-  if (!question) {
-    throw new Error("Question vide.");
-  }
-
-  const history = safeArray(payload?.history);
+  const history = safeArray(
+    payload.history
+  ).slice(-20);
 
   const informations =
-    payload?.informations &&
+    payload.informations &&
     typeof payload.informations === "object"
       ? payload.informations
       : {};
 
   const documentInfo =
-    payload?.documentInfo &&
+    payload.documentInfo &&
     typeof payload.documentInfo === "object"
       ? payload.documentInfo
       : {};
 
-  const profil = cleanText(
-    payload?.profil || "",
-    100
-  ) || null;
-
-  const situation = cleanText(
-    payload?.situation || "",
-    100
-  ) || null;
+  const profil = payload.profil || null;
+  const situation = payload.situation || null;
 
   const langue = normalizeLanguage(
-    payload?.langue ||
-    detectLanguage(question)
+    payload.langue ||
+    detectLanguage(question, payload.langue)
   );
 
   const etat = construireEtatConversation({
@@ -1890,167 +1888,129 @@ async function analyserQuestion(env, payload) {
     decision
   );
 
-  /* ---------------------------------------------------------
-     QUESTION MODE
-     --------------------------------------------------------- */
+  /*
+   * ---------------------------------------------------------
+   * DETERMINISTIC QUESTION MODE
+   * ---------------------------------------------------------
+   */
 
   if (decision.etape === "question") {
     return {
       version: VERSION,
-      decision_version: DECISION_VERSION,
-
-      etape: "question",
-
-      question: decision.question,
-
+      decisionVersion: DECISION_VERSION,
+      mode: "question",
+      etape: decision.etape,
       questionKey: decision.questionKey,
-
-      champsManquants:
-        decision.champsManquants,
-
-      informations:
-        etat.informations,
-
-      contexte:
-        etat.contexte,
-
-      sources:
-        selectSources(etat),
-
-      confirmed:
-        confirmed(etat),
-
-      documents:
-        documents(etat),
-
-      actions:
-        actions(etat),
-
-      recommendations:
-        recommendations(etat)
+      question: decision.question,
+      champsManquants: decision.champsManquants,
+      langue: etat.langue,
+      informations: etat.informations,
+      confirmed: confirmed(etat),
+      documents: documents(etat),
+      actions: actions(etat),
+      recommendations: recommendations(etat),
+      sources: selectSources(etat)
     };
   }
 
-  /* ---------------------------------------------------------
-     ORIENTATION MODE
-     --------------------------------------------------------- */
+  /*
+   * ---------------------------------------------------------
+   * FINAL ORIENTATION MODE
+   * ---------------------------------------------------------
+   */
 
-  let orientation;
+  const selectedSources = selectSources(etat);
 
-  if (
-    etat.contexte.emploi ||
-    etat.contexte.travail
-  ) {
-    orientation =
-      construireOrientationEmploi(etat);
-  } else {
-    orientation = {
-      domaine:
-        etat.contexte.entreprise
-          ? "entreprise"
-          : etat.contexte.immigration
-            ? "immigration"
-            : "general",
+  const employmentPath =
+    etat.contexte &&
+    (
+      etat.contexte.emploi ||
+      etat.contexte.travail
+    );
 
-      faits_confirmes:
-        confirmed(etat),
+  const confirmedFacts = confirmed(etat);
+  const documentChecks = documents(etat);
+  const actionList = actions(etat);
+  const recommendationList = recommendations(etat);
 
-      prochaines_actions:
-        actions(etat),
-
-      verification_documents:
-        documents(etat),
-
-      pistes:
-        recommendations(etat)
-    };
-  }
-
-  const aiMessages = [
-    {
-      role: "system",
-      content: systemPrompt(
-        etat,
-        decision
-      )
-    },
-    {
-      role: "user",
-      content: `
-Voici la situation de l'utilisateur.
-
-Produis une orientation utile à partir
-des informations confirmées.
-
-Ne repose pas les questions déjà résolues.
-
-Structure la réponse en :
-1. Compréhension de la situation
-2. Ce qui est confirmé
-3. Ce qui doit être vérifié
-4. Prochaines étapes
-5. Pistes ou transformations possibles
-
-Situation :
-${JSON.stringify(orientation)}
-`
-    }
-  ];
-
-  let aiResponse = "";
+  let aiText = "";
 
   try {
-    aiResponse = await askAI(
+    const basePrompt = [
+      systemPrompt(etat, decision),
+      "",
+      "DONNEES CONFIRMEES:",
+      JSON.stringify(confirmedFacts),
+      "",
+      "DOCUMENTS / VERIFICATIONS:",
+      JSON.stringify(documentChecks),
+      "",
+      "ACTIONS:",
+      JSON.stringify(actionList),
+      "",
+      "RECOMMANDATIONS:",
+      JSON.stringify(recommendationList),
+      "",
+      employmentPath
+        ? "CONTEXTE EMPLOI:"
+        : "CONTEXTE GENERAL:",
+      employmentPath
+        ? construireOrientationEmploi(etat)
+        : "Construire une orientation utile à partir des informations disponibles.",
+      "",
+      "Réponds de façon claire et pratique.",
+      "Ne fabrique aucune information.",
+      "Ne présente pas une hypothèse comme un fait."
+    ].join("\n");
+
+    aiText = await askAI(
       env,
-      aiMessages,
+      [
+        {
+          role: "system",
+          content:
+            "Tu es Go Rare AI. Tu fournis une orientation factuelle, prudente et actionnable."
+        },
+        {
+          role: "user",
+          content: basePrompt
+        }
+      ],
       {
-        max_tokens: 1800,
+        max_tokens: 2200,
         temperature: 0.15
       }
     );
   } catch (error) {
-    /*
-     * AI failure must not destroy the deterministic result.
-     */
-    aiResponse = "";
+    aiText =
+      "L'orientation automatique n'a pas pu être générée. " +
+      "Les informations confirmées et les étapes de vérification restent disponibles ci-dessous.";
   }
 
   return {
     version: VERSION,
-    decision_version: DECISION_VERSION,
-
+    decisionVersion: DECISION_VERSION,
+    mode: "orientation",
     etape: "orientation",
-
-    informations:
-      etat.informations,
-
-    contexte:
-      etat.contexte,
-
-    confirmed:
-      confirmed(etat),
-
-    documents:
-      documents(etat),
-
-    actions:
-      actions(etat),
-
-    recommendations:
-      recommendations(etat),
-
-    orientation,
-
-    aiResponse
+    questionKey: null,
+    question: null,
+    langue: etat.langue,
+    informations: etat.informations,
+    confirmed: confirmedFacts,
+    documents: documentChecks,
+    actions: actionList,
+    recommendations: recommendationList,
+    sources: selectedSources,
+    orientation: aiText
   };
 }
 
 /* =========================================================
-   HTML ESCAPING
+   HTML ESCAPE
    ========================================================= */
 
 function escapeHTML(value) {
-  return String(value ?? "")
+  return String(value === undefined || value === null ? "" : value)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -2069,207 +2029,198 @@ function sourceHTML(sources) {
     return "";
   }
 
-  return `
-    <div class="sources">
-      <h3>Sources</h3>
-      <ul>
-        ${list.map(source => `
-          <li>
-            <a
-              href="${escapeHTML(source.url)}"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              ${escapeHTML(source.name)}
-            </a>
-          </li>
-        `).join("")}
-      </ul>
-    </div>
-  `;
+  return (
+    '<div class="sources">' +
+      '<div class="sources-title">Sources officielles</div>' +
+      '<div class="sources-list">' +
+        list.map(function(source) {
+          const name = escapeHTML(
+            source && source.name
+              ? source.name
+              : "Source officielle"
+          );
+
+          const url =
+            source &&
+            typeof source.url === "string" &&
+            source.url.startsWith("https://")
+              ? source.url
+              : "#";
+
+          return (
+            '<a class="source-link" href="' +
+            escapeHTML(url) +
+            '" target="_blank" rel="noopener noreferrer">' +
+            name +
+            '</a>'
+          );
+        }).join("") +
+      '</div>' +
+    '</div>'
+  );
 }
 
 /* =========================================================
-   RESULT HTML
+   SERVER RESULT HTML
    ========================================================= */
 
 function resultHTML(data) {
-  const confirmedData =
-    safeArray(data.confirmed);
+  const parts = [];
 
-  const actionsData =
-    safeArray(data.actions);
-
-  const recommendationsData =
-    safeArray(data.recommendations);
-
-  const documentsData =
-    safeArray(data.documents);
-
-  let html = "";
-
-  if (data.etape === "question") {
-    html += `
-      <div class="result-card question-result">
-        <div class="eyebrow">Étape suivante</div>
-        <h2>${escapeHTML(data.question)}</h2>
-
-        ${
-          data.champsManquants?.length
-            ? `
-              <div class="missing">
-                Informations encore nécessaires :
-                ${escapeHTML(
-                  data.champsManquants.join(", ")
-                )}
-              </div>
-            `
-            : ""
-        }
-      </div>
-    `;
-
-    html += sourceHTML(data.sources);
-
-    return html;
+  if (data.question) {
+    parts.push(
+      '<div class="result-card next-question">' +
+        '<div class="eyebrow">Étape suivante</div>' +
+        '<h2>' +
+          escapeHTML(data.question) +
+        '</h2>' +
+      '</div>'
+    );
   }
 
-  html += `
-    <div class="result-card">
-      <div class="eyebrow">Go Rare AI</div>
-      <h2>Analyse de votre situation</h2>
-
-      ${
-        data.aiResponse
-          ? `
-            <div class="ai-response">
-              ${escapeHTML(data.aiResponse)
-                .replace(/\n/g, "<br>")}
-            </div>
-          `
-          : ""
-      }
-    </div>
-  `;
-
-  if (confirmedData.length) {
-    html += `
-      <div class="result-card">
-        <h3>Informations confirmées</h3>
-
-        <div class="confirmed-grid">
-          ${confirmedData.map(item => `
-            <div class="confirmed-item">
-              <strong>
-                ${escapeHTML(item.label)}
-              </strong>
-
-              <span>
-                ${escapeHTML(item.value)}
-              </span>
-            </div>
-          `).join("")}
-        </div>
-      </div>
-    `;
+  if (data.orientation) {
+    parts.push(
+      '<div class="result-card">' +
+        '<div class="eyebrow">Orientation</div>' +
+        '<div class="orientation-text">' +
+          escapeHTML(data.orientation)
+            .replace(/\n/g, "<br>") +
+        '</div>' +
+      '</div>'
+    );
   }
 
-  if (actionsData.length) {
-    html += `
-      <div class="result-card">
-        <h3>Prochaines étapes</h3>
-
-        <ul>
-          ${actionsData.map(item => `
-            <li>${escapeHTML(item)}</li>
-          `).join("")}
-        </ul>
-      </div>
-    `;
+  if (
+    Array.isArray(data.confirmed) &&
+    data.confirmed.length
+  ) {
+    parts.push(
+      '<div class="result-card">' +
+        '<div class="eyebrow">Informations confirmées</div>' +
+        '<div class="info-grid">' +
+          data.confirmed.map(function(item) {
+            return (
+              '<div class="info-item">' +
+                '<div class="info-label">' +
+                  escapeHTML(item.label) +
+                '</div>' +
+                '<div class="info-value">' +
+                  escapeHTML(item.value) +
+                '</div>' +
+              '</div>'
+            );
+          }).join("") +
+        '</div>' +
+      '</div>'
+    );
   }
 
-  if (documentsData.length) {
-    html += `
-      <div class="result-card">
-        <h3>Points à vérifier</h3>
-
-        ${documentsData.map(group => `
-          <div class="document-group">
-            <strong>
-              ${escapeHTML(group.title)}
-            </strong>
-
-            <ul>
-              ${safeArray(group.items).map(item => `
-                <li>${escapeHTML(item)}</li>
-              `).join("")}
-            </ul>
-          </div>
-        `).join("")}
-      </div>
-    `;
+  if (
+    Array.isArray(data.actions) &&
+    data.actions.length
+  ) {
+    parts.push(
+      '<div class="result-card">' +
+        '<div class="eyebrow">Actions proposées</div>' +
+        '<ul class="action-list">' +
+          data.actions.map(function(item) {
+            return (
+              '<li>' +
+                escapeHTML(item) +
+              '</li>'
+            );
+          }).join("") +
+        '</ul>' +
+      '</div>'
+    );
   }
 
-  if (recommendationsData.length) {
-    html += `
-      <div class="result-card">
-        <h3>Pistes possibles</h3>
-
-        ${recommendationsData.map(item => `
-          <div class="recommendation">
-            <strong>
-              ${escapeHTML(item.title)}
-            </strong>
-
-            <p>
-              ${escapeHTML(item.text)}
-            </p>
-          </div>
-        `).join("")}
-      </div>
-    `;
+  if (
+    Array.isArray(data.recommendations) &&
+    data.recommendations.length
+  ) {
+    parts.push(
+      '<div class="result-card">' +
+        '<div class="eyebrow">Pistes</div>' +
+        data.recommendations.map(function(item) {
+          return (
+            '<div class="recommendation">' +
+              '<strong>' +
+                escapeHTML(item.title || "") +
+              '</strong>' +
+              '<p>' +
+                escapeHTML(item.text || "") +
+              '</p>' +
+            '</div>'
+          );
+        }).join("") +
+      '</div>'
+    );
   }
 
-  html += sourceHTML(
-    data.sources ||
-    []
+  if (
+    Array.isArray(data.documents) &&
+    data.documents.length
+  ) {
+    parts.push(
+      '<div class="result-card">' +
+        '<div class="eyebrow">Vérifications</div>' +
+        data.documents.map(function(group) {
+          return (
+            '<div class="document-group">' +
+              '<strong>' +
+                escapeHTML(group.title || "") +
+              '</strong>' +
+              '<ul>' +
+                safeArray(group.items).map(function(item) {
+                  return (
+                    '<li>' +
+                      escapeHTML(item) +
+                    '</li>'
+                  );
+                }).join("") +
+              '</ul>' +
+            '</div>'
+          );
+        }).join("") +
+      '</div>'
+    );
+  }
+
+  parts.push(
+    sourceHTML(data.sources)
   );
 
-  return html;
+  return parts.join("");
 }
 
 /* =========================================================
-   MAIN HTML PAGE
+   PAGE HTML
+   IMPORTANT:
+   No backticks are used inside this outer template.
    ========================================================= */
 
 function pageHTML() {
-  return `<!DOCTYPE html>
+  return `
+<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-
-<meta
-  name="viewport"
-  content="width=device-width, initial-scale=1.0"
-/>
-
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Go Rare AI — intelligence de situation, orientation et opportunités.">
 <title>Go Rare AI</title>
-
-<meta
-  name="description"
-  content="Go Rare AI — intelligence de situation, orientation et transformation."
-/>
 
 <style>
 
 :root{
-  --bg:#f7f8fa;
-  --card:#ffffff;
-  --text:#111827;
+  --gold:#c9a227;
+  --gold-soft:#e8d58b;
+  --dark:#101114;
   --muted:#6b7280;
   --border:#e5e7eb;
-  --accent:#111827;
-  --gold:#c9a227;
+  --surface:#ffffff;
+  --surface-soft:#f8fafc;
+  --success:#16794b;
 }
 
 *{
@@ -2286,32 +2237,53 @@ body{
     -apple-system,
     BlinkMacSystemFont,
     "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
     sans-serif;
-  background:var(--bg);
-  color:var(--text);
+  color:var(--dark);
+  background:
+    linear-gradient(
+      180deg,
+      #ffffff 0%,
+      #f8fafc 100%
+    );
 }
 
-body::selection{
-  background:#111827;
-  color:#fff;
+button,
+textarea,
+input{
+  font:inherit;
+}
+
+button{
+  cursor:pointer;
 }
 
 .container{
-  width:min(1100px,92%);
-  margin:auto;
+  width:min(1100px, calc(100% - 32px));
+  margin:0 auto;
 }
 
 header{
-  padding:34px 0 20px;
+  padding:24px 0 10px;
+}
+
+.topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
 }
 
 .brand{
-  display:flex;
+  position:relative;
+  display:inline-flex;
   align-items:center;
-  gap:8px;
-  font-size:28px;
+  gap:7px;
+  font-size:24px;
   font-weight:800;
-  letter-spacing:-.7px;
+  letter-spacing:-.8px;
 }
 
 .brand .rare{
@@ -2320,8 +2292,6 @@ header{
 
 .brand .spark{
   position:absolute;
-  width:4px;
-  height:4px;
   border-radius:50%;
   background:var(--gold);
   box-shadow:
@@ -2331,6 +2301,8 @@ header{
 .brand .spark.one{
   top:-5px;
   left:1px;
+  width:4px;
+  height:4px;
 }
 
 .brand .spark.two{
@@ -2348,90 +2320,109 @@ header{
 }
 
 .tagline{
-  margin-top:7px;
   color:var(--muted);
   font-size:14px;
 }
 
+.hero{
+  padding:55px 0 35px;
+}
+
+.hero h1{
+  max-width:780px;
+  margin:0;
+  font-size:
+    clamp(38px, 7vw, 72px);
+  line-height:1;
+  letter-spacing:-3px;
+}
+
+.hero h1 span{
+  color:var(--gold);
+}
+
+.hero p{
+  max-width:700px;
+  margin:22px 0 0;
+  color:var(--muted);
+  font-size:18px;
+  line-height:1.65;
+}
+
 .card{
-  background:var(--card);
+  background:rgba(255,255,255,.94);
   border:1px solid var(--border);
-  border-radius:18px;
-  padding:20px;
-  margin:18px 0;
+  border-radius:20px;
+  padding:22px;
+  box-shadow:
+    0 10px 35px rgba(0,0,0,.05);
 }
 
 .profile-grid{
   display:grid;
   grid-template-columns:
-    repeat(auto-fit,minmax(180px,1fr));
+    repeat(4, minmax(0,1fr));
   gap:12px;
 }
 
-button,
-select,
-textarea{
-  font:inherit;
-}
-
-button{
-  border:0;
-  border-radius:12px;
-  padding:12px 15px;
-  cursor:pointer;
-}
-
-.primary{
-  background:#111827;
-  color:white;
-}
-
-.secondary{
-  background:#f3f4f6;
-  color:#111827;
-}
-
-button:hover{
-  opacity:.9;
-}
-
-textarea{
-  width:100%;
-  min-height:120px;
-  resize:vertical;
+.profile-btn{
   border:1px solid var(--border);
-  border-radius:14px;
-  padding:14px;
-  outline:none;
+  background:#fff;
+  border-radius:16px;
+  padding:18px 14px;
+  text-align:left;
+  transition:
+    transform .18s ease,
+    border-color .18s ease,
+    box-shadow .18s ease;
 }
 
-textarea:focus{
-  border-color:#9ca3af;
+.profile-btn:hover{
+  transform:translateY(-2px);
+  border-color:var(--gold-soft);
+  box-shadow:
+    0 8px 22px rgba(0,0,0,.07);
 }
 
-.actions{
-  display:flex;
-  flex-wrap:wrap;
-  gap:8px;
-  margin-top:10px;
+.profile-btn strong{
+  display:block;
+  font-size:16px;
+}
+
+.profile-btn span{
+  display:block;
+  margin-top:6px;
+  color:var(--muted);
+  font-size:13px;
 }
 
 .hidden{
   display:none !important;
 }
 
-/*
- * Sticky composer.
- * Kept deliberately subtle so it feels like a modern
- * conversational interface rather than an intrusive popup.
- */
+.situation-list{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:15px;
+}
+
+.situation-btn{
+  border:1px solid var(--border);
+  background:#fff;
+  border-radius:999px;
+  padding:11px 15px;
+}
+
+.situation-btn:hover{
+  border-color:var(--gold);
+}
+
 #outil{
   position:sticky;
   bottom:12px;
   z-index:15;
-
   border:1px solid #e5e7eb;
-
   box-shadow:
     0 12px 35px rgba(0,0,0,.14);
 }
@@ -2447,113 +2438,267 @@ textarea:focus{
   z-index:-1;
 }
 
+.composer-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+}
+
+.back-btn{
+  border:0;
+  background:transparent;
+  color:var(--muted);
+  padding:6px 0;
+}
+
+textarea{
+  width:100%;
+  min-height:125px;
+  resize:vertical;
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:15px;
+  outline:none;
+  background:#fff;
+}
+
+textarea:focus{
+  border-color:var(--gold);
+  box-shadow:
+    0 0 0 3px rgba(201,162,39,.12);
+}
+
+.actions-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:9px;
+  margin-top:11px;
+}
+
+.action-btn{
+  border:1px solid var(--border);
+  background:#fff;
+  border-radius:12px;
+  padding:10px 14px;
+}
+
+.action-btn.primary{
+  border-color:var(--dark);
+  background:var(--dark);
+  color:#fff;
+}
+
+.action-btn:hover{
+  transform:translateY(-1px);
+}
+
+.status{
+  min-height:20px;
+  margin-top:10px;
+  color:var(--muted);
+  font-size:13px;
+}
+
+.result-area{
+  padding:30px 0 100px;
+}
+
 #result{
   scroll-margin-top:20px;
 }
 
 .result-card{
-  background:white;
+  scroll-margin-top:20px;
+  background:#fff;
   border:1px solid var(--border);
   border-radius:18px;
-  padding:20px;
-  margin:16px 0;
-  scroll-margin-top:20px;
+  padding:22px;
+  margin-bottom:14px;
+  box-shadow:
+    0 8px 28px rgba(0,0,0,.045);
 }
 
 .result-card h2{
-  margin-top:6px;
-}
-
-.result-card h3{
-  margin-top:0;
+  margin:8px 0 0;
+  font-size:24px;
+  line-height:1.35;
 }
 
 .eyebrow{
-  color:var(--muted);
+  color:var(--gold);
   font-size:12px;
+  font-weight:800;
   text-transform:uppercase;
   letter-spacing:.08em;
 }
 
-.confirmed-grid{
+.orientation-text{
+  margin-top:12px;
+  line-height:1.7;
+}
+
+.info-grid{
   display:grid;
   grid-template-columns:
-    repeat(auto-fit,minmax(200px,1fr));
+    repeat(2,minmax(0,1fr));
   gap:10px;
+  margin-top:15px;
 }
 
-.confirmed-item{
+.info-item{
   border:1px solid var(--border);
-  border-radius:12px;
-  padding:12px;
+  border-radius:13px;
+  padding:13px;
 }
 
-.confirmed-item strong{
-  display:block;
-  font-size:13px;
+.info-label{
   color:var(--muted);
+  font-size:12px;
 }
 
-.confirmed-item span{
-  display:block;
+.info-value{
   margin-top:4px;
+  font-weight:700;
+}
+
+.action-list,
+.document-group ul{
+  margin:14px 0 0;
+  padding-left:21px;
+  line-height:1.7;
+}
+
+.recommendation{
+  margin-top:15px;
+  padding:15px;
+  border-radius:14px;
+  background:var(--surface-soft);
+}
+
+.recommendation p{
+  margin:7px 0 0;
+  color:var(--muted);
+  line-height:1.6;
+}
+
+.document-group{
+  margin-top:15px;
 }
 
 .sources{
-  background:#f9fafb;
+  margin:18px 0 25px;
+  padding:18px;
+  border-radius:16px;
+  background:#fafafa;
   border:1px solid var(--border);
-  border-radius:14px;
-  padding:15px;
-  margin:16px 0;
 }
 
-.sources h3{
-  margin-top:0;
+.sources-title{
+  font-weight:800;
+  margin-bottom:10px;
 }
 
-.sources a{
-  color:#111827;
+.sources-list{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.source-link{
+  color:#374151;
+  text-decoration:none;
+  border:1px solid var(--border);
+  border-radius:999px;
+  padding:8px 11px;
+  background:#fff;
+  font-size:13px;
+}
+
+.source-link:hover{
+  border-color:var(--gold);
 }
 
 .cancer{
   position:fixed;
-  right:14px;
-  bottom:14px;
+  right:16px;
+  bottom:16px;
   z-index:30;
-
-  background:#fff;
-  border:1px solid #e5e7eb;
+  max-width:280px;
+  padding:11px 14px;
   border-radius:14px;
-  padding:10px 13px;
-
+  background:#fff;
+  border:1px solid var(--border);
+  box-shadow:
+    0 8px 25px rgba(0,0,0,.12);
   font-size:12px;
-  box-shadow:0 8px 25px rgba(0,0,0,.12);
+  color:#4b5563;
 }
 
-@media(max-width:600px){
+@media(max-width:800px){
 
-  header{
-    padding-top:24px;
+  .profile-grid{
+    grid-template-columns:
+      repeat(2,minmax(0,1fr));
   }
 
-  .brand{
-    font-size:24px;
+  .hero{
+    padding-top:38px;
   }
 
-  .card,
-  .result-card{
-    border-radius:15px;
-    padding:16px;
+  .hero h1{
+    letter-spacing:-2px;
+  }
+
+  .info-grid{
+    grid-template-columns:1fr;
+  }
+
+  .container{
+    width:min(100% - 20px,1100px);
   }
 
   #outil{
-    bottom:8px;
+    bottom:6px;
+  }
+
+}
+
+@media(max-width:520px){
+
+  header{
+    padding-top:16px;
+  }
+
+  .tagline{
+    display:none;
+  }
+
+  .profile-grid{
+    grid-template-columns:1fr;
+  }
+
+  .card{
+    padding:16px;
+    border-radius:16px;
+  }
+
+  textarea{
+    min-height:115px;
+  }
+
+  .action-btn{
+    flex:1 1 auto;
   }
 
   .cancer{
-    right:8px;
-    bottom:8px;
+    left:10px;
+    right:10px;
+    bottom:10px;
+    max-width:none;
   }
+
 }
 
 </style>
@@ -2561,131 +2706,192 @@ textarea:focus{
 
 <body>
 
-<div class="container">
-
 <header>
-  <div class="brand">
-    <span>Go</span>
+  <div class="container">
+    <div class="topbar">
 
-    <span class="rare">
-      Rare
+      <div class="brand" aria-label="Go Rare AI">
+        <span>Go</span>
 
-      <span class="spark one"></span>
-      <span class="spark two"></span>
-      <span class="spark three"></span>
-    </span>
+        <span class="rare">
+          Rare
 
-    <span>AI</span>
-  </div>
+          <span class="spark one"></span>
+          <span class="spark two"></span>
+          <span class="spark three"></span>
+        </span>
 
-  <div class="tagline">
-    Comprendre votre situation. Trouver les possibilités. Agir.
+        <span>AI</span>
+      </div>
+
+      <div class="tagline">
+        Intelligence de situation
+      </div>
+
+    </div>
   </div>
 </header>
 
-<div id="accueil" class="card">
+<main>
 
-  <h2>Que pouvons-nous comprendre ensemble ?</h2>
+  <section class="hero">
+    <div class="container">
 
-  <div class="profile-grid">
+      <h1>
+        Comprendre votre situation.
+        <span>Voir plus loin.</span>
+      </h1>
 
-    <button
-      class="secondary"
-      onclick="openProfil('particulier')"
-    >
-      👤 Particulier
-    </button>
-
-    <button
-      class="secondary"
-      onclick="openProfil('emploi')"
-    >
-      💼 Emploi
-    </button>
-
-    <button
-      class="secondary"
-      onclick="openProfil('migrant')"
-    >
-      🌍 Immigration
-    </button>
-
-    <button
-      class="secondary"
-      onclick="openProfil('entreprise')"
-    >
-      🏢 Entreprise
-    </button>
-
-  </div>
-
-</div>
-
-<div id="outil" class="card hidden">
-
-  <button
-    class="secondary"
-    onclick="retourAccueil()"
-  >
-    ← Retour
-  </button>
-
-  <div style="margin-top:12px">
-
-    <textarea
-      id="question"
-      placeholder="Expliquez votre situation..."
-    ></textarea>
-
-    <div class="actions">
-
-      <button
-        class="primary"
-        onclick="analyserTexte()"
-      >
-        Analyser
-      </button>
-
-      <button
-        class="secondary"
-        onclick="document.getElementById('imageInput').click()"
-      >
-        📷 Image
-      </button>
-
-      <button
-        class="secondary"
-        onclick="activerMicro()"
-      >
-        🎙️ Micro
-      </button>
+      <p>
+        Go Rare AI transforme votre situation, vos informations
+        et vos objectifs en pistes concrètes, étapes et opportunités.
+      </p>
 
     </div>
+  </section>
 
-    <input
-      id="imageInput"
-      type="file"
-      accept="image/*"
-      capture="environment"
-      hidden
-    >
+  <section>
+    <div class="container">
 
-    <div
-      id="status"
-      style="
-        margin-top:10px;
-        color:#6b7280;
-        font-size:13px;
-      "
-    ></div>
+      <div id="profils" class="card">
 
-  </div>
+        <div class="eyebrow">
+          Commencer
+        </div>
 
-</div>
+        <h2>
+          Quel parcours vous concerne ?
+        </h2>
 
-<div id="result"></div>
+        <div class="profile-grid">
 
-</div>
+          <button
+            class="profile-btn"
+            onclick="openProfil('particulier')"
+          >
+            <strong>Particulier</strong>
+            <span>
+              Emploi, formation, démarches
+            </span>
+          </button>
+
+          <button
+            class="profile-btn"
+            onclick="openProfil('emploi')"
+          >
+            <strong>Emploi</strong>
+            <span>
+              Trouver ou changer d'emploi
+            </span>
+          </button>
+
+          <button
+            class="profile-btn"
+            onclick="openProfil('migrant')"
+          >
+            <strong>Immigration</strong>
+            <span>
+              Séjour et démarches en France
+            </span>
+          </button>
+
+          <button
+            class="profile-btn"
+            onclick="openProfil('entreprise')"
+          >
+            <strong>Entreprise</strong>
+            <span>
+              Création et développement
+            </span>
+          </button>
+
+        </div>
+
+        <div
+          id="situations"
+          class="situation-list hidden"
+        ></div>
+
+      </div>
+
+      <div
+        id="outil"
+        class="card hidden"
+      >
+
+        <div class="composer-header">
+
+          <button
+            class="back-btn"
+            onclick="retourProfils()"
+          >
+            ← Retour
+          </button>
+
+          <strong id="outilTitle">
+            Votre situation
+          </strong>
+
+        </div>
+
+        <textarea
+          id="question"
+          maxlength="12000"
+          placeholder="Décrivez votre situation, votre objectif ou votre problème..."
+        ></textarea>
+
+        <div class="actions-row">
+
+          <button
+            id="analyserBtn"
+            class="action-btn primary"
+            onclick="analyserTexte()"
+          >
+            Analyser
+          </button>
+
+          <button
+            class="action-btn"
+            onclick="document.getElementById('imageInput').click()"
+          >
+            📷 Image
+          </button>
+
+          <button
+            class="action-btn"
+            onclick="activerMicro()"
+          >
+            🎙️ Micro
+          </button>
+
+        </div>
+
+        <input
+          id="imageInput"
+          type="file"
+          accept="image/*"
+          capture="environment"
+          hidden
+          onchange="gererImage(this)"
+        >
+
+        <div
+          id="status"
+          class="status"
+        ></div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <section class="result-area">
+    <div class="container">
+      <div id="result"></div>
+    </div>
+  </section>
+
+</main>
 
 <div class="cancer">
   🎗️ Avec vous contre le cancer
@@ -2693,138 +2899,330 @@ textarea:focus{
 
 <script>
 
-let profilActuel = null;
-let situationActuelle = null;
-let historique = [];
+var profilActuel = null;
+var situationActuelle = null;
+var historique = [];
+var informations = {};
+var langue = "fr";
+var mediaRecorder = null;
+var audioChunks = [];
+var isRecording = false;
 
-const question =
-  document.getElementById("question");
+/* =========================================================
+   CLIENT HELPERS
+   ========================================================= */
 
-const result =
-  document.getElementById("result");
+function escapeClient(value){
 
-const status =
-  document.getElementById("status");
+  return String(
+    value === undefined || value === null
+      ? ""
+      : value
+  )
+  .replace(/&/g,"&amp;")
+  .replace(/</g,"&lt;")
+  .replace(/>/g,"&gt;")
+  .replace(/"/g,"&quot;")
+  .replace(/'/g,"&#039;");
 
-const outil =
-  document.getElementById("outil");
+}
 
-const accueil =
-  document.getElementById("accueil");
+function setStatus(text){
 
-const imageInput =
-  document.getElementById("imageInput");
+  var el = document.getElementById("status");
 
-/* =======================================================
+  if(el){
+    el.textContent = text || "";
+  }
+
+}
+
+function detectClientLanguage(){
+
+  var browser =
+    navigator.language ||
+    "fr";
+
+  if(
+    browser.toLowerCase().indexOf("ar") === 0
+  ){
+    return "ar";
+  }
+
+  if(
+    browser.toLowerCase().indexOf("en") === 0
+  ){
+    return "en";
+  }
+
+  return "fr";
+
+}
+
+/* =========================================================
    PROFILE
-   ======================================================= */
+   ========================================================= */
 
 function openProfil(profil){
 
   profilActuel = profil;
   situationActuelle = null;
 
-  historique = [];
+  var profiles =
+    document.getElementById("profils");
 
-  accueil.classList.add("hidden");
-  outil.classList.remove("hidden");
+  var situations =
+    document.getElementById("situations");
 
-  result.innerHTML = "";
+  var outil =
+    document.getElementById("outil");
 
-  setTimeout(function(){
+  var title =
+    document.getElementById("outilTitle");
 
-    try{
-      question.focus({
-        preventScroll:true
-      });
-    }catch(e){
-      question.focus();
-    }
+  profiles.classList.remove("hidden");
+  situations.classList.remove("hidden");
 
-  },100);
-}
+  situations.innerHTML = "";
 
-/* =======================================================
-   RETURN
-   ======================================================= */
+  var data = {
+    particulier: [
+      ["emploi","Recherche d'emploi"],
+      ["formation","Formation"],
+      ["administratif","Démarche administrative"]
+    ],
 
-function retourAccueil(){
+    emploi: [
+      ["emploi","Trouver un emploi"],
+      ["reconversion","Reconversion"],
+      ["formation","Formation"]
+    ],
 
-  profilActuel = null;
-  situationActuelle = null;
-  historique = [];
+    migrant: [
+      ["titre_sejour","Titre de séjour"],
+      ["renouvellement","Renouvellement"],
+      ["premiere_demande","Première demande"],
+      ["travail","Travailler en France"],
+      ["anef","Démarches ANEF"]
+    ],
+
+    entreprise: [
+      ["creation","Créer une entreprise"],
+      ["developpement","Développer une entreprise"]
+    ]
+  };
+
+  var items =
+    data[profil] || [];
+
+  items.forEach(function(item){
+
+    var button =
+      document.createElement("button");
+
+    button.className =
+      "situation-btn";
+
+    button.textContent =
+      item[1];
+
+    button.onclick =
+      function(){
+
+        choisirSituation(
+          item[0],
+          item[1]
+        );
+
+      };
+
+    situations.appendChild(button);
+
+  });
+
+  if(title){
+
+    title.textContent =
+      "Votre situation";
+
+  }
 
   outil.classList.add("hidden");
-  accueil.classList.remove("hidden");
 
-  result.innerHTML = "";
-
-  window.scrollTo({
-    top:0,
-    behavior:"smooth"
+  situations.scrollIntoView({
+    behavior:"smooth",
+    block:"start"
   });
+
 }
 
-/* =======================================================
-   ANALYZE
-   ======================================================= */
+/* =========================================================
+   SITUATION
+   ========================================================= */
+
+function choisirSituation(
+  situation,
+  label
+){
+
+  situationActuelle =
+    situation;
+
+  var outil =
+    document.getElementById("outil");
+
+  var situations =
+    document.getElementById("situations");
+
+  var title =
+    document.getElementById("outilTitle");
+
+  if(title){
+    title.textContent =
+      label || "Votre situation";
+  }
+
+  situations.classList.add("hidden");
+  outil.classList.remove("hidden");
+
+  var question =
+    document.getElementById("question");
+
+  if(question){
+    question.value = "";
+  }
+
+  setStatus("");
+
+  requestAnimationFrame(function(){
+
+    outil.scrollIntoView({
+      behavior:"smooth",
+      block:"center"
+    });
+
+    setTimeout(function(){
+
+      try{
+        question.focus({
+          preventScroll:true
+        });
+      }catch(error){
+        question.focus();
+      }
+
+    },350);
+
+  });
+
+}
+
+/* =========================================================
+   BACK
+   ========================================================= */
+
+function retourProfils(){
+
+  var outil =
+    document.getElementById("outil");
+
+  var situations =
+    document.getElementById("situations");
+
+  outil.classList.add("hidden");
+
+  if(profilActuel){
+    situations.classList.remove("hidden");
+  }else{
+    document.getElementById("profils")
+      .scrollIntoView({
+        behavior:"smooth",
+        block:"start"
+      });
+  }
+
+}
+
+/* =========================================================
+   TEXT ANALYSIS
+   ========================================================= */
 
 async function analyserTexte(){
 
-  const text =
-    question.value.trim();
+  var input =
+    document.getElementById("question");
+
+  var text =
+    (input.value || "").trim();
 
   if(!text){
 
-    status.textContent =
-      "Veuillez décrire votre situation.";
+    setStatus(
+      "Décrivez d'abord votre situation."
+    );
+
+    input.focus();
 
     return;
+
   }
 
-  status.textContent =
-    "Analyse en cours…";
+  var button =
+    document.getElementById("analyserBtn");
 
-  const previous =
-    historique.slice(-20);
+  if(button){
+    button.disabled = true;
+    button.textContent = "Analyse...";
+  }
+
+  setStatus(
+    "Analyse de votre situation..."
+  );
+
+  var payload = {
+
+    question: text,
+
+    history: historique,
+
+    informations: informations,
+
+    profil: profilActuel,
+
+    situation: situationActuelle,
+
+    langue: langue
+
+  };
 
   try{
 
-    const response =
-      await fetch("/api/analyze",{
+    var response =
+      await fetch(
+        "/api/analyze",
+        {
+          method:"POST",
 
-        method:"POST",
+          headers:{
+            "Content-Type":
+              "application/json"
+          },
 
-        headers:{
-          "Content-Type":
-            "application/json"
-        },
+          body:
+            JSON.stringify(payload)
+        }
+      );
 
-        body:JSON.stringify({
-
-          question:text,
-
-          history:previous,
-
-          profil:profilActuel,
-
-          situation:situationActuelle,
-
-          langue:
-            navigator.language || "fr"
-
-        })
-
-      });
-
-    const data =
+    var data =
       await response.json();
 
     if(!response.ok){
 
       throw new Error(
-        data?.error ||
-        "Erreur d'analyse."
+        data &&
+        data.error
+          ? data.error
+          : "Erreur d'analyse."
       );
 
     }
@@ -2834,133 +3232,115 @@ async function analyserTexte(){
       content:text
     });
 
-    if(data.question){
+    historique.push({
+      role:"assistant",
+      content:
+        data.question ||
+        data.orientation ||
+        ""
+    });
 
-      historique.push({
-        role:"assistant",
-        content:data.question
-      });
+    if(
+      historique.length > 20
+    ){
+
+      historique =
+        historique.slice(-20);
+
+    }
+
+    if(
+      data.informations &&
+      typeof data.informations === "object"
+    ){
+
+      informations =
+        data.informations;
 
     }
 
     afficher(data);
 
-    question.value = "";
+    input.value = "";
 
-    status.textContent = "";
+    setStatus("");
 
     setTimeout(function(){
 
       try{
-        question.focus({
+
+        input.focus({
           preventScroll:true
         });
-      }catch(e){
-        question.focus();
+
+      }catch(error){
+
+        input.focus();
+
       }
 
     },500);
 
   }catch(error){
 
-    status.textContent =
-      error?.message ||
-      "Une erreur est survenue.";
+    setStatus(
+      error &&
+      error.message
+        ? error.message
+        : "Une erreur est survenue."
+    );
+
+  }finally{
+
+    if(button){
+
+      button.disabled = false;
+      button.textContent = "Analyser";
+
+    }
+
   }
+
 }
 
-/* =======================================================
-   DISPLAY
-   ======================================================= */
+/* =========================================================
+   DISPLAY RESULT
+   ========================================================= */
 
 function afficher(data){
 
-  result.innerHTML =
-    resultHTMLClient(data);
+  var result =
+    document.getElementById("result");
 
-  requestAnimationFrame(function(){
-
-    const firstResult =
-      result.querySelector(".result-card");
-
-    if(firstResult){
-
-      firstResult.scrollIntoView({
-
-        behavior:"smooth",
-
-        block:"start"
-
-      });
-
-    }
-
-  });
-}
-
-/*
- * Client-side rendering.
- * We keep this separate from server-side resultHTML()
- * so user-provided content is escaped again in the browser.
- */
-
-function resultHTMLClient(data){
-
-  let html = "";
-
-  if(data.etape === "question"){
-
-    html += `
-      <div class="result-card">
-
-        <div class="eyebrow">
-          Étape suivante
-        </div>
-
-        <h2>
-          ${escapeClient(
-            data.question || ""
-          )}
-        </h2>
-
-      </div>
-    `;
-
-    if(
-      Array.isArray(data.sources) &&
-      data.sources.length
-    ){
-
-      html += sourcesClient(
-        data.sources
-      );
-
-    }
-
-    return html;
+  if(!result){
+    return;
   }
 
-  if(data.aiResponse){
+  var html = "";
 
-    html += `
-      <div class="result-card">
+  if(data.question){
 
-        <div class="eyebrow">
-          Go Rare AI
-        </div>
+    html +=
+      '<div class="result-card next-question">' +
+        '<div class="eyebrow">Étape suivante</div>' +
+        '<h2>' +
+          escapeClient(data.question) +
+        '</h2>' +
+      '</div>';
 
-        <h2>
-          Analyse de votre situation
-        </h2>
+  }
 
-        <div>
-          ${escapeClient(
-            data.aiResponse
-          ).replace(/\n/g,"<br>")}
-        </div>
+  if(data.orientation){
 
-      </div>
-    `;
+    html +=
+      '<div class="result-card">' +
+        '<div class="eyebrow">Orientation</div>' +
+        '<div class="orientation-text">' +
+          escapeClient(data.orientation)
+            .replace(/\\n/g,"<br>") +
+        '</div>' +
+      '</div>';
+
   }
 
   if(
@@ -2968,39 +3348,29 @@ function resultHTMLClient(data){
     data.confirmed.length
   ){
 
-    html += `
-      <div class="result-card">
+    html +=
+      '<div class="result-card">' +
+        '<div class="eyebrow">Informations confirmées</div>' +
+        '<div class="info-grid">';
 
-        <h3>
-          Informations confirmées
-        </h3>
+    data.confirmed.forEach(function(item){
 
-        <div class="confirmed-grid">
+      html +=
+        '<div class="info-item">' +
+          '<div class="info-label">' +
+            escapeClient(item.label) +
+          '</div>' +
+          '<div class="info-value">' +
+            escapeClient(item.value) +
+          '</div>' +
+        '</div>';
 
-          ${data.confirmed.map(item => `
+    });
 
-            <div class="confirmed-item">
+    html +=
+        '</div>' +
+      '</div>';
 
-              <strong>
-                ${escapeClient(
-                  item.label
-                )}
-              </strong>
-
-              <span>
-                ${escapeClient(
-                  item.value
-                )}
-              </span>
-
-            </div>
-
-          `).join("")}
-
-        </div>
-
-      </div>
-    `;
   }
 
   if(
@@ -3008,25 +3378,24 @@ function resultHTMLClient(data){
     data.actions.length
   ){
 
-    html += `
-      <div class="result-card">
+    html +=
+      '<div class="result-card">' +
+        '<div class="eyebrow">Actions proposées</div>' +
+        '<ul class="action-list">';
 
-        <h3>
-          Prochaines étapes
-        </h3>
+    data.actions.forEach(function(item){
 
-        <ul>
+      html +=
+        '<li>' +
+          escapeClient(item) +
+        '</li>';
 
-          ${data.actions.map(item => `
-            <li>
-              ${escapeClient(item)}
-            </li>
-          `).join("")}
+    });
 
-        </ul>
+    html +=
+        '</ul>' +
+      '</div>';
 
-      </div>
-    `;
   }
 
   if(
@@ -3034,42 +3403,71 @@ function resultHTMLClient(data){
     data.recommendations.length
   ){
 
-    html += `
-      <div class="result-card">
+    html +=
+      '<div class="result-card">' +
+        '<div class="eyebrow">Pistes</div>';
 
-        <h3>
-          Pistes possibles
-        </h3>
+    data.recommendations.forEach(function(item){
 
-        ${data.recommendations.map(item => `
+      html +=
+        '<div class="recommendation">' +
+          '<strong>' +
+            escapeClient(item.title || "") +
+          '</strong>' +
+          '<p>' +
+            escapeClient(item.text || "") +
+          '</p>' +
+        '</div>';
 
-          <div
-            style="
-              margin-bottom:14px;
-              padding-bottom:14px;
-              border-bottom:
-                1px solid #e5e7eb;
-            "
-          >
+    });
 
-            <strong>
-              ${escapeClient(
-                item.title || ""
-              )}
-            </strong>
+    html +=
+      '</div>';
 
-            <p>
-              ${escapeClient(
-                item.text || ""
-              )}
-            </p>
+  }
 
-          </div>
+  if(
+    Array.isArray(data.documents) &&
+    data.documents.length
+  ){
 
-        `).join("")}
+    html +=
+      '<div class="result-card">' +
+        '<div class="eyebrow">Vérifications</div>';
 
-      </div>
-    `;
+    data.documents.forEach(function(group){
+
+      html +=
+        '<div class="document-group">' +
+          '<strong>' +
+            escapeClient(group.title || "") +
+          '</strong>' +
+          '<ul>';
+
+      if(
+        Array.isArray(group.items)
+      ){
+
+        group.items.forEach(function(item){
+
+          html +=
+            '<li>' +
+              escapeClient(item) +
+            '</li>';
+
+        });
+
+      }
+
+      html +=
+          '</ul>' +
+        '</div>';
+
+    });
+
+    html +=
+      '</div>';
+
   }
 
   if(
@@ -3077,96 +3475,120 @@ function resultHTMLClient(data){
     data.sources.length
   ){
 
-    html += sourcesClient(
-      data.sources
-    );
+    html +=
+      '<div class="sources">' +
+        '<div class="sources-title">' +
+          'Sources officielles' +
+        '</div>' +
+        '<div class="sources-list">';
+
+    data.sources.forEach(function(source){
+
+      var url =
+        source &&
+        typeof source.url === "string" &&
+        source.url.indexOf("https://") === 0
+          ? source.url
+          : "#";
+
+      html +=
+        '<a class="source-link" href="' +
+          escapeClient(url) +
+          '" target="_blank" rel="noopener noreferrer">' +
+          escapeClient(
+            source.name ||
+            "Source officielle"
+          ) +
+        '</a>';
+
+    });
+
+    html +=
+        '</div>' +
+      '</div>';
 
   }
 
-  return html;
-}
+  result.innerHTML = html;
 
-/* =======================================================
-   SAFE CLIENT ESCAPE
-   ======================================================= */
+  requestAnimationFrame(function(){
 
-function escapeClient(value){
+    var firstResult =
+      result.querySelector(".result-card");
 
-  return String(value ?? "")
-    .replace(/&/g,"&amp;")
-    .replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;")
-    .replace(/"/g,"&quot;")
-    .replace(/'/g,"&#039;");
-}
+    if(firstResult){
 
-/* =======================================================
-   SOURCES
-   ======================================================= */
+      firstResult.scrollIntoView({
+        behavior:"smooth",
+        block:"start"
+      });
 
-function sourcesClient(sources){
-
-  return `
-    <div class="sources">
-
-      <h3>
-        Sources
-      </h3>
-
-      <ul>
-
-        ${sources.map(source => `
-
-          <li>
-
-            <a
-              href="${escapeClient(
-                source.url || "#"
-              )}"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              ${escapeClient(
-                source.name || ""
-              )}
-            </a>
-
-          </li>
-
-        `).join("")}
-
-      </ul>
-
-    </div>
-  `;
-}
-
-/* =======================================================
-   IMAGE
-   ======================================================= */
-
-imageInput.addEventListener(
-  "change",
-  async function(){
-
-    const file =
-      imageInput.files?.[0];
-
-    if(!file){
-      return;
     }
 
-    status.textContent =
-      "Analyse de l'image…";
+  });
 
-    try{
+}
 
-      const base64 =
-        await fileToBase64(file);
+/* =========================================================
+   IMAGE
+   ========================================================= */
 
-      const response =
-        await fetch("/api/image",{
+async function gererImage(input){
 
+  if(
+    !input ||
+    !input.files ||
+    !input.files.length
+  ){
+    return;
+  }
+
+  var file =
+    input.files[0];
+
+  if(
+    !file.type ||
+    file.type.indexOf("image/") !== 0
+  ){
+
+    setStatus(
+      "Veuillez sélectionner une image."
+    );
+
+    return;
+
+  }
+
+  if(
+    file.size > 7000000
+  ){
+
+    setStatus(
+      "L'image est trop volumineuse."
+    );
+
+    return;
+
+  }
+
+  setStatus(
+    "Analyse de l'image..."
+  );
+
+  try{
+
+    var base64 =
+      await fileToBase64(file);
+
+    var question =
+      document.getElementById(
+        "question"
+      ).value || "";
+
+    var response =
+      await fetch(
+        "/api/image",
+        {
           method:"POST",
 
           headers:{
@@ -3174,194 +3596,212 @@ imageInput.addEventListener(
               "application/json"
           },
 
-          body:JSON.stringify({
-
-            image:base64,
-
-            question:
-              question.value.trim(),
-
-            langue:
-              navigator.language || "fr"
-
-          })
-
-        });
-
-      const data =
-        await response.json();
-
-      if(!response.ok){
-
-        throw new Error(
-          data?.error ||
-          "Impossible d'analyser l'image."
-        );
-
-      }
-
-      result.innerHTML = `
-        <div class="result-card">
-
-          <div class="eyebrow">
-            Analyse visuelle
-          </div>
-
-          <h2>
-            Résultat
-          </h2>
-
-          <div>
-            ${escapeClient(
-              data.response || ""
-            ).replace(/\n/g,"<br>")}
-          </div>
-
-        </div>
-      `;
-
-      requestAnimationFrame(function(){
-
-        const firstResult =
-          result.querySelector(".result-card");
-
-        if(firstResult){
-
-          firstResult.scrollIntoView({
-
-            behavior:"smooth",
-
-            block:"start"
-
-          });
-
+          body:
+            JSON.stringify({
+              image:base64,
+              question:question,
+              langue:langue
+            })
         }
+      );
 
-      });
+    var data =
+      await response.json();
 
-    }catch(error){
+    if(!response.ok){
 
-      status.textContent =
-        error?.message ||
-        "Erreur lors de l'analyse de l'image.";
-
-    }finally{
-
-      imageInput.value = "";
+      throw new Error(
+        data &&
+        data.error
+          ? data.error
+          : "Erreur d'analyse de l'image."
+      );
 
     }
 
-  }
-);
+    afficher({
+      orientation:
+        data.result ||
+        data.response ||
+        "Analyse terminée.",
+      confirmed:[],
+      actions:[],
+      recommendations:[],
+      documents:[],
+      sources:[]
+    });
 
-/* =======================================================
-   FILE → BASE64
-   ======================================================= */
+    setStatus("");
+
+  }catch(error){
+
+    setStatus(
+      error &&
+      error.message
+        ? error.message
+        : "Erreur d'analyse de l'image."
+    );
+
+  }finally{
+
+    input.value = "";
+
+  }
+
+}
 
 function fileToBase64(file){
 
-  return new Promise(
-    function(resolve,reject){
+  return new Promise(function(resolve,reject){
 
-      const reader =
-        new FileReader();
+    var reader =
+      new FileReader();
 
-      reader.onload =
-        function(){
+    reader.onload =
+      function(){
 
-          const value =
-            String(reader.result || "");
+        var value =
+          String(reader.result || "");
 
-          const comma =
-            value.indexOf(",");
+        var comma =
+          value.indexOf(",");
 
-          resolve(
-            comma >= 0
-              ? value.slice(comma + 1)
-              : value
-          );
+        resolve(
+          comma >= 0
+            ? value.slice(comma + 1)
+            : value
+        );
 
-        };
+      };
 
-      reader.onerror =
-        reject;
+    reader.onerror =
+      reject;
 
-      reader.readAsDataURL(file);
+    reader.readAsDataURL(file);
 
-    }
-  );
+  });
+
 }
 
-/* =======================================================
+/* =========================================================
    MICROPHONE
-   ======================================================= */
+   ========================================================= */
 
 async function activerMicro(){
 
-  if(!navigator.mediaDevices?.getUserMedia){
+  if(
+    isRecording &&
+    mediaRecorder
+  ){
 
-    status.textContent =
-      "Le microphone n'est pas disponible sur cet appareil.";
+    mediaRecorder.stop();
 
     return;
+
   }
 
-  status.textContent =
-    "Préparation du microphone…";
+  if(
+    !navigator.mediaDevices ||
+    !navigator.mediaDevices.getUserMedia
+  ){
 
-  let stream;
+    setStatus(
+      "Le microphone n'est pas disponible sur cet appareil."
+    );
+
+    return;
+
+  }
 
   try{
 
-    stream =
+    var stream =
       await navigator.mediaDevices.getUserMedia({
         audio:true
       });
 
-    const recorder =
+    audioChunks = [];
+
+    mediaRecorder =
       new MediaRecorder(stream);
 
-    const chunks = [];
+    isRecording = true;
 
-    recorder.ondataavailable =
+    setStatus(
+      "Enregistrement en cours... Appuyez à nouveau sur Micro pour arrêter."
+    );
+
+    mediaRecorder.ondataavailable =
       function(event){
 
-        if(event.data.size){
-          chunks.push(event.data);
+        if(
+          event.data &&
+          event.data.size
+        ){
+
+          audioChunks.push(
+            event.data
+          );
+
         }
 
       };
 
-    recorder.onstop =
+    mediaRecorder.onstop =
       async function(){
+
+        isRecording = false;
 
         stream
           .getTracks()
-          .forEach(track => track.stop());
+          .forEach(function(track){
+            track.stop();
+          });
 
-        const blob =
+        setStatus(
+          "Transcription..."
+        );
+
+        var blob =
           new Blob(
-            chunks,
+            audioChunks,
             {
               type:
-                recorder.mimeType ||
+                mediaRecorder.mimeType ||
                 "audio/webm"
             }
           );
 
-        status.textContent =
-          "Transcription…";
-
         try{
 
-          const base64 =
-            await blobToBase64(blob);
+          var arrayBuffer =
+            await blob.arrayBuffer();
 
-          const response =
+          var bytes =
+            new Uint8Array(arrayBuffer);
+
+          var binary = "";
+
+          for(
+            var i = 0;
+            i < bytes.length;
+            i++
+          ){
+
+            binary +=
+              String.fromCharCode(
+                bytes[i]
+              );
+
+          }
+
+          var audioBase64 =
+            btoa(binary);
+
+          var response =
             await fetch(
               "/api/transcribe",
               {
-
                 method:"POST",
 
                 headers:{
@@ -3369,145 +3809,375 @@ async function activerMicro(){
                     "application/json"
                 },
 
-                body:JSON.stringify({
-
-                  audio:base64,
-
-                  language:
-                    navigator.language || "fr"
-
-                })
-
+                body:
+                  JSON.stringify({
+                    audio:audioBase64,
+                    langue:langue
+                  })
               }
             );
 
-          const data =
+          var data =
             await response.json();
 
           if(!response.ok){
 
             throw new Error(
-              data?.error ||
-              "Erreur de transcription."
+              data &&
+              data.error
+                ? data.error
+                : "Erreur de transcription."
             );
 
           }
 
+          var text =
+            data.text ||
+            data.transcription ||
+            "";
+
+          var question =
+            document.getElementById(
+              "question"
+            );
+
           question.value =
-            data.text || "";
+            text;
 
-          status.textContent =
-            "Transcription terminée.";
+          setStatus(
+            text
+              ? "Transcription terminée."
+              : "Aucun texte détecté."
+          );
 
-          try{
-            question.focus({
-              preventScroll:true
-            });
-          }catch(e){
-            question.focus();
-          }
+          question.focus({
+            preventScroll:true
+          });
 
         }catch(error){
 
-          status.textContent =
-            error?.message ||
-            "Erreur de transcription.";
+          setStatus(
+            error &&
+            error.message
+              ? error.message
+              : "Erreur de transcription."
+          );
 
         }
 
       };
 
-    recorder.start();
-
-    status.textContent =
-      "🎙️ Enregistrement… Appuyez de nouveau sur Micro pour arrêter.";
-
-    window.__goRareRecorder =
-      recorder;
-
-    window.__goRareRecording =
-      true;
+    mediaRecorder.start();
 
   }catch(error){
 
-    status.textContent =
-      "Autorisation microphone refusée ou indisponible.";
+    setStatus(
+      "Autorisation du microphone refusée ou indisponible."
+    );
 
   }
+
 }
 
-/*
- * Second press stops the current recording.
- */
-const originalMicro =
-  activerMicro;
+/* =========================================================
+   INITIALIZATION
+   ========================================================= */
 
-window.activerMicro =
-  function(){
-
-    if(
-      window.__goRareRecording &&
-      window.__goRareRecorder
-    ){
-
-      window.__goRareRecorder.stop();
-
-      window.__goRareRecorder = null;
-      window.__goRareRecording = false;
-
-      return;
-    }
-
-    originalMicro();
-
-  };
-
-/* =======================================================
-   BLOB → BASE64
-   ======================================================= */
-
-function blobToBase64(blob){
-
-  return new Promise(
-    function(resolve,reject){
-
-      const reader =
-        new FileReader();
-
-      reader.onload =
-        function(){
-
-          const value =
-            String(reader.result || "");
-
-          const comma =
-            value.indexOf(",");
-
-          resolve(
-            comma >= 0
-              ? value.slice(comma + 1)
-              : value
-          );
-
-        };
-
-      reader.onerror =
-        reject;
-
-      reader.readAsDataURL(blob);
-
-    }
-  );
-}
+langue =
+  detectClientLanguage();
 
 </script>
 
 </body>
-</html>`;
+</html>
+`;
 }
 
 /* =========================================================
-   ROUTER
+   API ROUTER
+   ========================================================= */
+
+async function handleAnalyze(request, env) {
+
+  if(!checkRateLimit(request)){
+
+    return json(
+      {
+        error:
+          "Trop de requêtes. Veuillez patienter."
+      },
+      429
+    );
+
+  }
+
+  let payload;
+
+  try{
+
+    payload =
+      await request.json();
+
+  }catch(error){
+
+    return json(
+      {
+        error:"JSON invalide."
+      },
+      400
+    );
+
+  }
+
+  if(
+    !payload ||
+    typeof payload !== "object"
+  ){
+
+    return json(
+      {
+        error:"Données invalides."
+      },
+      400
+    );
+
+  }
+
+  if(
+    cleanText(
+      payload.question || "",
+      LIMITS.question
+    ).length >
+    LIMITS.question
+  ){
+
+    return json(
+      {
+        error:"Question trop longue."
+      },
+      413
+    );
+
+  }
+
+  try{
+
+    const result =
+      await analyserQuestion(
+        env,
+        payload
+      );
+
+    return json(
+      result,
+      200
+    );
+
+  }catch(error){
+
+    return json(
+      {
+        error:
+          "Erreur interne pendant l'analyse."
+      },
+      500
+    );
+
+  }
+
+}
+
+/* =========================================================
+   API IMAGE
+   ========================================================= */
+
+async function handleImage(request, env) {
+
+  if(!checkRateLimit(request)){
+
+    return json(
+      {
+        error:
+          "Trop de requêtes. Veuillez patienter."
+      },
+      429
+    );
+
+  }
+
+  let payload;
+
+  try{
+
+    payload =
+      await request.json();
+
+  }catch(error){
+
+    return json(
+      {
+        error:"JSON invalide."
+      },
+      400
+    );
+
+  }
+
+  const image =
+    cleanText(
+      payload.image || "",
+      LIMITS.image
+    );
+
+  if(!image){
+
+    return json(
+      {
+        error:"Image absente."
+      },
+      400
+    );
+
+  }
+
+  try{
+
+    const result =
+      await analyserImage(
+        env,
+        image,
+        payload.question || "",
+        payload.langue || "fr"
+      );
+
+    return json(
+      {
+        result:result
+      },
+      200
+    );
+
+  }catch(error){
+
+    return json(
+      {
+        error:
+          "Erreur pendant l'analyse de l'image."
+      },
+      500
+    );
+
+  }
+
+}
+
+/* =========================================================
+   API TRANSCRIPTION
+   ========================================================= */
+
+async function handleTranscribe(
+  request,
+  env
+) {
+
+  if(!checkRateLimit(request)){
+
+    return json(
+      {
+        error:
+          "Trop de requêtes. Veuillez patienter."
+      },
+      429
+    );
+
+  }
+
+  let payload;
+
+  try{
+
+    payload =
+      await request.json();
+
+  }catch(error){
+
+    return json(
+      {
+        error:"JSON invalide."
+      },
+      400
+    );
+
+  }
+
+  const audioBase64 =
+    cleanText(
+      payload.audio || "",
+      LIMITS.audio
+    );
+
+  if(!audioBase64){
+
+    return json(
+      {
+        error:"Audio absent."
+      },
+      400
+    );
+
+  }
+
+  try{
+
+    const binary =
+      atob(audioBase64);
+
+    const bytes =
+      new Uint8Array(
+        binary.length
+      );
+
+    for(
+      let i = 0;
+      i < binary.length;
+      i++
+    ){
+
+      bytes[i] =
+        binary.charCodeAt(i);
+
+    }
+
+    const text =
+      await transcrireAudio(
+        env,
+        bytes.buffer,
+        payload.langue || "fr"
+      );
+
+    return json(
+      {
+        text:text
+      },
+      200
+    );
+
+  }catch(error){
+
+    return json(
+      {
+        error:
+          "Erreur pendant la transcription."
+      },
+      500
+    );
+
+  }
+
+}
+
+/* =========================================================
+   MAIN ROUTER
    ========================================================= */
 
 export default {
@@ -3517,37 +4187,42 @@ export default {
     const url =
       new URL(request.url);
 
-    const method =
-      request.method.toUpperCase();
-
     /*
-     * Basic rate limiting for API endpoints.
+     * -------------------------------------------------------
+     * SECURITY / HEALTH
+     * -------------------------------------------------------
      */
+
     if(
-      url.pathname.startsWith("/api/") &&
-      !checkRateLimit(request)
+      request.method === "OPTIONS"
     ){
 
-      return json(
+      return new Response(
+        null,
         {
-          error:
-            "Trop de requêtes. Veuillez patienter."
-        },
-        429,
-        {
-          "Retry-After":"60"
+          status:204,
+          headers:securityHeaders({
+            "Access-Control-Allow-Origin":
+              url.origin,
+            "Access-Control-Allow-Methods":
+              "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers":
+              "Content-Type"
+          })
         }
       );
 
     }
 
-    /* -----------------------------------------------------
-       HOME
-       ----------------------------------------------------- */
+    /*
+     * -------------------------------------------------------
+     * HOME
+     * -------------------------------------------------------
+     */
 
     if(
       url.pathname === "/" &&
-      method === "GET"
+      request.method === "GET"
     ){
 
       return new Response(
@@ -3555,203 +4230,134 @@ export default {
         {
           status:200,
           headers:{
-            ...securityHeaders(),
             "Content-Type":
-              "text/html; charset=utf-8"
+              "text/html; charset=utf-8",
+            "Cache-Control":
+              "no-store",
+            "X-Content-Type-Options":
+              "nosniff",
+            "X-Frame-Options":
+              "DENY",
+            "Referrer-Policy":
+              "strict-origin-when-cross-origin",
+            "Permissions-Policy":
+              "camera=(), geolocation=(), payment=(), usb=()",
+            "Content-Security-Policy":
+              "default-src 'self'; " +
+              "script-src 'self' 'unsafe-inline'; " +
+              "style-src 'self' 'unsafe-inline'; " +
+              "img-src 'self' data: blob:; " +
+              "media-src 'self' blob:; " +
+              "connect-src 'self'; " +
+              "font-src 'self' data:; " +
+              "object-src 'none'; " +
+              "base-uri 'none'; " +
+              "form-action 'self'; " +
+              "frame-ancestors 'none';"
           }
         }
       );
 
     }
 
-    /* -----------------------------------------------------
-       HEALTH
-       ----------------------------------------------------- */
+    /*
+     * -------------------------------------------------------
+     * HEALTH
+     * -------------------------------------------------------
+     */
 
     if(
       url.pathname === "/health" &&
-      method === "GET"
+      request.method === "GET"
     ){
 
-      return json({
-
-        ok:true,
-
-        service:"Go Rare AI",
-
-        version:VERSION,
-
-        decision_version:
-          DECISION_VERSION,
-
-        models:{
-          text:MODEL,
-          vision:MODEL_VISION,
-          audio:MODEL_AUDIO
-        }
-
-      });
+      return json(
+        {
+          ok:true,
+          service:"Go Rare AI",
+          version:VERSION,
+          decisionVersion:DECISION_VERSION
+        },
+        200
+      );
 
     }
 
-    /* -----------------------------------------------------
-       ANALYZE
-       ----------------------------------------------------- */
+    /*
+     * -------------------------------------------------------
+     * ANALYZE
+     * -------------------------------------------------------
+     */
 
     if(
       url.pathname === "/api/analyze" &&
-      method === "POST"
+      request.method === "POST"
     ){
 
-      try{
-
-        const payload =
-          await request.json();
-
-        const result =
-          await analyserQuestion(
-            env,
-            payload
-          );
-
-        return json(result);
-
-      }catch(error){
-
-        return json(
-          {
-            error:
-              error?.message ||
-              "Erreur d'analyse."
-          },
-          400
-        );
-
-      }
+      return handleAnalyze(
+        request,
+        env
+      );
 
     }
 
-    /* -----------------------------------------------------
-       IMAGE
-       ----------------------------------------------------- */
+    /*
+     * -------------------------------------------------------
+     * IMAGE
+     * -------------------------------------------------------
+     */
 
     if(
       url.pathname === "/api/image" &&
-      method === "POST"
+      request.method === "POST"
     ){
 
-      try{
-
-        const payload =
-          await request.json();
-
-        const image =
-          cleanText(
-            payload?.image || "",
-            LIMITS.image
-          );
-
-        if(!image){
-
-          return json(
-            {
-              error:"Image manquante."
-            },
-            400
-          );
-
-        }
-
-        const response =
-          await analyserImage(
-            env,
-            image,
-            payload?.question || "",
-            payload?.langue || "fr"
-          );
-
-        return json({
-          response
-        });
-
-      }catch(error){
-
-        return json(
-          {
-            error:
-              error?.message ||
-              "Erreur d'analyse de l'image."
-          },
-          400
-        );
-
-      }
+      return handleImage(
+        request,
+        env
+      );
 
     }
 
-    /* -----------------------------------------------------
-       TRANSCRIBE
-       ----------------------------------------------------- */
+    /*
+     * -------------------------------------------------------
+     * TRANSCRIBE
+     * -------------------------------------------------------
+     */
 
     if(
       url.pathname === "/api/transcribe" &&
-      method === "POST"
+      request.method === "POST"
     ){
 
-      try{
-
-        const payload =
-          await request.json();
-
-        const audio =
-          payload?.audio || "";
-
-        if(!audio){
-
-          return json(
-            {
-              error:"Audio manquant."
-            },
-            400
-          );
-
-        }
-
-        const text =
-          await transcrireAudio(
-            env,
-            audio,
-            payload?.language || null
-          );
-
-        return json({
-          text
-        });
-
-      }catch(error){
-
-        return json(
-          {
-            error:
-              error?.message ||
-              "Erreur de transcription."
-          },
-          400
-        );
-
-      }
+      return handleTranscribe(
+        request,
+        env
+      );
 
     }
 
-    /* -----------------------------------------------------
-       404
-       ----------------------------------------------------- */
+    /*
+     * -------------------------------------------------------
+     * 404
+     * -------------------------------------------------------
+     */
 
-    return json(
+    return new Response(
+      "Not Found",
       {
-        error:"Not found"
-      },
-      404
+        status:404,
+        headers:{
+          "Content-Type":
+            "text/plain; charset=utf-8",
+          "Cache-Control":
+            "no-store",
+          "X-Content-Type-Options":
+            "nosniff",
+          "X-Frame-Options":
+            "DENY"
+        }
+      }
     );
 
   }
