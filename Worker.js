@@ -610,53 +610,130 @@ break;
 }
 }
 
-// Quelques lieux fréquents
-const knownLocations = [
-"Vigneux-sur-Seine",
-"Paris",
-"Créteil",
-"Évry",
-"Évry-Courcouronnes",
-"Montgeron",
-"Draveil",
-"Athis-Mons",
-"Juvisy-sur-Orge",
-"Viry-Châtillon",
-"Corbeil-Essonnes",
-"Essonne",
-"Val-de-Marne",
-"Seine-et-Marne",
-"Hauts-de-Seine"
-];
+// ----------------------------------------------------------
+// LOCALISATION
+// ----------------------------------------------------------
 
-for (const location of knownLocations) {
-if (lower.includes(location.toLowerCase())) {
-add("zone_recherche", location);
-break;
-}
+// Normalisation pour reconnaître les variantes,
+// les minuscules, les accents et certaines fautes courantes.
+
+const lowerNormalise = String(q || "")
+  .toLowerCase()
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .replace(/[’']/g, "'")
+  .replace(/-/g, " ")
+  .replace(/\s+/g, " ")
+  .trim();
+
+const locationAliases = {
+  "vigneux sur seine": "Vigneux-sur-Seine",
+  "vignieux sur seine": "Vigneux-sur-Seine",
+
+  "paris": "Paris",
+  "creteil": "Créteil",
+  "evry": "Évry",
+  "evry courcouronnes": "Évry-Courcouronnes",
+  "montgeron": "Montgeron",
+  "draveil": "Draveil",
+  "athis mons": "Athis-Mons",
+  "juvisy sur orge": "Juvisy-sur-Orge",
+  "viry chatillon": "Viry-Châtillon",
+  "corbeil essonnes": "Corbeil-Essonnes",
+  "essonne": "Essonne",
+  "val de marne": "Val-de-Marne",
+  "seine et marne": "Seine-et-Marne",
+  "hauts de seine": "Hauts-de-Seine"
+};
+
+for (const [alias, canonical] of Object.entries(locationAliases)) {
+  if (lowerNormalise.includes(alias)) {
+    add("zone_recherche", canonical);
+    break;
+  }
 }
 
 // ----------------------------------------------------------
 // TYPE D'EMPLOI
 // ----------------------------------------------------------
 
+// Si l'utilisateur indique explicitement qu'il accepte
+// n'importe quel travail / secteur.
+
 if (
-/n'importe quel travail/i.test(q) ||
-/n’importe quel travail/i.test(q) ||
-/tout secteur/i.test(q) ||
-/tous les secteurs/i.test(q) ||
-/peu importe le secteur/i.test(q) ||
-/peu importe le travail/i.test(q)
+  /n'importe quel travail/i.test(q) ||
+  /n’importe quel travail/i.test(q) ||
+  /n'importe quel emploi/i.test(q) ||
+  /n’importe quel emploi/i.test(q) ||
+  /tout type d'emploi/i.test(q) ||
+  /tout type de travail/i.test(q) ||
+  /tout secteur/i.test(q) ||
+  /tous les secteurs/i.test(q) ||
+  /peu importe le secteur/i.test(q) ||
+  /peu importe le travail/i.test(q) ||
+  /peu importe l'emploi/i.test(q) ||
+  /je suis ouvert[e]? à tout/i.test(q) ||
+  /je prends tout/i.test(q)
 ) {
-add("type_emploi", "Ouvert à tout secteur");
+  add(
+    "type_emploi",
+    "Ouvert à tout secteur",
+    "élevée"
+  );
 }
 
+// ----------------------------------------------------------
+// MÉTIER EXPLICITEMENT INDIQUÉ
+// ----------------------------------------------------------
+
+// IMPORTANT :
+// "Je cherche un emploi" ne suffit PAS pour déterminer
+// le type d'emploi.
+//
+// Le métier doit être explicitement indiqué.
+//
+// Exemples reconnus :
+// "je cherche un emploi de chauffeur"
+// "je cherche un poste de vendeur"
+// "je veux travailler comme magasinier"
+
 const emploiMatch = q.match(
-/\b(?:cherche|recherche|veux|voudrais)\b.{0,50}\b(?:poste|emploi|travail)\b.{0,30}\b([A-Za-zÀ-ÿ' -]{3,50})/i
+  /\b(?:cherche|recherche|veux|voudrais|souhaite)\b\s+(?:un|une|du|de la|des)?\s*(?:poste|emploi|travail)\s+(?:de|comme|en tant que)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]{2,40}(?:\s+[A-Za-zÀ-ÿ'’-]{2,40}){0,3})(?=\s*(?:,|\.|;|$|\bet\b|\bmais\b|\bavec\b|\bsans\b|\bpour\b))/i
 );
 
-if (emploiMatch && !informationsContient(result, "type_emploi")) {
-add("type_emploi", texte(emploiMatch[1]), "moyenne");
+if (
+  emploiMatch &&
+  !informationsContient(result, "type_emploi")
+) {
+  const metier = texte(emploiMatch[1]).trim();
+
+  // Protection contre les faux positifs.
+  // Ces mots ne doivent jamais être considérés
+  // comme un métier.
+
+  const termesInterdits = [
+    "diplôme",
+    "diplome",
+    "expérience",
+    "experience",
+    "sans diplôme",
+    "sans diplome",
+    "sans expérience",
+    "sans experience",
+    "france"
+  ];
+
+  const fauxPositif = termesInterdits.some(term =>
+    metier.toLowerCase().includes(term.toLowerCase())
+  );
+
+  if (!fauxPositif) {
+    add(
+      "type_emploi",
+      metier,
+      "moyenne"
+    );
+  }
 }
 
 // ----------------------------------------------------------
