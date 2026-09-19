@@ -2,8 +2,8 @@ const MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
 const MODEL_VISION = "@cf/meta/llama-3.2-11b-vision-instruct";
 const MODEL_AUDIO = "@cf/openai/whisper-large-v3-turbo";
 
-const VERSION = "10.4.0";
-const DECISION_VERSION = "10.4.0";
+const VERSION = "10.5.0";
+const DECISION_VERSION = "10.5.0";
 
 const LIMITS = {
   question: 12000,
@@ -22,48 +22,35 @@ const RATE = {
 
 const rateStore = new Map();
 
-/* =========================
-   OFFICIAL SOURCES
-   ========================= */
-
 const SOURCES = {
   franceTravail: {
     name: "France Travail",
     url: "https://www.francetravail.fr/"
   },
-
   franceTravailOffers: {
     name: "France Travail — Recherche d'offres",
     url: "https://candidat.francetravail.fr/offres/recherche"
   },
-
   franceTravailAPI: {
     name: "France Travail — API",
     url: "https://francetravail.io/"
   },
-
   anef: {
     name: "ANEF",
-    url:
-      "https://administration-etrangers-en-france.interieur.gouv.fr/"
+    url: "https://administration-etrangers-en-france.interieur.gouv.fr/"
   },
-
   travailEtranger: {
     name: "Service-Public — Travail d'un étranger en France",
-    url:
-      "https://www.service-public.fr/particuliers/vosdroits/N107"
+    url: "https://www.service-public.fr/particuliers/vosdroits/N107"
   },
-
   servicePublic: {
     name: "Service-Public.fr",
     url: "https://www.service-public.fr/"
   },
-
   entreprise: {
     name: "Service-Public Entreprendre",
     url: "https://entreprendre.service-public.fr/"
   },
-
   guichet: {
     name: "Guichet unique",
     url: "https://formalites.entreprises.gouv.fr/"
@@ -83,21 +70,36 @@ const LANGUAGES = [
 
 const LOCATION_ALIASES = {
   "vigneux-sur-seine": "Vigneux-sur-Seine",
+  "vigneux sur seine": "Vigneux-sur-Seine",
   "vignieux sur seine": "Vigneux-sur-Seine",
   "vignieux-sur-seine": "Vigneux-sur-Seine",
+  "vigneux": "Vigneux-sur-Seine",
+
   "paris": "Paris",
-  "évry-courcouronnes": "Évry-Courcouronnes",
-  "evry-courcouronnes": "Évry-Courcouronnes",
-  "corbeil-essonnes": "Corbeil-Essonnes",
-  "montgeron": "Montgeron",
+  "paris 75": "Paris",
+
   "draveil": "Draveil",
+  "montgeron": "Montgeron",
+  "juvisy": "Juvisy-sur-Orge",
   "juvisy-sur-orge": "Juvisy-sur-Orge",
+  "athis mons": "Athis-Mons",
+  "athis-mons": "Athis-Mons",
+  "viry chatillon": "Viry-Châtillon",
   "viry-châtillon": "Viry-Châtillon",
-  "viry-chatillon": "Viry-Châtillon",
+  "savigny sur orge": "Savigny-sur-Orge",
+  "savigny-sur-orge": "Savigny-sur-Orge",
+  "yerres": "Yerres",
+  "epinay sous senart": "Épinay-sous-Sénart",
+  "epinay-sous-senart": "Épinay-sous-Sénart",
+  "brunoy": "Brunoy",
+  "ris orangis": "Ris-Orangis",
+  "ris-orangis": "Ris-Orangis",
+  "corbeil essonnes": "Corbeil-Essonnes",
+  "corbeil-essonnes": "Corbeil-Essonnes",
+  "evry": "Évry-Courcouronnes",
+  "evry courcouronnes": "Évry-Courcouronnes",
   "créteil": "Créteil",
-  "creteil": "Créteil",
-  "melun": "Melun",
-  "massy": "Massy"
+  "creteil": "Créteil"
 };
 
 const PARCOURS = {
@@ -106,38 +108,36 @@ const PARCOURS = {
     emploi: "Emploi",
     immigration: "Immigration",
     entreprise: "Entreprise",
-    recherche: "Recherche d'emploi",
+    recherche: "Recherche",
     formation: "Formation",
-    administratif: "Démarche administrative",
+    administratif: "Administratif",
     reconversion: "Reconversion",
-    creer: "Créer une entreprise",
-    developper: "Développer une entreprise"
+    creer: "Créer",
+    developper: "Développer"
   },
-
   ar: {
     particulier: "فرد",
     emploi: "العمل",
     immigration: "الهجرة والإقامة",
-    entreprise: "شركة",
-    recherche: "البحث عن عمل",
+    entreprise: "مشروع / شركة",
+    recherche: "البحث",
     formation: "التكوين",
-    administratif: "إجراء إداري",
+    administratif: "إداري",
     reconversion: "إعادة التوجيه المهني",
-    creer: "إنشاء شركة",
-    developper: "تطوير شركة"
+    creer: "إنشاء",
+    developper: "تطوير"
   },
-
   en: {
     particulier: "Individual",
     emploi: "Employment",
     immigration: "Immigration",
     entreprise: "Business",
-    recherche: "Job search",
+    recherche: "Research",
     formation: "Training",
-    administratif: "Administrative procedure",
+    administratif: "Administrative",
     reconversion: "Career change",
-    creer: "Create a business",
-    developper: "Develop a business"
+    creer: "Create",
+    developper: "Develop"
   }
 };
 
@@ -149,69 +149,79 @@ const UI = {
     image: "Image",
     microphone: "Micro",
     stop: "Arrêter",
-    placeholder:
-      "Décrivez votre situation ou votre objectif...",
-    particular: "Particulier",
-    employment: "Emploi",
-    immigration: "Immigration",
-    business: "Entreprise",
+    placeholder: "Décrivez votre situation...",
+    particulier: "Particulier",
     situation: "Situation",
-    searchJob: "Recherche d'emploi",
-    training: "Formation",
-    administrative: "Démarche administrative",
-    reconversion: "Reconversion",
     result: "Résultat",
     confirmed: "Informations confirmées",
     verify: "Informations à vérifier",
-    missing: "Informations nécessaires",
+    missing: "Informations manquantes",
     sources: "Sources officielles",
     actions: "Prochaines étapes",
     recommendations: "Pistes utiles",
     opportunities: "Opportunités trouvées",
-    billing: "Compte professionnel",
-    secure: "Connexion sécurisée",
+    billing: "Compte",
+    secure: "Protection",
     connect: "Connecter mon compte",
-    notConnected: "Compte non connecté.",
+    notConnected: "Non connecté",
     searching: "Recherche en cours...",
     ready: "Prêt.",
-    error: "Erreur"
+    error: "Une erreur est survenue.",
+    journey: "Parcours",
+    understanding: "Compréhension",
+    verification: "Vérification",
+    search: "Recherche",
+    comparison: "Comparaison",
+    action: "Action",
+    followup: "Suivi",
+    officialReady: "Recherche officielle prête à être ouverte",
+    offersRetrieved: "Offres récupérées",
+    noOffers: "Aucune offre récupérée pour cette recherche",
+    compatibility: "Compatibilité indicative",
+    compatible: "Compatible avec les critères connus",
+    toVerify: "À vérifier",
+    lessCompatible: "Moins compatible avec les critères connus"
   },
-
   ar: {
     title: "Go Rare AI",
-    subtitle: "افهم وضعك. وانظر إلى أبعد.",
+    subtitle: "نفهم وضعك. ونرى أبعد.",
     analyze: "تحليل",
     image: "صورة",
     microphone: "ميكروفون",
     stop: "إيقاف",
-    placeholder:
-      "اشرح وضعك أو هدفك...",
-    particular: "فرد",
-    employment: "العمل",
-    immigration: "الهجرة والإقامة",
-    business: "شركة",
-    situation: "الوضع",
-    searchJob: "البحث عن عمل",
-    training: "التكوين",
-    administrative: "إجراء إداري",
-    reconversion: "إعادة التوجيه المهني",
+    placeholder: "اشرح وضعك...",
+    particulier: "فرد",
+    situation: "الوضعية",
     result: "النتيجة",
     confirmed: "المعلومات المؤكدة",
-    verify: "معلومات تحتاج إلى تحقق",
-    missing: "المعلومات المطلوبة",
+    verify: "معلومات يجب التحقق منها",
+    missing: "معلومات ناقصة",
     sources: "المصادر الرسمية",
     actions: "الخطوات التالية",
     recommendations: "مسارات مفيدة",
     opportunities: "الفرص التي تم العثور عليها",
-    billing: "الحساب المهني",
-    secure: "اتصال آمن",
-    connect: "ربط الحساب",
-    notConnected: "الحساب غير متصل.",
-    searching: "جاري البحث...",
+    billing: "الحساب",
+    secure: "الحماية",
+    connect: "ربط حسابي",
+    notConnected: "غير متصل",
+    searching: "جارٍ البحث...",
     ready: "جاهز.",
-    error: "خطأ"
+    error: "حدث خطأ.",
+    journey: "المسار",
+    understanding: "فهم الوضع",
+    verification: "التحقق",
+    search: "البحث",
+    comparison: "المقارنة",
+    action: "التنفيذ",
+    followup: "المتابعة",
+    officialReady: "البحث الرسمي جاهز للفتح",
+    offersRetrieved: "تم العثور على عروض فعلية",
+    noOffers: "لم يتم العثور على عروض لهذه المعايير",
+    compatibility: "توافق أولي",
+    compatible: "متوافق مع المعايير المعروفة",
+    toVerify: "يجب التحقق",
+    lessCompatible: "أقل توافقًا مع المعايير المعروفة"
   },
-
   en: {
     title: "Go Rare AI",
     subtitle: "Understand your situation. See further.",
@@ -219,479 +229,333 @@ const UI = {
     image: "Image",
     microphone: "Microphone",
     stop: "Stop",
-    placeholder:
-      "Describe your situation or objective...",
-    particular: "Individual",
-    employment: "Employment",
-    immigration: "Immigration",
-    business: "Business",
+    placeholder: "Describe your situation...",
+    particulier: "Individual",
     situation: "Situation",
-    searchJob: "Job search",
-    training: "Training",
-    administrative: "Administrative procedure",
-    reconversion: "Career change",
     result: "Result",
     confirmed: "Confirmed information",
     verify: "Information to verify",
-    missing: "Required information",
+    missing: "Missing information",
     sources: "Official sources",
     actions: "Next steps",
     recommendations: "Useful paths",
     opportunities: "Opportunities found",
-    billing: "Professional account",
-    secure: "Secure connection",
-    connect: "Connect account",
-    notConnected: "Account not connected.",
+    billing: "Account",
+    secure: "Protection",
+    connect: "Connect my account",
+    notConnected: "Not connected",
     searching: "Searching...",
     ready: "Ready.",
-    error: "Error"
+    error: "An error occurred.",
+    journey: "Journey",
+    understanding: "Understanding",
+    verification: "Verification",
+    search: "Search",
+    comparison: "Comparison",
+    action: "Action",
+    followup: "Follow-up",
+    officialReady: "Official search ready to open",
+    offersRetrieved: "Offers retrieved",
+    noOffers: "No offers retrieved for this search",
+    compatibility: "Indicative compatibility",
+    compatible: "Compatible with known criteria",
+    toVerify: "To verify",
+    lessCompatible: "Less compatible with known criteria"
   }
 };
 
 const QUESTIONS = {
   fr: {
-    zone_recherche: {
-      key: "zone_recherche",
-      text:
-        "Dans quelle ville ou zone souhaitez-vous rechercher ?",
-      field: "zoneRecherche"
-    },
-
-    type_emploi: {
-      key: "type_emploi",
-      text:
-        "Quel type de travail recherchez-vous ? Vous pouvez aussi dire « peu importe ».",
-      field: "typeEmploi"
-    },
-
-    diplome: {
-      key: "diplome",
-      text:
-        "Avez-vous un diplôme ou souhaitez-vous rechercher sans diplôme ?",
-      field: "diplome"
-    },
-
-    experience: {
-      key: "experience",
-      text:
-        "Avez-vous déjà une expérience professionnelle, même courte ?",
-      field: "experience"
-    },
-
-    mobilite: {
-      key: "mobilite",
-      text:
-        "Jusqu'où pouvez-vous vous déplacer pour travailler ?",
-      field: "mobilite"
-    },
-
-    horaires: {
-      key: "horaires",
-      text:
-        "Avez-vous une préférence pour les horaires ou êtes-vous flexible ?",
-      field: "horaires"
-    },
-
-    presence_france: {
-      key: "presence_france",
-      text:
-        "Êtes-vous actuellement en France ?",
-      field: "presenceFrance"
-    },
-
-    statut_sejour: {
-      key: "statut_sejour",
-      text:
-        "Quel est votre statut de séjour en France ?",
-      field: "statutSejour"
-    },
-
-    entreprise: {
-      key: "entreprise",
-      text:
-        "Avez-vous déjà une entreprise ou seulement un projet ?",
-      field: "entreprise"
-    }
+    zone_recherche: "Dans quelle zone recherchez-vous ?",
+    type_emploi: "Quel type de travail recherchez-vous ?",
+    diplome: "Avez-vous un diplôme ou une qualification à prendre en compte ?",
+    experience: "Avez-vous une expérience professionnelle à prendre en compte ?",
+    mobilite: "Jusqu'où pouvez-vous vous déplacer pour travailler ?",
+    horaires: "Quels horaires pouvez-vous accepter ?",
+    presence_france: "Êtes-vous actuellement en France ?",
+    statut_sejour: "Quel est votre statut de séjour ou de travail ?",
+    entreprise: "S'agit-il d'un projet ou d'une entreprise existante ?"
   },
-
   ar: {
-    zone_recherche: {
-      key: "zone_recherche",
-      text:
-        "في أي مدينة أو منطقة تريد البحث؟",
-      field: "zoneRecherche"
-    },
-
-    type_emploi: {
-      key: "type_emploi",
-      text:
-        "ما نوع العمل الذي تبحث عنه؟ يمكنك أيضًا أن تقول: لا يهم.",
-      field: "typeEmploi"
-    },
-
-    diplome: {
-      key: "diplome",
-      text:
-        "هل لديك شهادة؟ أم تريد البحث عن عمل بدون شهادة؟",
-      field: "diplome"
-    },
-
-    experience: {
-      key: "experience",
-      text:
-        "هل لديك خبرة مهنية سابقة، حتى لو كانت قصيرة؟",
-      field: "experience"
-    },
-
-    mobilite: {
-      key: "mobilite",
-      text:
-        "إلى أي مسافة يمكنك التنقل من أجل العمل؟",
-      field: "mobilite"
-    },
-
-    horaires: {
-      key: "horaires",
-      text:
-        "هل لديك تفضيل لساعات العمل أم أنك مرن؟",
-      field: "horaires"
-    },
-
-    presence_france: {
-      key: "presence_france",
-      text:
-        "هل أنت حاليًا في فرنسا؟",
-      field: "presenceFrance"
-    },
-
-    statut_sejour: {
-      key: "statut_sejour",
-      text:
-        "ما هو وضع إقامتك في فرنسا؟",
-      field: "statutSejour"
-    },
-
-    entreprise: {
-      key: "entreprise",
-      text:
-        "هل لديك شركة بالفعل أم مجرد مشروع؟",
-      field: "entreprise"
-    }
+    zone_recherche: "في أي منطقة تبحث عن العمل؟",
+    type_emploi: "ما نوع العمل الذي تبحث عنه؟",
+    diplome: "هل لديك شهادة أو مؤهل يجب أخذه بعين الاعتبار؟",
+    experience: "هل لديك خبرة مهنية يجب أخذها بعين الاعتبار؟",
+    mobilite: "إلى أي مسافة يمكنك التنقل من أجل العمل؟",
+    horaires: "ما هي أوقات العمل التي يمكنك قبولها؟",
+    presence_france: "هل أنت حاليًا في فرنسا؟",
+    statut_sejour: "ما هو وضع إقامتك أو عملك؟",
+    entreprise: "هل يتعلق الأمر بمشروع أم بشركة موجودة؟"
   },
-
   en: {
-    zone_recherche: {
-      key: "zone_recherche",
-      text:
-        "Which city or area would you like to search in?",
-      field: "zoneRecherche"
-    },
-
-    type_emploi: {
-      key: "type_emploi",
-      text:
-        "What type of work are you looking for? You can also say 'any'.",
-      field: "typeEmploi"
-    },
-
-    diplome: {
-      key: "diplome",
-      text:
-        "Do you have a diploma, or would you like to search without one?",
-      field: "diplome"
-    },
-
-    experience: {
-      key: "experience",
-      text:
-        "Do you have any professional experience, even a short one?",
-      field: "experience"
-    },
-
-    mobilite: {
-      key: "mobilite",
-      text:
-        "How far can you travel for work?",
-      field: "mobilite"
-    },
-
-    horaires: {
-      key: "horaires",
-      text:
-        "Do you have preferred working hours or are you flexible?",
-      field: "horaires"
-    },
-
-    presence_france: {
-      key: "presence_france",
-      text:
-        "Are you currently in France?",
-      field: "presenceFrance"
-    },
-
-    statut_sejour: {
-      key: "statut_sejour",
-      text:
-        "What is your residence status in France?",
-      field: "statutSejour"
-    },
-
-    entreprise: {
-      key: "entreprise",
-      text:
-        "Do you already have a company or only a business project?",
-      field: "entreprise"
-    }
+    zone_recherche: "Which area are you looking for work in?",
+    type_emploi: "What type of work are you looking for?",
+    diplome: "Do you have a diploma or qualification to consider?",
+    experience: "Do you have professional experience to consider?",
+    mobilite: "How far can you travel for work?",
+    horaires: "What working hours can you accept?",
+    presence_france: "Are you currently in France?",
+    statut_sejour: "What is your residence or work status?",
+    entreprise: "Is this about a project or an existing company?"
   }
 };
 
-/* =========================
-   BASIC HELPERS
-   ========================= */
-
-function cleanText(value, max = 10000) {
-  if (typeof value !== "string") return "";
-
-  return value
+function cleanText(value, max = 12000) {
+  if (value === null || value === undefined) return "";
+  return String(value)
     .replace(/\u0000/g, "")
     .trim()
     .slice(0, max);
 }
 
 function safeArray(value, max = 40) {
-  if (!Array.isArray(value)) return [];
-
-  return value
-    .filter(x => typeof x === "string")
-    .map(x => cleanText(x, 3000))
-    .filter(Boolean)
-    .slice(0, max);
+  return Array.isArray(value) ? value.slice(0, max) : [];
 }
 
 function uniqueArray(arr) {
-  return [...new Set(arr)];
+  return [...new Set(safeArray(arr).map(x => cleanText(x, 500)).filter(Boolean))];
 }
 
 function isPlainObject(value) {
-  return (
-    value &&
+  return value &&
     typeof value === "object" &&
-    !Array.isArray(value)
-  );
+    !Array.isArray(value);
 }
 
-function containsAny(text, list) {
+function containsAny(text, values) {
   const t = String(text || "").toLowerCase();
-
-  return list.some(x =>
-    t.includes(x.toLowerCase())
-  );
+  return values.some(v => t.includes(v.toLowerCase()));
 }
 
-function base64ByteLength(value) {
-  if (typeof value !== "string") return 0;
+function base64ByteLength(base64) {
+  if (!base64) return 0;
 
-  const clean =
-    value.replace(/^data:[^,]+,/, "");
+  let clean = String(base64);
 
-  return Math.floor(
-    clean.length * 3 / 4
-  );
-}
-
-function normalizeLanguage(lang) {
-  const x =
-    String(lang || "").toLowerCase();
-
-  return LANGUAGES.includes(x)
-    ? x
-    : "fr";
-}
-
-function detectLanguage(text, requested) {
-  if (requested) {
-    return normalizeLanguage(requested);
+  const comma = clean.indexOf(",");
+  if (comma >= 0) {
+    clean = clean.slice(comma + 1);
   }
 
-  const t = String(text || "");
+  clean = clean.replace(/\s/g, "");
 
-  const arabic =
-    (t.match(/[\u0600-\u06ff]/g) || [])
-      .length;
+  const padding =
+    clean.endsWith("==") ? 2 :
+    clean.endsWith("=") ? 1 : 0;
 
-  if (arabic >= 2) return "ar";
+  return Math.max(
+    0,
+    Math.floor(clean.length * 3 / 4) - padding
+  );
+}
 
-  const lower =
-    t.toLowerCase();
+function normalizeLanguage(value) {
+  const v = String(value || "").toLowerCase();
+  return LANGUAGES.includes(v) ? v : "fr";
+}
 
-  const en = [
-    "the",
-    "work",
-    "job",
-    "employment",
-    "without",
-    "experience",
-    "diploma",
-    "company",
-    "france",
-    "need",
-    "want"
-  ];
+function detectLanguage(text) {
+  const t = String(text || "").toLowerCase();
 
-  const fr = [
-    "le",
-    "la",
-    "les",
-    "travail",
-    "emploi",
-    "sans",
-    "expérience",
-    "diplôme",
-    "entreprise",
-    "france",
-    "cherche",
-    "besoin"
-  ];
+  if (/[\u0600-\u06ff]/.test(t)) return "ar";
 
-  const enScore =
-    en.filter(w =>
-      lower.includes(w)
-    ).length;
-
-  const frScore =
-    fr.filter(w =>
-      lower.includes(w)
-    ).length;
-
-  if (
-    enScore > frScore &&
-    enScore >= 2
-  ) {
+  if (/\b(the|work|job|experience|diploma|company|business)\b/.test(t)) {
     return "en";
+  }
+
+  if (/\b(travail|emploi|sans diplôme|expérience|entreprise|recherche)\b/.test(t)) {
+    return "fr";
   }
 
   return "fr";
 }
 
 function normaliserLieu(text) {
-  const lower =
-    String(text || "")
-      .toLowerCase();
+  const t = String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[’']/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  for (
-    const [alias, canonical]
-    of Object.entries(LOCATION_ALIASES)
-  ) {
-    if (
-      lower.includes(alias)
-    ) {
+  for (const [alias, canonical] of Object.entries(LOCATION_ALIASES)) {
+    const normalizedAlias = alias
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
+    if (t.includes(normalizedAlias)) {
       return canonical;
     }
   }
 
-  return "";
+  return null;
 }
 
-/* =========================
-   INFORMATION EXTRACTION
-   ========================= */
+function extraireMobilite(text) {
+  const t = String(text || "").toLowerCase();
+
+  const match = t.match(
+    /(\d+(?:[.,]\d+)?)\s*(km|kilom[eè]tres?|kilometers?|كم|كلم)\b/i
+  );
+
+  if (match) {
+    const number = match[1].replace(",", ".");
+    return `${number} km`;
+  }
+
+  if (
+    containsAny(t, [
+      "à pied",
+      "a pied",
+      "walking",
+      "marche",
+      "مشيا",
+      "مشياً"
+    ])
+  ) {
+    return "À pied";
+  }
+
+  if (
+    containsAny(t, [
+      "transport en commun",
+      "transports en commun",
+      "transport public",
+      "bus",
+      "train",
+      "metro",
+      "métro",
+      "rer",
+      "tram",
+      "public transport",
+      "المواصلات",
+      "النقل العمومي"
+    ])
+  ) {
+    return "Transports en commun";
+  }
+
+  if (
+    containsAny(t, [
+      "toute la région",
+      "toute l'ile de france",
+      "toute l'île-de-france",
+      "toute ile de france",
+      "dans toute la région",
+      "anywhere in the region",
+      "منطقة كاملة"
+    ])
+  ) {
+    return "Toute la région";
+  }
+
+  if (
+    containsAny(t, [
+      "dans toute la france",
+      "partout en france",
+      "anywhere in france",
+      "كل فرنسا"
+    ])
+  ) {
+    return "Toute la France";
+  }
+
+  if (
+    containsAny(t, [
+      "dans la ville",
+      "in the city",
+      "داخل المدينة"
+    ])
+  ) {
+    return "Dans la ville";
+  }
+
+  return null;
+}
 
 function extraireInformations(text) {
-  const t =
-    cleanText(
-      text,
-      LIMITS.question
-    );
-
-  const lower =
-    t.toLowerCase();
-
+  const t = String(text || "").toLowerCase();
   const info = {};
 
   if (
-    containsAny(lower, [
+    containsAny(t, [
       "sans diplôme",
       "sans diplome",
       "pas de diplôme",
       "pas de diplome",
+      "aucun diplôme",
+      "aucun diplome",
       "no diploma",
       "without diploma",
-      "لا أملك شهادة",
       "بدون شهادة",
       "بدون دبلوم"
     ])
   ) {
-    info.diplome =
-      "Sans diplôme";
+    info.diplome = "Sans diplôme";
   }
 
   if (
-    containsAny(lower, [
+    containsAny(t, [
       "sans expérience",
       "sans experience",
       "pas d'expérience",
       "pas d'experience",
+      "aucune expérience",
+      "aucune experience",
       "no experience",
       "without experience",
-      "بدون خبرة",
-      "لا أملك خبرة"
+      "بدون خبرة"
     ])
   ) {
-    info.experience =
-      "Sans expérience";
+    info.experience = "Sans expérience";
   }
 
   if (
-    containsAny(lower, [
-      "peu importe",
-      "n'importe quel secteur",
+    containsAny(t, [
+      "peu importe le secteur",
       "tous secteurs",
       "tous les secteurs",
+      "n'importe quel secteur",
       "any sector",
-      "any job",
-      "anything",
-      "لا يهم",
-      "أي عمل",
-      "أي قطاع"
+      "all sectors",
+      "أي قطاع",
+      "كل القطاعات"
     ])
   ) {
-    info.secteurs =
-      "Tous secteurs";
-
-    info.typeEmploi =
-      "Peu importe";
+    info.secteurs = "Tous secteurs";
+    info.typeEmploi = "Peu importe";
   }
 
   if (
-    containsAny(lower, [
+    containsAny(t, [
       "france",
       "en france",
       "in france",
-      "فرنسا",
-      "في فرنسا"
+      "فرنسا"
     ])
   ) {
-    info.pays =
-      "France";
-
-    info.presenceFrance =
-      "Oui";
+    info.pays = "France";
+    info.presenceFrance = "Oui";
   }
 
-  const lieu =
-    normaliserLieu(lower);
-
+  const lieu = normaliserLieu(t);
   if (lieu) {
-    info.zoneRecherche =
-      lieu;
+    info.zoneRecherche = lieu;
   }
 
-  const emploiPatterns = [
-    ["facteur", "Facteur / distribution"],
-    ["postal", "Facteur / distribution"],
+  const mobilite = extraireMobilite(text);
+  if (mobilite) {
+    info.mobilite = mobilite;
+  }
+
+  const jobs = [
+    ["facteur", "Facteur / Distribution"],
+    ["distribution", "Facteur / Distribution"],
     ["livraison", "Livraison"],
     ["livreur", "Livraison"],
     ["nettoyage", "Nettoyage"],
+    ["nettoyeur", "Nettoyage"],
     ["entretien", "Entretien"],
     ["manutention", "Manutention"],
     ["logistique", "Logistique"],
@@ -701,294 +565,215 @@ function extraireInformations(text) {
     ["vente", "Vente"],
     ["bâtiment", "Bâtiment"],
     ["batiment", "Bâtiment"],
-    ["chauffeur", "Chauffeur / conduite"],
-    ["conducteur", "Chauffeur / conduite"],
-    ["préparateur de commande", "Logistique"],
-    ["preparateur de commande", "Logistique"]
+    ["chauffeur", "Chauffeur / Conduite"],
+    ["conduite", "Chauffeur / Conduite"],
+    ["préparateur de commande", "Préparateur de commande"],
+    ["preparateur de commande", "Préparateur de commande"]
   ];
 
-  for (
-    const [needle, value]
-    of emploiPatterns
-  ) {
-    if (
-      lower.includes(needle)
-    ) {
-      info.typeEmploi =
-        value;
-
+  for (const [keyword, value] of jobs) {
+    if (t.includes(keyword)) {
+      info.typeEmploi = value;
       break;
     }
   }
 
   if (
-    containsAny(lower, [
+    containsAny(t, [
+      "peu importe les horaires",
+      "horaires flexibles",
+      "flexible",
+      "n'importe quel horaire",
+      "any hours",
+      "flexible hours",
+      "أوقات مرنة"
+    ])
+  ) {
+    info.horaires = "Flexible";
+  }
+
+  if (
+    containsAny(t, [
+      "salarié",
+      "salarie",
       "titre de séjour",
       "titre de sejour",
       "carte de séjour",
       "carte de sejour",
-      "salarié",
-      "salarie",
-      "récépissé",
-      "recepisse",
       "residence permit",
-      "residence card",
+      "residence status",
       "إقامة",
-      "بطاقة إقامة",
       "تصريح إقامة"
     ])
   ) {
-    info.statutSejour =
-      "À vérifier précisément";
+    info.statutSejour = "À vérifier précisément";
+    info.contexteImmigration = true;
   }
 
   if (
-    containsAny(lower, [
-      "anef",
-      "renouvellement",
-      "renew",
-      "première demande",
-      "premiere demande",
-      "first application",
-      "تجديد",
-      "طلب أول"
+    containsAny(t, [
+      "sans papiers",
+      "sans papier",
+      "no papers",
+      "undocumented",
+      "بدون أوراق"
     ])
   ) {
-    info.contexteImmigration =
-      true;
+    info.documents = "Documents à préciser";
+    info.contexteImmigration = true;
   }
 
   if (
-    containsAny(lower, [
+    containsAny(t, [
+      "créer une entreprise",
+      "creer une entreprise",
+      "créer mon entreprise",
+      "creer mon entreprise",
       "entreprise",
       "société",
       "societe",
-      "company",
       "business",
-      "entrepreneur",
+      "company",
       "شركة",
       "مشروع"
     ])
   ) {
-    info.entreprise =
-      "Projet ou entreprise à préciser";
-  }
-
-  if (
-    containsAny(lower, [
-      "sans papiers",
-      "sans documents",
-      "no documents",
-      "without documents",
-      "بدون وثائق",
-      "لا أملك وثائق"
-    ])
-  ) {
-    info.documents =
-      "Documents à préciser";
-  }
-
-  if (
-    containsAny(lower, [
-      "peu importe les horaires",
-      "horaires flexibles",
-      "flexible",
-      "any hours",
-      "لا يهم الوقت",
-      "مرن"
-    ])
-  ) {
-    info.horaires =
-      "Flexible";
-  }
-
-  if (
-    containsAny(lower, [
-      "mobile",
-      "mobilité",
-      "mobilite",
-      "je peux me déplacer",
-      "يمكنني التنقل"
-    ])
-  ) {
-    info.mobilite =
-      "Mobile";
+    info.entreprise = "Projet ou entreprise à préciser";
   }
 
   return info;
 }
 
-/* =========================
-   CONTEXT ENGINE
-   ========================= */
+function detectContext(text, info = {}, profile = "particulier", situation = "") {
+  const t = `${text || ""} ${situation || ""}`.toLowerCase();
 
-function detectContext(
-  text,
-  info = {},
-  profile = "",
-  situation = ""
-) {
-  const t =
-    String(text || "")
-      .toLowerCase();
+  const employment = containsAny(t, [
+    "travail",
+    "emploi",
+    "job",
+    "poste",
+    "recrutement",
+    "facteur",
+    "livraison",
+    "nettoyage",
+    "manutention",
+    "logistique",
+    "chauffeur",
+    "travaille",
+    "work",
+    "employment",
+    "job"
+  ]) || Boolean(
+    info.typeEmploi ||
+    info.diplome ||
+    info.experience ||
+    info.mobilite
+  );
 
-  const p =
-    String(profile || "")
-      .toLowerCase();
+  const immigration = containsAny(t, [
+    "titre de séjour",
+    "titre de sejour",
+    "carte de séjour",
+    "carte de sejour",
+    "visa",
+    "immigration",
+    "étranger",
+    "etranger",
+    "residence permit",
+    "immigration",
+    "إقامة",
+    "هجرة"
+  ]) || Boolean(info.statutSejour);
 
-  const s =
-    String(situation || "")
-      .toLowerCase();
+  const business = containsAny(t, [
+    "entreprise",
+    "société",
+    "societe",
+    "business",
+    "company",
+    "client",
+    "clients",
+    "vendre",
+    "vente",
+    "service",
+    "شركة",
+    "مشروع"
+  ]) || Boolean(info.entreprise);
 
-  const emploiByProfile =
-    p === "emploi" ||
-    s === "recherche" ||
-    s === "emploi";
+  const administrative = containsAny(t, [
+    "administratif",
+    "administration",
+    "dossier",
+    "formulaire",
+    "document",
+    "préfecture",
+    "prefecture",
+    "service public",
+    "administrative",
+    "وثيقة",
+    "إدارة"
+  ]);
 
-  const immigrationByProfile =
-    p === "immigration";
+  const training = containsAny(t, [
+    "formation",
+    "apprendre",
+    "formation professionnelle",
+    "training",
+    "learn",
+    "تكوين",
+    "تعلم"
+  ]);
 
-  const entrepriseByProfile =
-    p === "entreprise";
+  const reconversion = containsAny(t, [
+    "reconversion",
+    "changer de métier",
+    "changer de metier",
+    "career change",
+    "تغيير المهنة"
+  ]);
 
   return {
-    emploi:
-      emploiByProfile ||
-      !!info.typeEmploi ||
-      !!info.zoneRecherche ||
-      containsAny(t, [
-        "emploi",
-        "travail",
-        "job",
-        "work",
-        "facteur",
-        "livreur",
-        "nettoyage",
-        "manutention",
-        "logistique",
-        "وظيفة",
-        "عمل"
-      ]),
-
-    immigration:
-      immigrationByProfile ||
-      !!info.statutSejour ||
-      !!info.contexteImmigration ||
-      containsAny(t, [
-        "titre de séjour",
-        "titre de sejour",
-        "résidence",
-        "residence",
-        "anef",
-        "immigration",
-        "إقامة",
-        "الهجرة"
-      ]),
-
-    entreprise:
-      entrepriseByProfile ||
-      !!info.entreprise ||
-      containsAny(t, [
-        "entreprise",
-        "company",
-        "business",
-        "société",
-        "شركة",
-        "مشروع"
-      ]),
-
-    administratif:
-      containsAny(t, [
-        "démarche",
-        "administratif",
-        "administration",
-        "document",
-        "procedure",
-        "إجراء",
-        "وثيقة"
-      ]) ||
-      s === "administratif",
-
-    formation:
-      s === "formation" ||
-      containsAny(t, [
-        "formation",
-        "training",
-        "تكوين"
-      ]),
-
-    reconversion:
-      s === "reconversion" ||
-      containsAny(t, [
-        "reconversion",
-        "career change",
-        "إعادة التوجيه"
-      ]),
-
-    sansDiplome:
-      info.diplome ===
-      "Sans diplôme",
-
-    sansExperience:
-      info.experience ===
-      "Sans expérience",
-
-    sansDocuments:
-      info.documents ===
-      "Documents à préciser"
+    employment,
+    immigration,
+    business,
+    administrative,
+    training,
+    reconversion,
+    sansDiplome: info.diplome === "Sans diplôme",
+    sansExperience: info.experience === "Sans expérience",
+    sansDocuments: info.documents === "Documents à préciser",
+    profile: profile || "particulier"
   };
 }
 
 function analyserHistorique(history) {
-  const list =
-    Array.isArray(history)
-      ? history
-      : [];
+  if (!Array.isArray(history)) return "";
 
-  return list
-    .filter(item => {
-      if (
-        !isPlainObject(item)
-      ) {
-        return false;
-      }
-
-      return item.role === "user";
-    })
+  const usable = history
+    .filter(x => isPlainObject(x))
     .slice(-20)
-    .map(item =>
-      cleanText(
-        item.content,
-        4000
-      )
-    )
-    .filter(Boolean)
-    .join("\n");
+    .map(x => {
+      const role = x.role === "assistant" ? "Assistant" : "Utilisateur";
+      return `${role}: ${cleanText(x.content || "", 1500)}`;
+    })
+    .filter(Boolean);
+
+  return usable.join("\n");
 }
 
 function mergeInfo(...objects) {
   const result = {};
 
-  for (
-    const obj of objects
-  ) {
-    if (
-      !isPlainObject(obj)
-    ) {
-      continue;
-    }
+  for (const obj of objects) {
+    if (!isPlainObject(obj)) continue;
 
-    for (
-      const [key, value]
-      of Object.entries(obj)
-    ) {
+    for (const [key, value] of Object.entries(obj)) {
       if (
         value !== undefined &&
         value !== null &&
         String(value).trim() !== ""
       ) {
-        result[key] =
-          value;
+        result[key] = value;
       }
     }
   }
@@ -996,497 +781,453 @@ function mergeInfo(...objects) {
   return result;
 }
 
-function construireEtatConversation(
-  question,
-  payload
-) {
-  const historyText =
-    analyserHistorique(
-      payload.history
-    );
+function construireEtatConversation(question, payload = {}) {
+  const historyText = analyserHistorique(payload.history);
 
-  const historiqueInfo =
-    extraireInformations(
-      historyText
-    );
+  const historyInfo = extraireInformations(historyText);
+  const currentInfo = extraireInformations(question);
 
-  const currentInfo =
-    extraireInformations(
-      question
-    );
+  const info = mergeInfo(
+    historyInfo,
+    isPlainObject(payload.info) ? payload.info : {},
+    currentInfo
+  );
 
-  const payloadInfo =
-    isPlainObject(
-      payload.info
-    )
-      ? payload.info
-      : {};
+  const situation = [
+    historyText,
+    question
+  ].filter(Boolean).join("\n");
 
-  const info =
-    mergeInfo(
-      historiqueInfo,
-      payloadInfo,
-      currentInfo
-    );
+  const profile = cleanText(
+    payload.profile || "particulier",
+    100
+  );
 
-  const context =
-    detectContext(
-      `${historyText}\n${question}`,
-      info,
-      payload.profile,
-      payload.situation
-    );
+  const context = detectContext(
+    question,
+    info,
+    profile,
+    situation
+  );
 
   return {
     info,
     context,
-    historyText
+    historyText,
+    profile,
+    language: normalizeLanguage(
+      payload.language || detectLanguage(question)
+    )
   };
 }
 
-/* =========================
-   DECISION ENGINE
-   ========================= */
+function candidatsQuestions(state) {
+  const { info, context, language } = state;
+  const q = QUESTIONS[language] || QUESTIONS.fr;
+  const list = [];
 
-function candidatsQuestions(
-  state,
-  language
-) {
-  const info =
-    state.info;
-
-  const ctx =
-    state.context;
-
-  const q =
-    QUESTIONS[language] ||
-    QUESTIONS.fr;
-
-  const missing = [];
-
-  if (ctx.emploi) {
+  if (context.employment) {
     if (!info.zoneRecherche) {
-      missing.push(
-        q.zone_recherche
-      );
+      list.push({
+        key: "zone_recherche",
+        question: q.zone_recherche
+      });
     }
 
     if (!info.typeEmploi) {
-      missing.push(
-        q.type_emploi
-      );
+      list.push({
+        key: "type_emploi",
+        question: q.type_emploi
+      });
     }
 
     if (!info.diplome) {
-      missing.push(
-        q.diplome
-      );
+      list.push({
+        key: "diplome",
+        question: q.diplome
+      });
     }
 
     if (!info.experience) {
-      missing.push(
-        q.experience
-      );
+      list.push({
+        key: "experience",
+        question: q.experience
+      });
     }
 
     if (!info.mobilite) {
-      missing.push(
-        q.mobilite
-      );
+      list.push({
+        key: "mobilite",
+        question: q.mobilite
+      });
     }
 
     if (!info.horaires) {
-      missing.push(
-        q.horaires
-      );
+      list.push({
+        key: "horaires",
+        question: q.horaires
+      });
     }
   }
 
-  if (ctx.immigration) {
-    if (!info.presenceFrance) {
-      missing.push(
-        q.presence_france
-      );
-    }
-
-    if (!info.statutSejour) {
-      missing.push(
-        q.statut_sejour
-      );
-    }
+  if (context.immigration && !info.presenceFrance) {
+    list.push({
+      key: "presence_france",
+      question: q.presence_france
+    });
   }
 
   if (
-    ctx.entreprise &&
-    !ctx.emploi
+    context.immigration &&
+    !info.statutSejour
   ) {
-    if (!info.entreprise) {
-      missing.push(
-        q.entreprise
-      );
-    }
+    list.push({
+      key: "statut_sejour",
+      question: q.statut_sejour
+    });
   }
 
-  return missing;
+  if (
+    context.business &&
+    !info.entreprise
+  ) {
+    list.push({
+      key: "entreprise",
+      question: q.entreprise
+    });
+  }
+
+  return list;
 }
 
-function construireDecision(
-  state,
-  language
-) {
-  const questions =
-    candidatsQuestions(
-      state,
-      language
-    );
+function construireDecision(state) {
+  const questions = candidatsQuestions(state);
 
-  if (
-    questions.length > 0
-  ) {
+  if (questions.length > 0) {
     return {
-      version:
-        DECISION_VERSION,
-
-      mode:
-        "question",
-
-      question:
-        questions[0].text,
-
-      questionKey:
-        questions[0].key,
-
-      field:
-        questions[0].field,
-
-      remaining:
-        questions.length
+      mode: "question",
+      question: questions[0].question,
+      questionKey: questions[0].key,
+      progress: {
+        stage: "understanding",
+        completed: false
+      }
     };
   }
 
+  let stage = "action";
+
+  if (state.context.employment) {
+    stage = "search";
+  }
+
+  if (
+    state.context.immigration ||
+    state.context.administrative
+  ) {
+    stage = "verification";
+  }
+
   return {
-    version:
-      DECISION_VERSION,
-
-    mode:
-      "orientation",
-
-    question:
-      null,
-
-    questionKey:
-      null,
-
-    field:
-      null,
-
-    remaining:
-      0
+    mode: "orientation",
+    progress: {
+      stage,
+      completed: false
+    }
   };
 }
 
-/* =========================
-   VERIFICATION ENGINE
-   ========================= */
+function construireVerification(state) {
+  const verify = [];
 
-function buildVerification(state) {
+  if (state.context.immigration) {
+    verify.push(
+      "Le droit exact au séjour et au travail doit être vérifié selon la situation et les documents officiels."
+    );
+  }
+
+  if (
+    state.context.employment &&
+    state.context.sansDocuments
+  ) {
+    verify.push(
+      "Les documents nécessaires pour candidater et travailler doivent être vérifiés."
+    );
+  }
+
+  if (state.context.employment) {
+    verify.push(
+      "Les conditions de chaque offre doivent être vérifiées individuellement."
+    );
+  }
+
+  if (state.context.business) {
+    verify.push(
+      "Les obligations administratives et juridiques doivent être vérifiées avec les sources officielles."
+    );
+  }
+
+  return uniqueArray(verify);
+}
+
+function buildConfirmed(info, language) {
   const result = [];
 
-  if (
-    state.context.immigration
-  ) {
-    result.push(
-      {
-        item:
-          "Droit au séjour et/ou au travail",
-        reason:
-          "Le droit applicable dépend du document et de la situation exacte.",
-        source:
-          SOURCES.travailEtranger.url
-      }
-    );
-  }
+  const labels = {
+    fr: {
+      zoneRecherche: "zoneRecherche",
+      typeEmploi: "typeEmploi",
+      secteurs: "secteurs",
+      diplome: "diplome",
+      experience: "experience",
+      mobilite: "mobilite",
+      horaires: "horaires",
+      pays: "pays",
+      presenceFrance: "presenceFrance",
+      statutSejour: "statutSejour"
+    },
+    ar: {
+      zoneRecherche: "منطقة البحث",
+      typeEmploi: "نوع العمل",
+      secteurs: "القطاعات",
+      diplome: "الشهادة",
+      experience: "الخبرة",
+      mobilite: "التنقل",
+      horaires: "أوقات العمل",
+      pays: "البلد",
+      presenceFrance: "الوجود في فرنسا",
+      statutSejour: "وضع الإقامة"
+    },
+    en: {
+      zoneRecherche: "search area",
+      typeEmploi: "job type",
+      secteurs: "sectors",
+      diplome: "diploma",
+      experience: "experience",
+      mobilite: "mobility",
+      horaires: "working hours",
+      pays: "country",
+      presenceFrance: "presence in France",
+      statutSejour: "residence status"
+    }
+  };
 
-  if (
-    state.context.emploi &&
-    state.info.documents ===
-      "Documents à préciser"
-  ) {
-    result.push(
-      {
-        item:
-          "Documents nécessaires pour travailler",
-        reason:
-          "Les documents disponibles et les autorisations éventuelles doivent être vérifiés.",
-        source:
-          SOURCES.servicePublic.url
-      }
-    );
-  }
+  const l = labels[language] || labels.fr;
 
-  if (
-    state.context.emploi
-  ) {
-    result.push(
-      {
-        item:
-          "Conditions de chaque offre",
-        reason:
-          "Une offre réelle peut avoir des conditions particulières.",
-        source:
-          SOURCES.franceTravailOffers.url
-      }
-    );
+  for (const key of Object.keys(l)) {
+    if (
+      info[key] !== undefined &&
+      info[key] !== null &&
+      String(info[key]).trim() !== ""
+    ) {
+      result.push({
+        key,
+        label: l[key],
+        value: cleanText(info[key], 500)
+      });
+    }
   }
 
   return result;
 }
 
-/* =========================
-   SOURCES
-   ========================= */
+function buildActions(state, language) {
+  if (language === "ar") {
+    if (state.context.employment) {
+      return [
+        "البحث عن عروض مطابقة للمنطقة والملف.",
+        "مقارنة شروط عدة عروض.",
+        "إعداد سيرة ذاتية بسيطة ومناسبة للملف.",
+        "التحقق من شروط البداية والشهادات والخبرة لكل عرض."
+      ];
+    }
 
-function selectSources(state) {
-  const ctx =
-    state.context;
+    return [
+      "تحديد المعلومات الناقصة.",
+      "التحقق من المعلومات المهمة من المصادر الرسمية.",
+      "اختيار الخطوة العملية التالية."
+    ];
+  }
 
-  const result = [];
+  if (language === "en") {
+    if (state.context.employment) {
+      return [
+        "Search for offers matching the area and profile.",
+        "Compare conditions across several offers.",
+        "Prepare a simple CV adapted to the profile.",
+        "Verify diploma, experience and eligibility requirements for each offer."
+      ];
+    }
 
-  if (ctx.emploi) {
+    return [
+      "Identify missing information.",
+      "Verify important information with official sources.",
+      "Choose the next practical action."
+    ];
+  }
+
+  if (state.context.employment) {
+    return [
+      "Rechercher les offres correspondant à la zone et au profil.",
+      "Comparer les conditions de plusieurs offres.",
+      "Préparer un CV simple adapté au profil.",
+      "Vérifier les exigences de chaque offre avant de candidater."
+    ];
+  }
+
+  return [
+    "Identifier les informations manquantes.",
+    "Vérifier les informations importantes avec les sources officielles.",
+    "Choisir la prochaine action pratique."
+  ];
+}
+
+function buildRecommendations(state, language) {
+  if (language === "ar") {
+    const recommendations = [];
+
+    if (state.context.employment) {
+      recommendations.push(
+        "لا تحصر البحث تلقائيًا في مهنة واحدة إذا كان المستخدم يقبل عدة قطاعات."
+      );
+
+      if (state.context.sansDiplome) {
+        recommendations.push(
+          "إعطاء أولوية للعروض التي لا تشترط شهادة أو تقبل المبتدئين."
+        );
+      }
+
+      if (state.context.sansExperience) {
+        recommendations.push(
+          "البحث عن العروض التي تقبل المبتدئين أو توفر تدريبًا."
+        );
+      }
+    }
+
+    recommendations.push(
+      "عدم اعتبار معلومة غير مؤكدة حقيقة نهائية."
+    );
+
+    return recommendations;
+  }
+
+  if (language === "en") {
+    const recommendations = [];
+
+    if (state.context.employment) {
+      recommendations.push(
+        "Do not automatically limit the search to one occupation when multiple sectors are acceptable."
+      );
+
+      if (state.context.sansDiplome) {
+        recommendations.push(
+          "Prioritize offers explicitly open to candidates without a diploma or accepting beginners."
+        );
+      }
+
+      if (state.context.sansExperience) {
+        recommendations.push(
+          "Look for offers accepting beginners or providing training."
+        );
+      }
+    }
+
+    recommendations.push(
+      "Do not treat unverified information as a final fact."
+    );
+
+    return recommendations;
+  }
+
+  const recommendations = [];
+
+  if (state.context.employment) {
+    recommendations.push(
+      "Comparer plusieurs secteurs au lieu de limiter automatiquement la recherche à un seul métier."
+    );
+
+    if (state.context.sansDiplome) {
+      recommendations.push(
+        "Cibler en priorité les offres indiquant explicitement qu'aucun diplôme n'est requis ou acceptant les débutants."
+      );
+    }
+
+    if (state.context.sansExperience) {
+      recommendations.push(
+        "Rechercher les offres ouvertes aux débutants ou proposant une formation."
+      );
+    }
+  }
+
+  recommendations.push(
+    "Ne pas considérer une information non vérifiée comme un fait définitif."
+  );
+
+  return recommendations;
+}
+
+function appliquerProtectionsEmploi(state, recommendations, language) {
+  const result = [...safeArray(recommendations)];
+
+  if (!state.context.employment) {
+    return uniqueArray(result);
+  }
+
+  if (language === "ar") {
     result.push(
+      "التحقق من شروط كل عرض بشكل منفصل، خاصة الشهادة والخبرة ووضع العمل."
+    );
+  } else if (language === "en") {
+    result.push(
+      "Verify each offer separately, especially diploma, experience and work eligibility requirements."
+    );
+  } else {
+    result.push(
+      "Vérifier chaque offre séparément, notamment les exigences de diplôme, d'expérience et de droit au travail."
+    );
+  }
+
+  return uniqueArray(result);
+}
+
+function buildSources(state) {
+  const sources = [
+    SOURCES.servicePublic
+  ];
+
+  if (state.context.employment) {
+    sources.push(
       SOURCES.franceTravail,
       SOURCES.franceTravailOffers
     );
   }
 
-  if (ctx.immigration) {
-    result.push(
-      SOURCES.servicePublic,
+  if (state.context.immigration) {
+    sources.push(
+      SOURCES.anef,
       SOURCES.travailEtranger
     );
   }
 
-  if (
-    ctx.immigration &&
-    (
-      ctx.administratif ||
-      state.info.contexteImmigration
-    )
-  ) {
-    result.push(
-      SOURCES.anef
-    );
-  }
-
-  if (
-    ctx.entreprise &&
-    !ctx.emploi
-  ) {
-    result.push(
+  if (state.context.business) {
+    sources.push(
       SOURCES.entreprise,
       SOURCES.guichet
     );
   }
 
-  if (
-    ctx.administratif &&
-    !ctx.immigration &&
-    !ctx.entreprise
-  ) {
-    result.push(
-      SOURCES.servicePublic
-    );
-  }
+  return sources;
+}
 
-  return uniqueArray(
-    result.map(x =>
-      JSON.stringify(x)
-    )
-  ).map(x =>
-    JSON.parse(x)
+function buildFranceTravailSearchURL(info) {
+  const url = new URL(
+    SOURCES.franceTravailOffers.url
   );
-}
-
-/* =========================
-   PRESENTATION DATA
-   ========================= */
-
-function buildConfirmed(info) {
-  const fields = [
-    "objectif",
-    "zoneRecherche",
-    "typeEmploi",
-    "secteurs",
-    "diplome",
-    "experience",
-    "mobilite",
-    "horaires",
-    "presenceFrance",
-    "statutSejour",
-    "pays",
-    "entreprise",
-    "documents"
-  ];
-
-  const result = {};
-
-  for (
-    const key of fields
-  ) {
-    if (info[key]) {
-      result[key] =
-        info[key];
-    }
-  }
-
-  return result;
-}
-
-function buildActions(state) {
-  const actions = [];
-
-  if (
-    state.context.emploi
-  ) {
-    actions.push(
-      "Rechercher les offres correspondant à la zone et au profil.",
-      "Comparer les conditions de plusieurs offres.",
-      "Préparer un CV simple adapté au profil."
-    );
-
-    if (
-      state.info.diplome ===
-        "Sans diplôme" ||
-      state.info.experience ===
-        "Sans expérience"
-    ) {
-      actions.push(
-        "Filtrer en priorité les offres acceptant les débutants et/ou ne demandant pas de diplôme."
-      );
-    }
-  }
-
-  if (
-    state.context.immigration
-  ) {
-    actions.push(
-      "Vérifier la situation exacte auprès des sources officielles avant toute démarche ou prise de poste."
-    );
-  }
-
-  if (
-    state.context.entreprise
-  ) {
-    actions.push(
-      "Identifier le statut et les formalités correspondant réellement au projet."
-    );
-  }
-
-  if (
-    state.context.formation
-  ) {
-    actions.push(
-      "Identifier les formations correspondant au profil et à l'objectif."
-    );
-  }
-
-  if (
-    state.context.reconversion
-  ) {
-    actions.push(
-      "Identifier les métiers accessibles puis comparer les formations ou transitions nécessaires."
-    );
-  }
-
-  return actions;
-}
-
-function buildRecommendations(state) {
-  const result = [];
-
-  if (
-    state.context.emploi &&
-    state.info.diplome ===
-      "Sans diplôme" &&
-    state.info.experience ===
-      "Sans expérience"
-  ) {
-    result.push(
-      "Cibler les postes accessibles sans diplôme et sans expérience déclarée.",
-      "Comparer plusieurs secteurs au lieu de limiter automatiquement la recherche à un seul métier."
-    );
-  }
-
-  if (
-    state.context.emploi &&
-    state.info.secteurs ===
-      "Tous secteurs"
-  ) {
-    result.push(
-      "Effectuer une recherche multisectorielle afin d'identifier davantage de possibilités."
-    );
-  }
-
-  if (
-    state.context.immigration
-  ) {
-    result.push(
-      "Ne pas déduire un droit au travail à partir du seul nom d'un titre : vérifier les conditions exactes."
-    );
-  }
-
-  return result;
-}
-
-function appliquerProtectionsEmploi(info) {
-  const protections = [];
-
-  if (
-    info.diplome ===
-    "Sans diplôme"
-  ) {
-    protections.push(
-      "Rechercher en priorité les offres indiquant explicitement qu'aucun diplôme n'est requis ou acceptant les profils correspondants."
-    );
-  }
-
-  if (
-    info.experience ===
-    "Sans expérience"
-  ) {
-    protections.push(
-      "Rechercher les offres ouvertes aux débutants et les possibilités de formation ou d'accompagnement."
-    );
-  }
-
-  if (
-    info.documents ===
-    "Documents à préciser"
-  ) {
-    protections.push(
-      "Ne pas supposer qu'une personne sans document peut légalement exercer un emploi : vérifier la situation exacte auprès des sources officielles."
-    );
-  }
-
-  return protections;
-}
-
-/* =========================
-   FRANCE TRAVAIL SEARCH
-   ========================= */
-
-function buildFranceTravailSearchURL(
-  info
-) {
-  const url =
-    new URL(
-      SOURCES.franceTravailOffers.url
-    );
 
   if (
     info.typeEmploi &&
-    info.typeEmploi !==
-      "Peu importe"
+    info.typeEmploi !== "Peu importe" &&
+    info.typeEmploi !== "Tous secteurs"
   ) {
     url.searchParams.set(
       "motsCles",
@@ -1495,7 +1236,8 @@ function buildFranceTravailSearchURL(
   }
 
   if (
-    info.zoneRecherche
+    info.zoneRecherche &&
+    info.zoneRecherche !== "Toute la France"
   ) {
     url.searchParams.set(
       "lieux",
@@ -1511,106 +1253,82 @@ function buildFranceTravailSearchURL(
   return url.toString();
 }
 
-/*
-  France Travail API:
-  La recherche API est optionnelle.
-  Elle ne s'active que si les secrets sont présents.
-
-  Variables attendues:
-  FT_CLIENT_ID
-  FT_CLIENT_SECRET
-*/
-
-async function getFranceTravailToken(
-  env
-) {
+async function getFranceTravailToken(env) {
   if (
-    !env?.FT_CLIENT_ID ||
-    !env?.FT_CLIENT_SECRET
+    !env ||
+    !env.FT_CLIENT_ID ||
+    !env.FT_CLIENT_SECRET
   ) {
     return null;
   }
 
-  try {
-    const body =
-      new URLSearchParams();
+  const body = new URLSearchParams();
 
-    body.set(
-      "grant_type",
-      "client_credentials"
-    );
+  body.set(
+    "grant_type",
+    "client_credentials"
+  );
 
-    body.set(
-      "client_id",
-      env.FT_CLIENT_ID
-    );
+  body.set(
+    "client_id",
+    env.FT_CLIENT_ID
+  );
 
-    body.set(
-      "client_secret",
-      env.FT_CLIENT_SECRET
-    );
+  body.set(
+    "client_secret",
+    env.FT_CLIENT_SECRET
+  );
 
-    const response =
-      await fetch(
-        "https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=%2Fpartenaire",
-        {
-          method: "POST",
+  body.set(
+    "scope",
+    "api_offresdemploiv2 o2dsoffre"
+  );
 
-          headers: {
-            "Content-Type":
-              "application/x-www-form-urlencoded",
-            Accept:
-              "application/json"
-          },
-
-          body
-        }
-      );
-
-    if (!response.ok) {
-      return null;
+  const response = await fetch(
+    "https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=%2Fpartenaire",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/x-www-form-urlencoded"
+      },
+      body
     }
+  );
 
-    const data =
-      await response.json();
-
-    return (
-      data?.access_token ||
-      null
-    );
-
-  } catch {
+  if (!response.ok) {
     return null;
   }
+
+  const data = await response.json();
+
+  return data.access_token || null;
 }
 
-function normalizeOffer(
-  offer
-) {
-  if (
-    !isPlainObject(offer)
-  ) {
+function normalizeOffer(offer) {
+  if (!isPlainObject(offer)) {
     return null;
   }
 
   const id =
     offer.id ||
-    offer.identifiant ||
-    offer.numeroOffre;
+    offer.idOffre ||
+    "";
 
   const title =
     offer.intitule ||
     offer.title ||
     "";
 
-  const location =
+  const lieu =
     offer.lieuTravail?.libelle ||
     offer.lieuTravail?.commune ||
-    offer.location ||
+    offer.lieu ||
     "";
 
   const company =
     offer.entreprise?.nom ||
+    offer.entreprise?.raisonSociale ||
     offer.company ||
     "";
 
@@ -1626,176 +1344,300 @@ function normalizeOffer(
 
   const publication =
     offer.dateCreation ||
-    offer.dateActualisation ||
-    offer.publishedAt ||
+    offer.datePublication ||
     "";
 
   const description =
     offer.description ||
     "";
 
-  if (!title) {
-    return null;
-  }
-
-  let url = "";
-
-  if (id) {
-    url =
-      `https://candidat.francetravail.fr/offres/recherche/detail/${encodeURIComponent(id)}`;
-  }
+  const detail =
+    id
+      ? `https://candidat.francetravail.fr/offres/recherche/detail/${encodeURIComponent(id)}`
+      : SOURCES.franceTravailOffers.url;
 
   return {
-    id:
-      id || null,
-
-    title:
-      cleanText(title, 500),
-
-    location:
-      cleanText(location, 500),
-
-    company:
-      cleanText(company, 500),
-
-    contract:
-      cleanText(contract, 300),
-
-    experience:
-      cleanText(experience, 300),
-
-    publication:
-      cleanText(publication, 100),
-
-    description:
-      cleanText(description, 1000),
-
-    url,
-
-    source:
-      "France Travail"
+    id: cleanText(id, 200),
+    title: cleanText(title, 500),
+    location: cleanText(lieu, 500),
+    company: cleanText(company, 500),
+    contract: cleanText(contract, 300),
+    experience: cleanText(experience, 300),
+    publication: cleanText(publication, 100),
+    description: cleanText(description, 3000),
+    url: detail
   };
 }
 
-async function searchFranceTravail(
-  info,
-  env
-) {
-  const searchURL =
-    buildFranceTravailSearchURL(
-      info
-    );
+function analyserCompatibiliteOffre(offer, state, language) {
+  const text = [
+    offer.title,
+    offer.description,
+    offer.experience,
+    offer.contract
+  ].join(" ").toLowerCase();
 
-  const token =
-    await getFranceTravailToken(
-      env
-    );
+  const evidence = [];
+  let status = "toVerify";
+
+  if (
+    state.context.sansDiplome
+  ) {
+    if (
+      containsAny(text, [
+        "sans diplôme",
+        "sans diplome",
+        "aucun diplôme",
+        "aucun diplome",
+        "débutant accepté",
+        "debutant accepte",
+        "formation"
+      ])
+    ) {
+      evidence.push(
+        language === "ar"
+          ? "لا يظهر اشتراط شهادة محددة في المعلومات المتاحة."
+          : language === "en"
+            ? "No specific diploma requirement is visible in the available information."
+            : "Aucune exigence de diplôme spécifique visible dans les informations disponibles."
+      );
+    }
+  }
+
+  if (
+    state.context.sansExperience
+  ) {
+    if (
+      containsAny(text, [
+        "débutant accepté",
+        "debutant accepte",
+        "sans expérience",
+        "sans experience",
+        "formation"
+      ])
+    ) {
+      evidence.push(
+        language === "ar"
+          ? "العرض يشير إلى قبول المبتدئين أو التدريب."
+          : language === "en"
+            ? "The offer indicates beginners or training may be accepted."
+            : "L'offre indique l'ouverture aux débutants ou une possibilité de formation."
+      );
+    }
+  }
+
+  const explicitDiplomaRequirement =
+    containsAny(text, [
+      "bac+5",
+      "bac + 5",
+      "bac+4",
+      "bac + 4",
+      "diplôme obligatoire",
+      "diplome obligatoire",
+      "diplôme exigé",
+      "diplome exige",
+      "qualification obligatoire"
+    ]);
+
+  const explicitExperienceRequirement =
+    containsAny(text, [
+      "2 ans d'expérience",
+      "2 ans d'experience",
+      "3 ans d'expérience",
+      "3 ans d'experience",
+      "5 ans d'expérience",
+      "5 ans d'experience",
+      "expérience exigée",
+      "experience exigee",
+      "expérience obligatoire",
+      "experience obligatoire"
+    ]);
+
+  if (
+    (state.context.sansDiplome && explicitDiplomaRequirement) ||
+    (state.context.sansExperience && explicitExperienceRequirement)
+  ) {
+    status = "lessCompatible";
+  } else if (evidence.length > 0) {
+    status = "compatible";
+  }
+
+  return {
+    status,
+    evidence: uniqueArray(evidence)
+  };
+}
+
+async function searchFranceTravail(info, env, state, language) {
+  const searchURL = buildFranceTravailSearchURL(info);
+
+  const token = await getFranceTravailToken(env);
 
   if (!token) {
     return {
       enabled: false,
-      source:
-        SOURCES.franceTravailOffers,
+      offers: [],
       searchURL,
-      opportunities: [],
+      status: "official_ready",
       message:
-        "API France Travail non configurée. Recherche officielle prête à être ouverte."
+        language === "ar"
+          ? "البحث الرسمي جاهز للفتح."
+          : language === "en"
+            ? "Official search is ready to open."
+            : "Recherche officielle prête à être ouverte."
     };
   }
 
-  try {
-    const params =
-      new URLSearchParams();
+  const url = new URL(
+    "https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search"
+  );
 
-    if (
-      info.typeEmploi &&
-      info.typeEmploi !==
-        "Peu importe"
-    ) {
-      params.set(
-        "motsCles",
-        info.typeEmploi
-      );
-    }
-
-    if (
-      info.zoneRecherche
-    ) {
-      params.set(
-        "commune",
-        info.zoneRecherche
-      );
-    }
-
-    params.set(
-      "range",
-      "0-19"
+  if (
+    info.typeEmploi &&
+    info.typeEmploi !== "Peu importe" &&
+    info.typeEmploi !== "Tous secteurs"
+  ) {
+    url.searchParams.set(
+      "motsCles",
+      info.typeEmploi
     );
+  }
 
-    const response =
-      await fetch(
-        `https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search?${params.toString()}`,
-        {
-          headers: {
-            Authorization:
-              `Bearer ${token}`,
-            Accept:
-              "application/json"
-          }
+  if (
+    info.zoneRecherche &&
+    info.zoneRecherche !== "Toute la France"
+  ) {
+    url.searchParams.set(
+      "commune",
+      info.zoneRecherche
+    );
+  }
+
+  url.searchParams.set(
+    "range",
+    "0-19"
+  );
+
+  try {
+    const response = await fetch(
+      url.toString(),
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json"
         }
-      );
+      }
+    );
 
     if (!response.ok) {
       return {
         enabled: true,
-        source:
-          SOURCES.franceTravailAPI,
+        offers: [],
         searchURL,
-        opportunities: [],
+        status: "no_offers",
         message:
-          "La recherche API France Travail n'a pas pu être exécutée."
+          language === "ar"
+            ? "لم يتم استرجاع عروض من البحث."
+            : language === "en"
+              ? "No offers were retrieved."
+              : "Aucune offre n'a été récupérée."
       };
     }
 
-    const data =
-      await response.json();
+    const data = await response.json();
 
-    const raw =
-      Array.isArray(
-        data?.resultats
-      )
+    const rawOffers =
+      Array.isArray(data.resultats)
         ? data.resultats
-        : [];
+        : Array.isArray(data.offres)
+          ? data.offres
+          : [];
 
-    const opportunities =
-      raw
-        .map(normalizeOffer)
-        .filter(Boolean)
-        .slice(0, 20);
+    const offers = rawOffers
+      .map(normalizeOffer)
+      .filter(Boolean)
+      .slice(0, 20)
+      .map(offer => ({
+        ...offer,
+        compatibility:
+          analyserCompatibiliteOffre(
+            offer,
+            state,
+            language
+          )
+      }));
 
     return {
       enabled: true,
-      source:
-        SOURCES.franceTravailAPI,
+      offers,
       searchURL,
-      opportunities
-    };
-
-  } catch {
-    return {
-      enabled: true,
-      source:
-        SOURCES.franceTravailAPI,
-      searchURL,
-      opportunities: [],
+      status:
+        offers.length > 0
+          ? "offers_retrieved"
+          : "no_offers",
       message:
-        "Erreur pendant la recherche France Travail."
+        offers.length > 0
+          ? (
+            language === "ar"
+              ? "تم استرجاع عروض فعلية."
+              : language === "en"
+                ? "Offers were retrieved."
+                : "Offres récupérées."
+          )
+          : (
+            language === "ar"
+              ? "لم يتم العثور على عروض لهذه المعايير."
+              : language === "en"
+                ? "No offers were retrieved for this search."
+                : "Aucune offre récupérée pour cette recherche."
+          )
+    };
+  } catch (error) {
+    return {
+      enabled: true,
+      offers: [],
+      searchURL,
+      status: "no_offers",
+      message:
+        language === "ar"
+          ? "تعذر استرجاع العروض حاليًا."
+          : language === "en"
+            ? "Offers could not be retrieved right now."
+            : "Les offres ne peuvent pas être récupérées actuellement."
     };
   }
 }
-/* =========================
-   AI ENGINE
-   ========================= */
+
+function journeyLabel(stage, language) {
+  const ui = UI[language] || UI.fr;
+
+  return {
+    understanding: ui.understanding,
+    verification: ui.verification,
+    search: ui.search,
+    comparison: ui.comparison,
+    action: ui.action,
+    followup: ui.followup
+  }[stage] || ui.understanding;
+}
+
+function buildOpportunityData(search, language) {
+  if (!search) return null;
+
+  const ui = UI[language] || UI.fr;
+
+  return {
+    status: search.status,
+    message:
+      search.status === "offers_retrieved"
+        ? ui.offersRetrieved
+        : search.status === "official_ready"
+          ? ui.officialReady
+          : ui.noOffers,
+    searchURL: search.searchURL,
+    offers: safeArray(search.offers, 20)
+  };
+}
 
 function systemPrompt(language, state) {
   const langName =
@@ -1805,744 +1647,564 @@ function systemPrompt(language, state) {
         ? "English"
         : "French";
 
-  return [
-    "You are Go Rare AI, a practical situation-intelligence assistant.",
-    "Answer in " + langName + ".",
-    "Use only information supported by the user's message, verified data, or official sources supplied by the application.",
-    "Never invent job offers, legal rights, documents, prices, deadlines, companies, or procedures.",
-    "When a legal, immigration, employment, or administrative point depends on the exact situation, say that it must be verified.",
-    "For job searches, distinguish clearly between real retrieved opportunities and a search link; never present a search link as a found offer.",
-    "Prefer concise, practical, numbered next steps.",
-    "User context: " + JSON.stringify(state.info),
-    "Detected context: " + JSON.stringify(state.context)
-  ].join("\n");
+  return `
+You are Go Rare AI, a practical situation-intelligence assistant.
+
+Your mission:
+1. Understand the user's situation.
+2. Detect what information is missing.
+3. Distinguish confirmed information from information that must be verified.
+4. Use official sources when relevant.
+5. Search or prepare searches for real opportunities when available.
+6. Compare options without inventing facts.
+7. Identify obstacles and risks.
+8. Propose concrete next steps.
+9. Help the user move toward execution.
+
+Language: ${langName}
+
+Rules:
+- Never invent an offer, employer, legal right, salary, qualification or requirement.
+- Never present an unverified assumption as a fact.
+- For legal and administrative topics, recommend verification against official sources.
+- If real retrieved opportunities are supplied, distinguish them from a generic search link.
+- Be concise and practical.
+- Prefer numbered next steps.
+- Do not claim that an API search happened if it did not.
+- Do not calculate distance unless actual distance data exists.
+- Do not make promises of employment or success.
+
+Known state:
+${JSON.stringify(state.info)}
+
+Context:
+${JSON.stringify(state.context)}
+`;
 }
 
 async function askAI(env, messages) {
-  if (!env?.AI?.run) {
-    throw new Error(
-      "AI binding is not configured."
-    );
+  if (!env || !env.AI) {
+    return "";
   }
 
-  const result =
-    await env.AI.run(
+  const safeMessages = safeArray(messages, 20)
+    .filter(x => isPlainObject(x))
+    .map(x => ({
+      role:
+        x.role === "assistant"
+          ? "assistant"
+          : "user",
+      content: cleanText(
+        x.content || "",
+        LIMITS.message
+      )
+    }));
+
+  try {
+    const result = await env.AI.run(
       MODEL,
       {
-        messages:
-          messages.slice(-20)
+        messages: safeMessages
       }
     );
 
-  return cleanText(
-    result?.response ||
-      result?.result?.response ||
-      result?.output_text ||
-      "",
-    LIMITS.message
-  );
+    return cleanText(
+      result?.response || "",
+      12000
+    );
+  } catch {
+    return "";
+  }
 }
 
-function buildOpportunityData(
-  searchResult
-) {
-  const result =
-    searchResult || {};
-
-  const opportunities =
-    Array.isArray(
-      result.opportunities
-    )
-      ? result.opportunities
-          .filter(isPlainObject)
-          .slice(0, 20)
-      : [];
-
-  return {
-    enabled:
-      result.enabled === true,
-
-    source:
-      result.source ||
-      SOURCES.franceTravailOffers,
-
-    searchURL:
-      result.searchURL || "",
-
-    opportunities,
-
-    count:
-      opportunities.length,
-
-    message:
-      result.message || ""
-  };
-}
-
-function buildResult(
+function buildResult({
+  language,
   state,
   decision,
   sources,
   verification,
+  actions,
+  recommendations,
   opportunities,
-  answer
-) {
-  return {
-    version:
-      VERSION,
+  aiText
+}) {
+  const ui = UI[language] || UI.fr;
 
-    decisionVersion:
-      DECISION_VERSION,
-
-    ok: true,
-
-    mode:
-      decision.mode,
-
-    question:
-      decision.question,
-
-    questionKey:
-      decision.questionKey,
-
-    field:
-      decision.field,
-
-    remaining:
-      decision.remaining,
-
-    language:
-      state.language,
-
-    context:
-      state.context,
-
-    confirmed:
-      buildConfirmed(
-        state.info
-      ),
-
-    verification,
-
-    sources,
-
-    actions:
-      buildActions(state),
-
-    recommendations:
-      buildRecommendations(
-        state
-      ),
-
-    protections:
-      appliquerProtectionsEmploi(
-        state.info
-      ),
-
-    opportunities,
-
-    answer:
-      answer || ""
-  };
-}
-
-async function analyserQuestion(
-  payload,
-  env
-) {
-  const question =
-    cleanText(
-      payload?.question,
-      LIMITS.question
-    );
-
-  const stateBase =
-    construireEtatConversation(
-      question,
-      payload || {}
-    );
-
-  const language =
-    detectLanguage(
-      question,
-      payload?.language
-    );
-
-  const decision =
-    construireDecision(
-      stateBase,
-      language
-    );
-
-  const sources =
-    selectSources(
-      stateBase
-    );
-
-  const verification =
-    buildVerification(
-      stateBase
-    );
-
-  let opportunities =
-    buildOpportunityData(
-      null
-    );
-
-  /*
-    Recherche réelle France Travail
-    uniquement lorsque les informations
-    nécessaires sont disponibles.
-  */
-  if (
-    stateBase.context.emploi &&
-    decision.mode ===
-      "orientation"
-  ) {
-    opportunities =
-      buildOpportunityData(
-        await searchFranceTravail(
-          stateBase.info,
-          env
-        )
-      );
-  }
-
-  /*
-    Tant qu'une information importante
-    manque, Go Rare AI pose une question
-    au lieu d'inventer une réponse.
-  */
-  let answer =
-    decision.question || "";
+  let stage =
+    decision?.progress?.stage ||
+    "understanding";
 
   if (
-    decision.mode ===
-    "orientation"
+    opportunities &&
+    opportunities.offers &&
+    opportunities.offers.length > 0
   ) {
-    const prompt =
-      systemPrompt(
-        language,
-        stateBase
-      );
-
-    const userMessage =
-      [
-        "User request:",
-        question,
-
-        "Confirmed information:",
-        JSON.stringify(
-          buildConfirmed(
-            stateBase.info
-          )
-        ),
-
-        "Verification items:",
-        JSON.stringify(
-          verification
-        ),
-
-        "Official sources:",
-        JSON.stringify(
-          sources
-        ),
-
-        "Retrieved opportunities:",
-        JSON.stringify(
-          opportunities.opportunities
-        ),
-
-        "Search URL:",
-        opportunities.searchURL,
-
-        "Return a useful practical answer. Do not invent anything."
-      ].join("\n");
-
-    answer =
-      await askAI(
-        env,
-        [
-          {
-            role:
-              "system",
-            content:
-              prompt
-          },
-
-          {
-            role:
-              "user",
-            content:
-              userMessage
-          }
-        ]
-      );
-  }
-
-  return buildResult(
-    {
-      ...stateBase,
-      language
-    },
-
-    decision,
-
-    sources,
-
-    verification,
-
-    opportunities,
-
-    answer
-  );
-}
-
-/* =========================
-   IMAGE ANALYSIS
-   ========================= */
-
-async function analyserImage(
-  payload,
-  env
-) {
-  if (!env?.AI?.run) {
-    throw new Error(
-      "AI binding is not configured."
-    );
-  }
-
-  const image =
-    cleanText(
-      payload?.image,
-      LIMITS.image
-    );
-
-  if (!image) {
-    throw new Error(
-      "Image missing."
-    );
-  }
-
-  if (
-    base64ByteLength(image) >
-    LIMITS.image
+    stage = "comparison";
+  } else if (
+    decision.mode === "orientation" &&
+    verification.length > 0
   ) {
-    throw new Error(
-      "Image too large."
-    );
+    stage = "verification";
+  } else if (
+    decision.mode === "orientation"
+  ) {
+    stage = "action";
   }
-
-  const question =
-    cleanText(
-      payload?.question ||
-        "Analyze this image and explain what useful situation or information can be identified.",
-      LIMITS.question
-    );
-
-  const language =
-    detectLanguage(
-      question,
-      payload?.language
-    );
-
-  const result =
-    await env.AI.run(
-      MODEL_VISION,
-      {
-        messages: [
-          {
-            role:
-              "system",
-
-            content:
-              "You are Go Rare AI. Analyze the supplied image carefully. Do not invent text or facts. State uncertainty when the image is unclear. Answer in " +
-              (
-                language === "ar"
-                  ? "Arabic"
-                  : language === "en"
-                    ? "English"
-                    : "French"
-              ) +
-              "."
-          },
-
-          {
-            role:
-              "user",
-
-            content: [
-              {
-                type:
-                  "text",
-
-                text:
-                  question
-              },
-
-              {
-                type:
-                  "image_url",
-
-                image_url: {
-                  url:
-                    image
-                }
-              }
-            ]
-          }
-        ]
-      }
-    );
 
   return {
-    ok: true,
-
-    version:
-      VERSION,
+    version: VERSION,
+    decisionVersion: DECISION_VERSION,
 
     language,
 
-    answer:
-      cleanText(
-        result?.response ||
-          result?.result
-            ?.response ||
-          "",
-        LIMITS.message
-      )
+    confirmed: buildConfirmed(
+      state.info,
+      language
+    ),
+
+    verify: verification,
+
+    missing:
+      decision.mode === "question"
+        ? [{
+            key: decision.questionKey,
+            question: decision.question
+          }]
+        : [],
+
+    nextQuestion:
+      decision.mode === "question"
+        ? decision.question
+        : null,
+
+    actions,
+
+    recommendations,
+
+    protection:
+      language === "ar"
+        ? "يجب التحقق من المعلومات الحساسة قبل اتخاذ قرار نهائي."
+        : language === "en"
+          ? "Sensitive information must be verified before a final decision."
+          : "Les informations sensibles doivent être vérifiées avant toute décision finale.",
+
+    journey: {
+      stage,
+      label: journeyLabel(stage, language)
+    },
+
+    sources,
+
+    opportunities,
+
+    ai: aiText || null,
+
+    ui: {
+      result: ui.result
+    }
   };
 }
 
-/* =========================
-   AUDIO TRANSCRIPTION
-   ========================= */
+async function analyserQuestion(payload, env) {
+  const question = cleanText(
+    payload.question || "",
+    LIMITS.question
+  );
 
-async function transcrireAudio(
-  payload,
-  env
-) {
-  if (!env?.AI?.run) {
-    throw new Error(
-      "AI binding is not configured."
-    );
+  if (!question) {
+    throw new Error("QUESTION_REQUIRED");
   }
 
-  const audio =
-    cleanText(
-      payload?.audio,
-      LIMITS.audio
+  const state =
+    construireEtatConversation(
+      question,
+      payload
     );
 
-  if (!audio) {
-    throw new Error(
-      "Audio missing."
+  const language =
+    normalizeLanguage(
+      payload.language || state.language
     );
-  }
+
+  state.language = language;
+
+  const decision =
+    construireDecision(state);
+
+  const sources =
+    buildSources(state);
+
+  const verification =
+    construireVerification(state);
+
+  let actions =
+    buildActions(state, language);
+
+  let recommendations =
+    buildRecommendations(
+      state,
+      language
+    );
+
+  recommendations =
+    appliquerProtectionsEmploi(
+      state,
+      recommendations,
+      language
+    );
+
+  let opportunities = null;
 
   if (
-    base64ByteLength(audio) >
-    LIMITS.audio
+    state.context.employment &&
+    decision.mode === "orientation"
   ) {
-    throw new Error(
-      "Audio too large."
-    );
+    const search =
+      await searchFranceTravail(
+        state.info,
+        env,
+        state,
+        language
+      );
+
+    opportunities =
+      buildOpportunityData(
+        search,
+        language
+      );
   }
 
-  const clean =
-    audio.replace(
-      /^data:[^;]+;base64,/,
-      ""
-    );
+  let aiText = "";
 
-  const binary =
-    Uint8Array.from(
-      atob(clean),
-      function (c) {
-        return c.charCodeAt(0);
+  if (
+    decision.mode === "orientation"
+  ) {
+    const prompt =
+      systemPrompt(language, state);
+
+    const history =
+      Array.isArray(payload.history)
+        ? payload.history
+        : [];
+
+    const messages = [
+      {
+        role: "system",
+        content: prompt
+      },
+      ...history
+        .slice(-12)
+        .map(x => ({
+          role:
+            x.role === "assistant"
+              ? "assistant"
+              : "user",
+          content: cleanText(
+            x.content || "",
+            4000
+          )
+        })),
+      {
+        role: "user",
+        content: question
       }
-    );
+    ];
+
+    aiText =
+      await askAI(
+        env,
+        messages
+      );
+  }
 
   const result =
-    await env.AI.run(
-      MODEL_AUDIO,
-      {
-        audio:
-          [...binary]
+    buildResult({
+      language,
+      state,
+      decision,
+      sources,
+      verification,
+      actions,
+      recommendations,
+      opportunities,
+      aiText
+    });
+
+  return result;
+}
+
+function jsonResponse(data, status = 200) {
+  return new Response(
+    JSON.stringify(data),
+    {
+      status,
+      headers: {
+        "Content-Type":
+          "application/json; charset=utf-8",
+        "Cache-Control":
+          "no-store"
       }
-    );
-
-  return {
-    ok: true,
-
-    version:
-      VERSION,
-
-    text:
-      cleanText(
-        result?.text ||
-          result?.transcription ||
-          result?.result?.text ||
-          "",
-        LIMITS.question
-      )
-  };
+    }
+  );
 }
 
-/* =========================
-   REQUEST HELPERS
-   ========================= */
-
-async function readJSON(
-  request
+function errorResponse(
+  message,
+  status = 400
 ) {
-  const length =
-    Number(
-      request.headers.get(
-        "content-length"
-      ) || 0
-    );
-
-  if (
-    length >
-    LIMITS.jsonBody
-  ) {
-    throw new Error(
-      "Request body too large."
-    );
-  }
-
-  const text =
-    await request.text();
-
-  if (
-    text.length >
-    LIMITS.jsonBody
-  ) {
-    throw new Error(
-      "Request body too large."
-    );
-  }
-
-  if (!text.trim()) {
-    return {};
-  }
-
-  let data;
-
-  try {
-    data =
-      JSON.parse(text);
-  } catch {
-    throw new Error(
-      "Invalid JSON."
-    );
-  }
-
-  if (
-    !isPlainObject(data)
-  ) {
-    throw new Error(
-      "JSON body must be an object."
-    );
-  }
-
-  return data;
+  return jsonResponse(
+    {
+      error: message
+    },
+    status
+  );
 }
 
-function getClientIP(
-  request
-) {
-  return cleanText(
-    request.headers.get(
-      "CF-Connecting-IP"
-    ) ||
-      request.headers.get(
-        "x-forwarded-for"
-      ) ||
-      "unknown",
-    100
-  )
-    .split(",")[0]
-    .trim();
+function getClientIP(request) {
+  return (
+    request.headers.get("CF-Connecting-IP") ||
+    request.headers.get("X-Forwarded-For") ||
+    "unknown"
+  );
 }
 
-function rateLimit(
-  request
-) {
-  const ip =
-    getClientIP(
-      request
-    );
+function checkRateLimit(request) {
+  const ip = getClientIP(request);
+  const now = Date.now();
 
-  const now =
-    Date.now();
+  let entry = rateStore.get(ip);
 
-  const current =
-    rateStore.get(ip);
+  if (!entry || now - entry.start > RATE.window) {
+    entry = {
+      start: now,
+      count: 0
+    };
 
-  if (
-    !current ||
-    now - current.start >=
-      RATE.window
-  ) {
-    rateStore.set(
-      ip,
-      {
-        start:
-          now,
-
-        count:
-          1
-      }
-    );
-
-    return true;
+    rateStore.set(ip, entry);
   }
 
-  if (
-    current.count >=
-    RATE.max
-  ) {
+  entry.count++;
+
+  if (entry.count > RATE.max) {
     return false;
   }
 
-  current.count += 1;
+  if (rateStore.size > 5000) {
+    for (const [
+      key,
+      value
+    ] of rateStore.entries()) {
+      if (
+        now - value.start >
+        RATE.window
+      ) {
+        rateStore.delete(key);
+      }
+    }
+  }
 
   return true;
 }
 
 function securityHeaders() {
   return {
-    "X-Content-Type-Options":
-      "nosniff",
-
-    "X-Frame-Options":
-      "DENY",
-
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
     "Referrer-Policy":
       "strict-origin-when-cross-origin",
-
     "Permissions-Policy":
       "camera=(), geolocation=(), microphone=(self), payment=()",
-
     "Content-Security-Policy":
-      "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
   };
 }
+function withSecurity(response) {
+  const headers = new Headers(response.headers);
 
-function jsonResponse(
-  data,
-  status = 200,
-  extraHeaders = {}
-) {
-  const headers =
-    new Headers({
-      "Content-Type":
-        "application/json; charset=utf-8",
+  const security = securityHeaders();
 
-      ...securityHeaders(),
+  for (const [key, value] of Object.entries(security)) {
+    headers.set(key, value);
+  }
 
-      ...extraHeaders
-    });
-
-  return new Response(
-    JSON.stringify(data),
-    {
-      status,
-
-      headers
-    }
-  );
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
 }
 
-function htmlResponse(
-  html,
-  status = 200,
-  extraHeaders = {}
-) {
-  const headers =
-    new Headers({
-      "Content-Type":
-        "text/html; charset=utf-8",
+async function analyzeImage(env, payload) {
+  const image = payload?.image;
 
-      ...securityHeaders(),
+  if (!image) {
+    throw new Error("IMAGE_REQUIRED");
+  }
 
-      ...extraHeaders
-    });
+  const size = base64ByteLength(image);
 
-  return new Response(
-    html,
-    {
-      status,
+  if (size <= 0 || size > LIMITS.image) {
+    throw new Error("IMAGE_TOO_LARGE");
+  }
 
-      headers
-    }
-  );
-}
+  if (!env || !env.AI) {
+    throw new Error("AI_NOT_CONFIGURED");
+  }
 
-/* =========================
-   OAUTH / ACCOUNT
-   ========================= */
+  let imageData = image;
 
-function getOAuthConfig(
-  env
-) {
-  return {
-    clientId:
-      cleanText(
-        env?.OAUTH_CLIENT_ID,
-        500
-      ),
+  if (image.includes(",")) {
+    imageData = image.split(",").pop();
+  }
 
-    clientSecret:
-      cleanText(
-        env?.OAUTH_CLIENT_SECRET,
-        1000
-      ),
+  try {
+    const result = await env.AI.run(
+      MODEL_VISION,
+      {
+        image: Array.from(
+          Uint8Array.from(
+            atob(imageData),
+            c => c.charCodeAt(0)
+          )
+        ),
+        prompt: `
+Analyse cette image pour Go Rare AI.
 
-    authorizeURL:
-      cleanText(
-        env?.OAUTH_AUTHORIZE_URL,
-        2000
-      ),
-
-    tokenURL:
-      cleanText(
-        env?.OAUTH_TOKEN_URL,
-        2000
-      ),
-
-    userInfoURL:
-      cleanText(
-        env?.OAUTH_USERINFO_URL,
-        2000
-      ),
-
-    redirectURL:
-      cleanText(
-        env?.OAUTH_REDIRECT_URL,
-        2000
-      )
-  };
-}
-
-function clearCookie(
-  name
-) {
-  return (
-    name +
-    "=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax"
-  );
-}
-
-async function sha256(
-  value
-) {
-  const data =
-    new TextEncoder().encode(
-      value
+Objectif :
+- Identifier uniquement les informations réellement visibles.
+- Ne pas inventer.
+- Décrire les éléments utiles à la situation de l'utilisateur.
+- Si un document apparaît, distinguer clairement ce qui est lisible de ce qui ne l'est pas.
+- Ne jamais déduire une identité, un droit ou une situation juridique uniquement à partir d'une image.
+- Répondre de manière courte et pratique.
+`
+      }
     );
+
+    return {
+      text: cleanText(
+        result?.response || result?.description || "",
+        12000
+      )
+    };
+  } catch (error) {
+    throw new Error("IMAGE_ANALYSIS_FAILED");
+  }
+}
+
+async function transcribeAudio(env, payload) {
+  const audio = payload?.audio;
+
+  if (!audio) {
+    throw new Error("AUDIO_REQUIRED");
+  }
+
+  const size = base64ByteLength(audio);
+
+  if (size <= 0 || size > LIMITS.audio) {
+    throw new Error("AUDIO_TOO_LARGE");
+  }
+
+  if (!env || !env.AI) {
+    throw new Error("AI_NOT_CONFIGURED");
+  }
+
+  let audioData = audio;
+
+  if (audio.includes(",")) {
+    audioData = audio.split(",").pop();
+  }
+
+  try {
+    const bytes = Uint8Array.from(
+      atob(audioData),
+      c => c.charCodeAt(0)
+    );
+
+    const result = await env.AI.run(
+      MODEL_AUDIO,
+      {
+        audio: Array.from(bytes)
+      }
+    );
+
+    return {
+      text: cleanText(
+        result?.text || "",
+        LIMITS.question
+      )
+    };
+  } catch (error) {
+    throw new Error("AUDIO_TRANSCRIPTION_FAILED");
+  }
+}
+
+async function readJSON(request) {
+  const contentLength =
+    Number(
+      request.headers.get("Content-Length") || 0
+    );
+
+  if (
+    contentLength &&
+    contentLength > LIMITS.jsonBody
+  ) {
+    throw new Error("BODY_TOO_LARGE");
+  }
+
+  const text = await request.text();
+
+  if (!text) {
+    throw new Error("EMPTY_BODY");
+  }
+
+  if (text.length > LIMITS.jsonBody) {
+    throw new Error("BODY_TOO_LARGE");
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("INVALID_JSON");
+  }
+}
+
+function cookieValue(request, name) {
+  const cookie =
+    request.headers.get("Cookie") || "";
+
+  const parts = cookie.split(";");
+
+  for (const part of parts) {
+    const [key, ...rest] =
+      part.trim().split("=");
+
+    if (key === name) {
+      return decodeURIComponent(
+        rest.join("=")
+      );
+    }
+  }
+
+  return null;
+}
+
+function randomToken(length = 32) {
+  const bytes =
+    new Uint8Array(length);
+
+  crypto.getRandomValues(bytes);
+
+  return Array.from(bytes)
+    .map(
+      b => b.toString(16).padStart(2, "0")
+    )
+    .join("");
+}
+
+async function sha256(value) {
+  const data =
+    new TextEncoder().encode(value);
 
   const hash =
     await crypto.subtle.digest(
@@ -2553,171 +2215,58 @@ async function sha256(
   return Array.from(
     new Uint8Array(hash)
   )
-    .map(function (b) {
-      return b
-        .toString(16)
-        .padStart(2, "0");
-    })
-    .join("");
-}
-
-function randomState() {
-  const bytes =
-    new Uint8Array(24);
-
-  crypto.getRandomValues(
-    bytes
-  );
-
-  return Array.from(
-    bytes
-  )
-    .map(function (b) {
-      return b
-        .toString(16)
-        .padStart(2, "0");
-    })
-    .join("");
-}
-
-function safeCookieValue(
-  value
-) {
-  return encodeURIComponent(
-    cleanText(
-      value,
-      4000
+    .map(
+      b => b.toString(16).padStart(2, "0")
     )
-  );
+    .join("");
 }
 
-function getCookie(
-  request,
-  name
-) {
-  const header =
-    request.headers.get(
-      "Cookie"
-    ) || "";
-
-  const parts =
-    header.split(";");
-
-  for (
-    const part of parts
-  ) {
-    const index =
-      part.indexOf("=");
-
-    if (index < 0) {
-      continue;
-    }
-
-    const key =
-      part
-        .slice(0, index)
-        .trim();
-
-    if (key === name) {
-      return decodeURIComponent(
-        part
-          .slice(index + 1)
-          .trim()
-      );
-    }
-  }
-
-  return "";
-}
-
-function billingStatus(
-  request,
-  env
-) {
-  const user =
-    getCookie(
-      request,
-      "grai_user"
-    );
-
+function oauthConfig(env) {
   return {
-    ok: true,
-
-    version:
-      VERSION,
-
-    connected:
-      !!user,
-
-    user:
-      user || null,
-
-    billing: {
-      enabled:
-        env?.BILLING_ENABLED ===
-        "true",
-
-      provider:
-        cleanText(
-          env?.BILLING_PROVIDER,
-          100
-        ) || null,
-
-      status:
-        "not_configured"
-    }
+    clientId:
+      env?.OAUTH_CLIENT_ID || "",
+    clientSecret:
+      env?.OAUTH_CLIENT_SECRET || "",
+    authorizeURL:
+      env?.OAUTH_AUTHORIZE_URL || "",
+    tokenURL:
+      env?.OAUTH_TOKEN_URL || "",
+    userInfoURL:
+      env?.OAUTH_USERINFO_URL || "",
+    redirectURL:
+      env?.OAUTH_REDIRECT_URL || ""
   };
 }
 
-async function billingConnect(
-  request,
-  env
-) {
+async function handleOAuthConnect(request, env) {
   const config =
-    getOAuthConfig(
-      env
-    );
+    oauthConfig(env);
 
   if (
     !config.clientId ||
     !config.authorizeURL ||
     !config.redirectURL
   ) {
-    return jsonResponse(
-      {
-        ok: false,
-
-        version:
-          VERSION,
-
-        error:
-          "OAuth is not configured."
-      },
-      503
+    return withSecurity(
+      errorResponse(
+        "OAuth_NOT_CONFIGURED",
+        503
+      )
     );
   }
 
   const state =
-    randomState();
+    randomToken(32);
 
   const stateHash =
-    await sha256(
-      state
-    );
+    await sha256(state);
 
   const url =
-    new URL(
-      config.authorizeURL
-    );
+    new URL(config.authorizeURL);
 
   url.searchParams.set(
     "client_id",
     config.clientId
-  );
-
-  url.searchParams.set(
-    "redirect_uri",
-    config.redirectURL
   );
 
   url.searchParams.set(
@@ -2726,1575 +2275,1291 @@ async function billingConnect(
   );
 
   url.searchParams.set(
+    "redirect_uri",
+    config.redirectURL
+  );
+
+  url.searchParams.set(
     "state",
     state
   );
 
-  url.searchParams.set(
-    "scope",
-    env.OAUTH_SCOPE ||
-      "openid profile email"
+  const response =
+    Response.redirect(
+      url.toString(),
+      302
+    );
+
+  response.headers.append(
+    "Set-Cookie",
+    `grai_oauth_state=${encodeURIComponent(stateHash)}; Max-Age=600; Path=/; HttpOnly; Secure; SameSite=Lax`
   );
 
-  return new Response(
-    null,
-    {
-      status: 302,
-
-      headers: {
-        Location:
-          url.toString(),
-
-        ...securityHeaders(),
-
-        "Set-Cookie":
-          "grai_oauth_state=" +
-          safeCookieValue(
-            stateHash
-          ) +
-          "; Max-Age=600; Path=/; HttpOnly; Secure; SameSite=Lax"
-      }
-    }
-  );
+  return response;
 }
 
-async function billingCallback(
-  request,
-  env
-) {
+async function handleOAuthCallback(request, env) {
   const config =
-    getOAuthConfig(
-      env
-    );
+    oauthConfig(env);
 
-  const url =
-    new URL(
-      request.url
-    );
+  const requestURL =
+    new URL(request.url);
 
   const code =
-    cleanText(
-      url.searchParams.get(
-        "code"
-      ),
-      4000
-    );
+    requestURL.searchParams.get("code");
 
-  const returnedState =
-    cleanText(
-      url.searchParams.get(
-        "state"
-      ),
-      4000
-    );
+  const state =
+    requestURL.searchParams.get("state");
 
-  const storedStateHash =
-    getCookie(
+  if (!code || !state) {
+    return withSecurity(
+      errorResponse(
+        "OAUTH_CALLBACK_INVALID",
+        400
+      )
+    );
+  }
+
+  const storedState =
+    cookieValue(
       request,
       "grai_oauth_state"
     );
 
-  if (
-    !code ||
-    !returnedState ||
-    !storedStateHash
-  ) {
-    return jsonResponse(
-      {
-        ok: false,
-
-        version:
-          VERSION,
-
-        error:
-          "Invalid OAuth callback."
-      },
-      400
+  if (!storedState) {
+    return withSecurity(
+      errorResponse(
+        "OAUTH_STATE_MISSING",
+        400
+      )
     );
   }
 
-  const returnedHash =
-    await sha256(
-      returnedState
-    );
+  const receivedHash =
+    await sha256(state);
 
-  if (
-    returnedHash !==
-    storedStateHash
-  ) {
-    return jsonResponse(
-      {
-        ok: false,
-
-        version:
-          VERSION,
-
-        error:
-          "OAuth state validation failed."
-      },
-      400
+  if (receivedHash !== storedState) {
+    return withSecurity(
+      errorResponse(
+        "OAUTH_STATE_INVALID",
+        400
+      )
     );
   }
 
   if (
     !config.clientId ||
     !config.clientSecret ||
-    !config.tokenURL
+    !config.tokenURL ||
+    !config.redirectURL
   ) {
-    return jsonResponse(
-      {
-        ok: false,
-
-        version:
-          VERSION,
-
-        error:
-          "OAuth token configuration is incomplete."
-      },
-      503
+    return withSecurity(
+      errorResponse(
+        "OAUTH_NOT_CONFIGURED",
+        503
+      )
     );
   }
 
+  const body =
+    new URLSearchParams();
+
+  body.set(
+    "grant_type",
+    "authorization_code"
+  );
+
+  body.set(
+    "client_id",
+    config.clientId
+  );
+
+  body.set(
+    "client_secret",
+    config.clientSecret
+  );
+
+  body.set(
+    "code",
+    code
+  );
+
+  body.set(
+    "redirect_uri",
+    config.redirectURL
+  );
+
   try {
-    const body =
-      new URLSearchParams();
-
-    body.set(
-      "grant_type",
-      "authorization_code"
-    );
-
-    body.set(
-      "code",
-      code
-    );
-
-    body.set(
-      "client_id",
-      config.clientId
-    );
-
-    body.set(
-      "client_secret",
-      config.clientSecret
-    );
-
-    body.set(
-      "redirect_uri",
-      config.redirectURL
-    );
-
     const tokenResponse =
       await fetch(
         config.tokenURL,
         {
-          method:
-            "POST",
-
+          method: "POST",
           headers: {
             "Content-Type":
-              "application/x-www-form-urlencoded",
-
-            Accept:
-              "application/json"
+              "application/x-www-form-urlencoded"
           },
-
           body
         }
       );
 
-    if (
-      !tokenResponse.ok
-    ) {
-      return jsonResponse(
-        {
-          ok: false,
-
-          version:
-            VERSION,
-
-          error:
-            "OAuth token exchange failed."
-        },
-        502
+    if (!tokenResponse.ok) {
+      return withSecurity(
+        errorResponse(
+          "OAUTH_TOKEN_FAILED",
+          502
+        )
       );
     }
 
     const tokenData =
       await tokenResponse.json();
 
-    let identity =
-      null;
+    let userIdentity = null;
 
     if (
       config.userInfoURL &&
-      tokenData?.access_token
+      tokenData.access_token
     ) {
-      const userResponse =
-        await fetch(
-          config.userInfoURL,
-          {
-            headers: {
-              Authorization:
-                "Bearer " +
-                tokenData.access_token,
-
-              Accept:
-                "application/json"
+      try {
+        const userResponse =
+          await fetch(
+            config.userInfoURL,
+            {
+              headers: {
+                Authorization:
+                  `Bearer ${tokenData.access_token}`
+              }
             }
-          }
-        );
+          );
 
-      if (
-        userResponse.ok
-      ) {
-        identity =
-          await userResponse.json();
+        if (userResponse.ok) {
+          const userData =
+            await userResponse.json();
+
+          userIdentity = {
+            id:
+              userData.sub ||
+              userData.id ||
+              null
+          };
+        }
+      } catch {
+        userIdentity = null;
       }
     }
 
-    const userValue =
-      identity?.sub ||
-      identity?.id ||
-      identity?.email ||
-      "connected";
+    const sessionPayload = {
+      authenticated: true,
+      user:
+        userIdentity || {
+          id: null
+        },
+      createdAt: Date.now()
+    };
 
-    return new Response(
-      null,
-      {
-        status: 302,
+    const session =
+      btoa(
+        JSON.stringify(sessionPayload)
+      );
 
-        headers: {
-          Location:
-            "/?oauth=success",
-
-          ...securityHeaders(),
-
-          "Set-Cookie":
-            [
-              "grai_user=" +
-                safeCookieValue(
-                  String(
-                    userValue
-                  )
-                ) +
-                "; Max-Age=28800; Path=/; HttpOnly; Secure; SameSite=Lax",
-
-              clearCookie(
-                "grai_oauth_state"
-              )
-            ].join(", ")
+    const response =
+      new Response(
+        `
+        <!doctype html>
+        <html lang="fr">
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width,initial-scale=1">
+          <title>Go Rare AI</title>
+        </head>
+        <body>
+          <script>
+            window.location.href = "/";
+          </script>
+        </body>
+        </html>
+        `,
+        {
+          status: 200,
+          headers: {
+            "Content-Type":
+              "text/html; charset=utf-8"
+          }
         }
-      }
+      );
+
+    response.headers.append(
+      "Set-Cookie",
+      "grai_oauth_state=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax"
     );
+
+    response.headers.append(
+      "Set-Cookie",
+      `grai_user=${encodeURIComponent(session)}; Max-Age=86400; Path=/; HttpOnly; Secure; SameSite=Lax`
+    );
+
+    return withSecurity(response);
   } catch {
-    return jsonResponse(
-      {
-        ok: false,
-
-        version:
-          VERSION,
-
-        error:
-          "OAuth callback error."
-      },
-      502
+    return withSecurity(
+      errorResponse(
+        "OAUTH_CALLBACK_FAILED",
+        502
+      )
     );
   }
 }
 
-/* =========================
-   HTML UI
-   =========================
-   IMPORTANT:
-   No nested backticks are used
-   inside the HTML template.
-   ========================= */
+function billingStatus(request) {
+  const raw =
+    cookieValue(
+      request,
+      "grai_user"
+    );
+
+  if (!raw) {
+    return {
+      authenticated: false
+    };
+  }
+
+  try {
+    const data =
+      JSON.parse(atob(raw));
+
+    return {
+      authenticated:
+        data.authenticated === true,
+      hasUser:
+        Boolean(data.user?.id)
+    };
+  } catch {
+    return {
+      authenticated: false
+    };
+  }
+}
 
 function renderHTML() {
-  const uiJSON =
-    JSON.stringify(
-      UI
-    ).replace(
-      /</g,
-      "\\u003c"
-    );
-
-  const parcoursJSON =
-    JSON.stringify(
-      PARCOURS
-    ).replace(
-      /</g,
-      "\\u003c"
-    );
-
   return `<!doctype html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0b1020">
+
 <title>Go Rare AI</title>
+
+<meta
+  name="description"
+  content="Go Rare AI — Comprendre votre situation. Voir plus loin."
+>
 
 <style>
 :root{
-  font-family:
-    Inter,
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
-
-  background:#0b1020;
-  color:#f5f7ff;
+  color-scheme:dark;
+  --bg:#07090d;
+  --panel:rgba(18,22,30,.78);
+  --panel2:rgba(25,30,40,.88);
+  --line:rgba(255,255,255,.09);
+  --text:#f5f7fa;
+  --muted:#aeb7c5;
+  --accent:#ffffff;
+  --danger:#ff8a8a;
 }
 
 *{
   box-sizing:border-box;
 }
 
+html,
 body{
   margin:0;
-  min-height:100vh;
-
+  padding:0;
+  min-height:100%;
   background:
-    linear-gradient(
-      135deg,
-      #0b1020,
-      #151d35
+    radial-gradient(
+      circle at top,
+      #18202d 0,
+      var(--bg) 48%,
+      #030407 100%
     );
+  color:var(--text);
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
 
+body{
   padding:20px;
 }
 
-.wrap{
-  max-width:980px;
+.app{
+  width:min(960px,100%);
   margin:0 auto;
 }
 
-.card{
-  background:
-    rgba(255,255,255,.07);
-
-  border:
-    1px solid
-    rgba(255,255,255,.12);
-
-  border-radius:24px;
-
-  padding:20px;
-
-  backdrop-filter:
-    blur(14px);
-
-  box-shadow:
-    0 20px 60px
-    rgba(0,0,0,.25);
+header{
+  text-align:center;
+  padding:18px 0 24px;
 }
 
-h1{
-  margin:0;
-  font-size:32px;
+.logo{
+  font-size:30px;
+  font-weight:800;
+  letter-spacing:-1px;
 }
 
-.sub{
-  margin:
-    6px 0 20px;
-
-  opacity:.75;
-}
-
-.row{
-  display:flex;
-  gap:10px;
-  flex-wrap:wrap;
-}
-
-.select,
-.input,
-.textarea,
-button{
-  border-radius:14px;
-
-  border:
-    1px solid
-    rgba(255,255,255,.15);
-
-  background:
-    rgba(0,0,0,.2);
-
-  color:inherit;
-
-  padding:12px;
-
-  font:inherit;
-}
-
-.input,
-.textarea{
-  width:100%;
-}
-
-.textarea{
-  min-height:140px;
-  resize:vertical;
-}
-
-.grow{
-  flex:1;
-  min-width:220px;
-}
-
-button{
-  cursor:pointer;
-  background:
-    rgba(255,255,255,.12);
-}
-
-button:hover{
-  background:
-    rgba(255,255,255,.18);
-}
-
-button.primary{
-  background:#fff;
-  color:#111827;
-  font-weight:700;
+.subtitle{
+  color:var(--muted);
+  margin-top:6px;
 }
 
 .toolbar{
-  margin:
-    12px 0;
+  display:flex;
+  gap:8px;
+  justify-content:center;
+  flex-wrap:wrap;
+  margin-bottom:16px;
 }
 
-.status{
-  min-height:24px;
-  margin:10px 0;
-  opacity:.8;
+button,
+select{
+  border:1px solid var(--line);
+  background:var(--panel2);
+  color:var(--text);
+  border-radius:12px;
+  padding:10px 14px;
+  cursor:pointer;
 }
 
-.result{
-  margin-top:18px;
+button:hover{
+  border-color:rgba(255,255,255,.22);
 }
 
-.section{
-  margin-top:16px;
+.card{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:22px;
+  padding:18px;
+  margin-bottom:14px;
+  backdrop-filter:blur(16px);
+  box-shadow:
+    0 20px 60px rgba(0,0,0,.25);
 }
 
-.section h3{
+label{
+  display:block;
+  color:var(--muted);
+  font-size:13px;
   margin-bottom:8px;
 }
 
-.list{
+textarea{
+  width:100%;
+  min-height:145px;
+  resize:vertical;
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:15px;
+  background:rgba(0,0,0,.22);
+  color:var(--text);
+  outline:none;
+  font-size:16px;
+  line-height:1.5;
+}
+
+textarea:focus{
+  border-color:rgba(255,255,255,.25);
+}
+
+.actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:12px;
+}
+
+.primary{
+  background:#fff;
+  color:#050609;
+  font-weight:700;
+}
+
+.status{
+  color:var(--muted);
+  font-size:13px;
+  margin-top:10px;
+}
+
+.journey{
+  display:flex;
+  gap:6px;
+  overflow:auto;
+  padding-bottom:4px;
+}
+
+.step{
+  white-space:nowrap;
+  padding:7px 10px;
+  border-radius:999px;
+  background:rgba(255,255,255,.05);
+  border:1px solid var(--line);
+  font-size:12px;
+  color:var(--muted);
+}
+
+.step.active{
+  color:var(--text);
+  border-color:rgba(255,255,255,.25);
+}
+
+h2{
+  font-size:18px;
+  margin:0 0 12px;
+}
+
+h3{
+  font-size:15px;
+  margin:16px 0 8px;
+}
+
+ul{
+  margin:8px 0 0;
+  padding-left:20px;
+}
+
+li{
+  margin:7px 0;
+  color:#dce2eb;
+}
+
+.info-grid{
   display:grid;
+  grid-template-columns:
+    repeat(auto-fit,minmax(220px,1fr));
   gap:8px;
 }
 
-.item{
-  padding:
-    10px 12px;
-
+.info{
+  background:rgba(255,255,255,.035);
+  border:1px solid var(--line);
   border-radius:12px;
-
-  background:
-    rgba(255,255,255,.06);
+  padding:10px;
 }
 
-.op{
+.info-key{
+  color:var(--muted);
+  font-size:12px;
+}
+
+.info-value{
+  margin-top:4px;
+  font-weight:600;
+}
+
+.offer{
+  border:1px solid var(--line);
+  border-radius:16px;
   padding:14px;
-
-  border:
-    1px solid
-    rgba(255,255,255,.12);
-
-  border-radius:14px;
-
-  margin-bottom:10px;
+  margin-top:10px;
+  background:rgba(255,255,255,.025);
 }
 
-.op a{
-  color:inherit;
+.offer-title{
+  font-weight:700;
 }
 
-.small{
+.offer-meta{
+  color:var(--muted);
   font-size:13px;
-  opacity:.7;
+  margin-top:5px;
 }
 
-.hidden{
-  display:none;
-}
-
-.pill{
+.badge{
   display:inline-block;
-
-  padding:
-    6px 10px;
-
+  margin-top:9px;
+  padding:5px 8px;
   border-radius:999px;
+  background:rgba(255,255,255,.07);
+  font-size:12px;
+}
 
-  background:
-    rgba(255,255,255,.08);
+a{
+  color:var(--text);
+}
 
-  margin:3px;
+.empty{
+  color:var(--muted);
+}
 
-  font-size:13px;
+.error{
+  color:var(--danger);
+}
+
+footer{
+  text-align:center;
+  color:var(--muted);
+  font-size:12px;
+  padding:20px 0 5px;
 }
 
 @media(max-width:600px){
   body{
-    padding:10px;
+    padding:12px;
   }
 
   .card{
-    padding:15px;
+    border-radius:17px;
+    padding:14px;
   }
 
-  h1{
-    font-size:27px;
+  textarea{
+    min-height:125px;
   }
 }
 </style>
 </head>
 
 <body>
+<div class="app">
 
-<div class="wrap">
-
-<div class="card">
-
-<h1 id="title">
-Go Rare AI
-</h1>
-
-<div
-  class="sub"
-  id="subtitle">
-</div>
-
-<div class="row">
-
-<select
-  id="language"
-  class="select"
-  aria-label="Language">
-
-  <option value="fr">
-    Français
-  </option>
-
-  <option value="ar">
-    العربية
-  </option>
-
-  <option value="en">
-    English
-  </option>
-
-</select>
-
-<select
-  id="profile"
-  class="select">
-
-  <option value="particulier">
-    Particulier
-  </option>
-
-  <option value="emploi">
-    Emploi
-  </option>
-
-  <option value="immigration">
-    Immigration
-  </option>
-
-  <option value="entreprise">
-    Entreprise
-  </option>
-
-</select>
-
-<select
-  id="situation"
-  class="select">
-
-  <option value="situation">
-    Situation
-  </option>
-
-  <option value="recherche">
-    Recherche d'emploi
-  </option>
-
-  <option value="formation">
-    Formation
-  </option>
-
-  <option value="administratif">
-    Démarche administrative
-  </option>
-
-  <option value="reconversion">
-    Reconversion
-  </option>
-
-  <option value="creer">
-    Créer une entreprise
-  </option>
-
-  <option value="developper">
-    Développer une entreprise
-  </option>
-
-</select>
-
-</div>
+<header>
+  <div class="logo">Go Rare AI</div>
+  <div class="subtitle">
+    Comprendre votre situation. Voir plus loin.
+  </div>
+</header>
 
 <div class="toolbar">
+  <select id="language">
+    <option value="fr">Français</option>
+    <option value="ar">العربية</option>
+    <option value="en">English</option>
+  </select>
 
-<textarea
-  id="question"
-  class="textarea"
-  maxlength="12000">
-</textarea>
-
+  <button id="connectBtn">
+    Connecter mon compte
+  </button>
 </div>
 
-<div class="row">
-
-<button
-  id="analyze"
-  class="primary">
-</button>
-
-<button
-  id="imageBtn">
-</button>
-
-<button
-  id="micBtn">
-</button>
-
-<button
-  id="connectBtn">
-</button>
-
-<input
-  id="imageInput"
-  type="file"
-  accept="image/*"
-  class="hidden">
-
+<div class="card">
+  <div class="journey" id="journey">
+    <div class="step active" data-stage="understanding">
+      Compréhension
+    </div>
+    <div class="step" data-stage="verification">
+      Vérification
+    </div>
+    <div class="step" data-stage="search">
+      Recherche
+    </div>
+    <div class="step" data-stage="comparison">
+      Comparaison
+    </div>
+    <div class="step" data-stage="action">
+      Action
+    </div>
+    <div class="step" data-stage="followup">
+      Suivi
+    </div>
+  </div>
 </div>
 
-<div
-  id="status"
-  class="status">
+<div class="card">
+  <label for="question">
+    Situation
+  </label>
+
+  <textarea
+    id="question"
+    placeholder="Décrivez votre situation..."
+  ></textarea>
+
+  <div class="actions">
+    <button
+      class="primary"
+      id="analyzeBtn"
+    >
+      Analyser
+    </button>
+
+    <button id="imageBtn">
+      Image
+    </button>
+
+    <button id="microBtn">
+      Micro
+    </button>
+
+    <input
+      id="imageInput"
+      type="file"
+      accept="image/*"
+      hidden
+    >
+  </div>
+
+  <div
+    class="status"
+    id="status"
+  >
+    Prêt.
+  </div>
 </div>
 
 <div
   id="result"
-  class="result">
-</div>
+></div>
 
-</div>
+<footer>
+  Go Rare AI · Version ${VERSION}
+</footer>
+
 </div>
 
 <script>
+const UI = ${JSON.stringify(UI)};
 
-const UI_DATA =
-  ${uiJSON};
+let conversationHistory = [];
+let confirmedInfo = {};
+let mediaRecorder = null;
+let audioChunks = [];
+let recording = false;
 
-const PARCOURS_DATA =
-  ${parcoursJSON};
+const questionEl =
+  document.getElementById("question");
 
-let mediaRecorder =
-  null;
+const analyzeBtn =
+  document.getElementById("analyzeBtn");
 
-let audioChunks =
-  [];
+const imageBtn =
+  document.getElementById("imageBtn");
 
-let recording =
-  false;
+const microBtn =
+  document.getElementById("microBtn");
 
-let selectedImage =
-  "";
+const imageInput =
+  document.getElementById("imageInput");
 
-function currentLanguage(){
-  return (
-    document.getElementById(
-      "language"
-    ).value ||
-    "fr"
-  );
-}
+const languageEl =
+  document.getElementById("language");
+
+const statusEl =
+  document.getElementById("status");
+
+const resultEl =
+  document.getElementById("result");
+
+const connectBtn =
+  document.getElementById("connectBtn");
 
 function t(key){
+  const lang =
+    languageEl.value || "fr";
+
   return (
-    UI_DATA[
-      currentLanguage()
-    ] ||
-    UI_DATA.fr
-  )[key] || key;
+    UI[lang]?.[key] ||
+    UI.fr[key] ||
+    key
+  );
 }
 
 function setStatus(text){
-  document.getElementById(
-    "status"
-  ).textContent =
-    text || "";
+  statusEl.textContent = text;
 }
 
 function escapeHTML(value){
-  return String(
-    value == null
-      ? ""
-      : value
-  )
-    .replaceAll(
-      "&",
-      "&amp;"
-    )
-    .replaceAll(
-      "<",
-      "&lt;"
-    )
-    .replaceAll(
-      ">",
-      "&gt;"
-    )
-    .replaceAll(
-      '"',
-      "&quot;"
-    )
-    .replaceAll(
-      "'",
-      "&#039;"
-    );
+  return String(value ?? "")
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#039;");
 }
 
-function listHTML(values){
+function trimHistory(){
+  conversationHistory =
+    conversationHistory.slice(-20);
 
-  if(
-    !Array.isArray(values) ||
-    !values.length
+  let total = 0;
+
+  const output = [];
+
+  for(
+    let i = conversationHistory.length - 1;
+    i >= 0;
+    i--
   ){
-    return "";
-  }
+    const item =
+      conversationHistory[i];
 
-  let html =
-    '<div class="list">';
-
-  values.forEach(
-    function(item){
-
-      const text =
-        typeof item ===
-        "string"
-
-          ? item
-
-          : (
-              item &&
-              item.item
-            ) ||
-
-            (
-              item &&
-              item.reason
-            ) ||
-
-            JSON.stringify(
-              item
-            );
-
-      html +=
-        '<div class="item">' +
-        escapeHTML(
-          text
-        ) +
-        "</div>";
-    }
-  );
-
-  return (
-    html +
-    "</div>"
-  );
-}
-
-function sourcesHTML(
-  values
-){
-
-  if(
-    !Array.isArray(values) ||
-    !values.length
-  ){
-    return "";
-  }
-
-  let html =
-    '<div class="list">';
-
-  values.forEach(
-    function(source){
-
-      if(!source){
-        return;
-      }
-
-      html +=
-        '<div class="item">' +
-
-        '<a ' +
-        'target="_blank" ' +
-        'rel="noopener noreferrer" ' +
-        'href="' +
-        escapeHTML(
-          source.url ||
-          "#"
-        ) +
-        '">' +
-
-        escapeHTML(
-          source.name ||
-          source.url ||
-          "Source"
-        ) +
-
-        "</a>" +
-
-        "</div>";
-    }
-  );
-
-  return (
-    html +
-    "</div>"
-  );
-}
-
-function opportunitiesHTML(
-  data
-){
-
-  const ops =
-    data &&
-    Array.isArray(
-      data.opportunities
-    )
-
-      ? data.opportunities
-
-      : [];
-
-  let html = "";
-
-  if(!ops.length){
+    const content =
+      String(item.content || "");
 
     if(
-      data &&
-      data.searchURL
+      total + content.length >
+      24000
     ){
-
-      html +=
-        '<div class="item">' +
-
-        '<a ' +
-        'target="_blank" ' +
-        'rel="noopener noreferrer" ' +
-        'href="' +
-        escapeHTML(
-          data.searchURL
-        ) +
-        '">' +
-
-        escapeHTML(
-          t("searching")
-        ) +
-
-        ": France Travail" +
-
-        "</a>" +
-
-        "</div>";
+      break;
     }
 
-    if(
-      data &&
-      data.message
-    ){
-
-      html +=
-        '<div class="small">' +
-        escapeHTML(
-          data.message
-        ) +
-        "</div>";
-    }
-
-    return html;
+    output.unshift(item);
+    total += content.length;
   }
 
-  ops.forEach(
-    function(op){
-
-      html +=
-        '<div class="op">';
-
-      html +=
-        "<strong>" +
-        escapeHTML(
-          op.title ||
-          ""
-        ) +
-        "</strong>";
-
-      if(op.company){
-
-        html +=
-          "<div>" +
-          escapeHTML(
-            op.company
-          ) +
-          "</div>";
-      }
-
-      if(op.location){
-
-        html +=
-          "<div>" +
-          escapeHTML(
-            op.location
-          ) +
-          "</div>";
-      }
-
-      if(op.contract){
-
-        html +=
-          '<div class="small">' +
-          escapeHTML(
-            op.contract
-          ) +
-          "</div>";
-      }
-
-      if(op.experience){
-
-        html +=
-          '<div class="small">' +
-          escapeHTML(
-            op.experience
-          ) +
-          "</div>";
-      }
-
-      if(op.description){
-
-        html +=
-          "<p>" +
-          escapeHTML(
-            op.description
-          ) +
-          "</p>";
-      }
-
-      if(op.url){
-
-        html +=
-          '<a ' +
-          'target="_blank" ' +
-          'rel="noopener noreferrer" ' +
-          'href="' +
-          escapeHTML(
-            op.url
-          ) +
-          '">' +
-          "Voir l'offre" +
-          "</a>";
-      }
-
-      html +=
-        "</div>";
-    }
-  );
-
-  return html;
+  conversationHistory =
+    output;
 }
 
-function confirmedHTML(
-  obj
-){
+function addHistory(role, content){
+  if(!content) return;
 
-  if(
-    !obj ||
-    typeof obj !==
-      "object"
-  ){
+  conversationHistory.push({
+    role,
+    content:String(content).slice(0,6000)
+  });
 
-    return "";
-  }
-
-  let html =
-    '<div class="list">';
-
-  Object.keys(
-    obj
-  ).forEach(
-    function(key){
-
-      html +=
-        '<div class="item">' +
-
-        "<strong>" +
-
-        escapeHTML(
-          key
-        ) +
-
-        "</strong>: " +
-
-        escapeHTML(
-          obj[key]
-        ) +
-
-        "</div>";
-    }
-  );
-
-  return (
-    html +
-    "</div>"
-  );
+  trimHistory();
 }
 
-function renderResult(
-  data
-){
+function renderJourney(stage){
+  document
+    .querySelectorAll(".step")
+    .forEach(el => {
+      el.classList.toggle(
+        "active",
+        el.dataset.stage === stage
+      );
+    });
+}
 
-  const root =
-    document.getElementById(
-      "result"
-    );
+function renderResult(data){
+  const lang =
+    languageEl.value || "fr";
 
-  let html = "";
-
-  if(data.answer){
-
-    html +=
-      '<div class="section">' +
-
-      "<h3>" +
-
-      escapeHTML(
-        t("result")
-      ) +
-
-      "</h3>" +
-
-      '<div class="item">' +
-
-      escapeHTML(
-        data.answer
+  confirmedInfo =
+    Object.assign(
+      {},
+      confirmedInfo,
+      Object.fromEntries(
+        (data.confirmed || [])
+          .map(x => [
+            x.key,
+            x.value
+          ])
       )
-        .replaceAll(
-          "\\n",
-          "<br>"
-        ) +
+    );
 
-      "</div>" +
+  if(data.journey){
+    renderJourney(
+      data.journey.stage
+    );
+  }
 
+  let html = "";
+
+  html += '<div class="card">';
+  html += "<h2>" +
+    escapeHTML(t("result")) +
+    "</h2>";
+
+  if(data.nextQuestion){
+    html +=
+      '<div class="info">' +
+      escapeHTML(data.nextQuestion) +
       "</div>";
   }
 
-  if(data.confirmed){
+  html += "</div>";
+
+  if(
+    data.confirmed &&
+    data.confirmed.length
+  ){
+    html +=
+      '<div class="card">' +
+      "<h2>" +
+      escapeHTML(t("confirmed")) +
+      "</h2>" +
+      '<div class="info-grid">';
+
+    data.confirmed.forEach(item => {
+      html +=
+        '<div class="info">' +
+        '<div class="info-key">' +
+        escapeHTML(item.label) +
+        "</div>" +
+        '<div class="info-value">' +
+        escapeHTML(item.value) +
+        "</div>" +
+        "</div>";
+    });
 
     html +=
-      '<div class="section">' +
-
-      "<h3>" +
-
-      escapeHTML(
-        t("confirmed")
-      ) +
-
-      "</h3>" +
-
-      confirmedHTML(
-        data.confirmed
-      ) +
-
-      "</div>";
+      "</div></div>";
   }
 
   if(
-    data.verification &&
-    data.verification.length
+    data.verify &&
+    data.verify.length
   ){
+    html +=
+      '<div class="card">' +
+      "<h2>" +
+      escapeHTML(t("verify")) +
+      "</h2><ul>";
+
+    data.verify.forEach(item => {
+      html +=
+        "<li>" +
+        escapeHTML(item) +
+        "</li>";
+    });
 
     html +=
-      '<div class="section">' +
+      "</ul></div>";
+  }
 
-      "<h3>" +
+  if(
+    data.missing &&
+    data.missing.length
+  ){
+    html +=
+      '<div class="card">' +
+      "<h2>" +
+      escapeHTML(t("missing")) +
+      "</h2><ul>";
 
-      escapeHTML(
-        t("verify")
-      ) +
+    data.missing.forEach(item => {
+      html +=
+        "<li>" +
+        escapeHTML(item.question) +
+        "</li>";
+    });
 
-      "</h3>" +
-
-      listHTML(
-        data.verification
-      ) +
-
-      "</div>";
+    html +=
+      "</ul></div>";
   }
 
   if(
     data.actions &&
     data.actions.length
   ){
+    html +=
+      '<div class="card">' +
+      "<h2>" +
+      escapeHTML(t("actions")) +
+      "</h2><ul>";
+
+    data.actions.forEach(item => {
+      html +=
+        "<li>" +
+        escapeHTML(item) +
+        "</li>";
+    });
 
     html +=
-      '<div class="section">' +
-
-      "<h3>" +
-
-      escapeHTML(
-        t("actions")
-      ) +
-
-      "</h3>" +
-
-      listHTML(
-        data.actions
-      ) +
-
-      "</div>";
+      "</ul></div>";
   }
 
   if(
     data.recommendations &&
     data.recommendations.length
   ){
-
     html +=
-      '<div class="section">' +
-
-      "<h3>" +
-
+      '<div class="card">' +
+      "<h2>" +
       escapeHTML(
         t("recommendations")
       ) +
+      "</h2><ul>";
 
-      "</h3>" +
-
-      listHTML(
-        data.recommendations
-      ) +
-
-      "</div>";
-  }
-
-  if(
-    data.protections &&
-    data.protections.length
-  ){
+    data.recommendations.forEach(item => {
+      html +=
+        "<li>" +
+        escapeHTML(item) +
+        "</li>";
+    });
 
     html +=
-      '<div class="section">' +
-
-      "<h3>" +
-      "Protection" +
-      "</h3>" +
-
-      listHTML(
-        data.protections
-      ) +
-
-      "</div>";
+      "</ul></div>";
   }
 
   if(data.opportunities){
+    const opp =
+      data.opportunities;
 
     html +=
-      '<div class="section">' +
-
-      "<h3>" +
-
+      '<div class="card">' +
+      "<h2>" +
       escapeHTML(
         t("opportunities")
       ) +
-
-      "</h3>" +
-
-      opportunitiesHTML(
-        data.opportunities
-      ) +
-
-      "</div>";
-  }
-
-  if(data.sources){
+      "</h2>";
 
     html +=
-      '<div class="section">' +
-
-      "<h3>" +
-
+      '<div class="status">' +
       escapeHTML(
-        t("sources")
+        opp.message || ""
       ) +
+      "</div>";
 
-      "</h3>" +
+    if(
+      opp.searchURL
+    ){
+      html +=
+        '<p><a href="' +
+        escapeHTML(
+          opp.searchURL
+        ) +
+        '" target="_blank" rel="noopener noreferrer">' +
+        escapeHTML(
+          opp.status ===
+          "offers_retrieved"
+            ? "Ouvrir la recherche officielle"
+            : t("officialReady")
+        ) +
+        "</a></p>";
+    }
 
-      sourcesHTML(
-        data.sources
-      ) +
+    if(
+      opp.offers &&
+      opp.offers.length
+    ){
+      opp.offers.forEach(
+        offer => {
+          const c =
+            offer.compatibility ||
+            {};
 
+          let badge =
+            t("toVerify");
+
+          if(
+            c.status ===
+            "compatible"
+          ){
+            badge =
+              t("compatible");
+          }
+
+          if(
+            c.status ===
+            "lessCompatible"
+          ){
+            badge =
+              t("lessCompatible");
+          }
+
+          html +=
+            '<div class="offer">' +
+            '<div class="offer-title">' +
+            escapeHTML(
+              offer.title
+            ) +
+            "</div>";
+
+          if(
+            offer.company
+          ){
+            html +=
+              '<div class="offer-meta">' +
+              escapeHTML(
+                offer.company
+              ) +
+              "</div>";
+          }
+
+          if(
+            offer.location
+          ){
+            html +=
+              '<div class="offer-meta">' +
+              escapeHTML(
+                offer.location
+              ) +
+              "</div>";
+          }
+
+          if(
+            offer.contract
+          ){
+            html +=
+              '<div class="offer-meta">' +
+              escapeHTML(
+                offer.contract
+              ) +
+              "</div>";
+          }
+
+          html +=
+            '<div class="badge">' +
+            escapeHTML(badge) +
+            "</div>";
+
+          if(
+            offer.url
+          ){
+            html +=
+              '<p><a href="' +
+              escapeHTML(
+                offer.url
+              ) +
+              '" target="_blank" rel="noopener noreferrer">' +
+              "Voir l'offre officielle" +
+              "</a></p>";
+          }
+
+          html +=
+            "</div>";
+        }
+      );
+    }
+
+    html +=
       "</div>";
   }
 
-  root.innerHTML =
-    html;
-}
-
-function applyLanguage(){
-
-  const u =
-    UI_DATA[
-      currentLanguage()
-    ] ||
-    UI_DATA.fr;
-
-  document.documentElement.lang =
-    currentLanguage();
-
-  document.getElementById(
-    "title"
-  ).textContent =
-    u.title;
-
-  document.getElementById(
-    "subtitle"
-  ).textContent =
-    u.subtitle;
-
-  document.getElementById(
-    "analyze"
-  ).textContent =
-    u.analyze;
-
-  document.getElementById(
-    "imageBtn"
-  ).textContent =
-    u.image;
-
-  document.getElementById(
-    "micBtn"
-  ).textContent =
-    recording
-      ? u.stop
-      : u.microphone;
-
-  document.getElementById(
-    "connectBtn"
-  ).textContent =
-    u.connect;
-
-  document.getElementById(
-    "question"
-  ).placeholder =
-    u.placeholder;
-}
-
-async function postJSON(
-  url,
-  body
-){
-
-  const response =
-    await fetch(
-      url,
-      {
-        method:
-          "POST",
-
-        headers: {
-          "Content-Type":
-            "application/json"
-        },
-
-        body:
-          JSON.stringify(
-            body
-          )
-      }
-    );
-
-  let data =
-    null;
-
-  try{
-
-    data =
-      await response.json();
-
-  }catch(e){
-
-    data = {
-      ok:false,
-
-      error:
-        "Invalid server response."
-    };
+  if(data.ai){
+    html +=
+      '<div class="card">' +
+      "<h2>Go Rare AI</h2>" +
+      '<div class="empty">' +
+      escapeHTML(data.ai)
+        .replace(/\\n/g,"<br>") +
+      "</div>" +
+      "</div>";
   }
 
   if(
-    !response.ok ||
-    data.ok === false
+    data.sources &&
+    data.sources.length
   ){
+    html +=
+      '<div class="card">' +
+      "<h2>" +
+      escapeHTML(t("sources")) +
+      "</h2><ul>";
 
-    throw new Error(
-      data.error ||
-      "Request failed."
-    );
+    data.sources.forEach(source => {
+      html +=
+        "<li>" +
+        '<a href="' +
+        escapeHTML(source.url) +
+        '" target="_blank" rel="noopener noreferrer">' +
+        escapeHTML(source.name) +
+        "</a>" +
+        "</li>";
+    });
+
+    html +=
+      "</ul></div>";
   }
 
-  return data;
+  resultEl.innerHTML = html;
 }
 
 async function analyze(){
-
   const question =
-    document.getElementById(
-      "question"
-    ).value.trim();
+    questionEl.value.trim();
 
-  if(
-    !question &&
-    !selectedImage
-  ){
-
+  if(!question){
     setStatus(
-      t("missing")
+      "Décrivez votre situation."
     );
-
     return;
   }
 
-  setStatus(
-    t("searching")
-  );
+  analyzeBtn.disabled = true;
+  setStatus("Analyse...");
 
   try{
-
-    let data;
-
-    if(
-      selectedImage
-    ){
-
-      data =
-        await postJSON(
-          "/api/image",
-          {
-            question:
-              question,
-
-            image:
-              selectedImage,
-
+    const response =
+      await fetch(
+        "/api/analyze",
+        {
+          method:"POST",
+          headers:{
+            "Content-Type":
+              "application/json"
+          },
+          body:JSON.stringify({
+            question,
             language:
-              currentLanguage()
-          }
-        );
+              languageEl.value,
+            profile:"particulier",
+            history:
+              conversationHistory,
+            info:
+              confirmedInfo
+          })
+        }
+      );
 
-    }else{
+    const data =
+      await response.json();
 
-      data =
-        await postJSON(
-          "/api/analyze",
-          {
-            question:
-              question,
-
-            language:
-              currentLanguage(),
-
-            profile:
-              document.getElementById(
-                "profile"
-              ).value,
-
-            situation:
-              document.getElementById(
-                "situation"
-              ).value
-          }
-        );
-    }
-
-    renderResult(
-      data
-    );
-
-    setStatus(
-      t("ready")
-    );
-
-  }catch(error){
-
-    setStatus(
-      t("error") +
-      ": " +
-      (
-        error &&
-        error.message
-          ? error.message
-          : "Unknown error"
-      )
-    );
-  }
-}
-
-function fileToDataURL(
-  file
-){
-
-  return new Promise(
-    function(
-      resolve,
-      reject
-    ){
-
-      const reader =
-        new FileReader();
-
-      reader.onload =
-        function(){
-
-          resolve(
-            String(
-              reader.result ||
-              ""
-            )
-          );
-        };
-
-      reader.onerror =
-        reject;
-
-      reader.readAsDataURL(
-        file
+    if(!response.ok){
+      throw new Error(
+        data.error ||
+        "ERROR"
       );
     }
-  );
+
+    renderResult(data);
+
+    addHistory(
+      "user",
+      question
+    );
+
+    if(data.nextQuestion){
+      addHistory(
+        "assistant",
+        data.nextQuestion
+      );
+    }else if(data.ai){
+      addHistory(
+        "assistant",
+        data.ai
+      );
+    }
+
+    questionEl.value = "";
+
+    setStatus(
+      data.journey?.label ||
+      "Prêt."
+    );
+  }catch(error){
+    console.error(error);
+
+    setStatus(
+      "Une erreur est survenue."
+    );
+  }finally{
+    analyzeBtn.disabled = false;
+  }
 }
 
-async function chooseImage(
-  event
-){
-
-  const file =
-    event.target.files &&
-    event.target.files[0];
-
-  if(!file){
-    return;
-  }
+async function analyzeImageFile(file){
+  if(!file) return;
 
   if(
     file.size >
     7000000
   ){
-
     setStatus(
-      t("error") +
-      ": Image too large."
+      "Image trop volumineuse."
     );
-
     return;
   }
 
-  try{
+  setStatus(
+    "Analyse de l'image..."
+  );
 
-    selectedImage =
-      await fileToDataURL(
-        file
+  try{
+    const base64 =
+      await new Promise(
+        (resolve,reject) => {
+          const reader =
+            new FileReader();
+
+          reader.onload =
+            () => resolve(
+              reader.result
+            );
+
+          reader.onerror =
+            reject;
+
+          reader.readAsDataURL(file);
+        }
       );
 
+    const response =
+      await fetch(
+        "/api/image",
+        {
+          method:"POST",
+          headers:{
+            "Content-Type":
+              "application/json"
+          },
+          body:JSON.stringify({
+            image:base64,
+            language:
+              languageEl.value
+          })
+        }
+      );
+
+    const data =
+      await response.json();
+
+    if(!response.ok){
+      throw new Error(
+        data.error ||
+        "IMAGE_ERROR"
+      );
+    }
+
+    if(data.text){
+      questionEl.value =
+        data.text;
+
+      addHistory(
+        "assistant",
+        data.text
+      );
+    }
+
     setStatus(
-      t("ready")
+      "Image analysée."
     );
-
-  }catch(e){
+  }catch(error){
+    console.error(error);
 
     setStatus(
-      t("error")
+      "Impossible d'analyser l'image."
     );
   }
 }
 
-async function toggleMic(){
-
+async function startMicrophone(){
   if(recording){
-
-    if(
-      mediaRecorder
-    ){
-
-      mediaRecorder.stop();
-    }
-
+    mediaRecorder?.stop();
     return;
   }
 
   if(
     !navigator.mediaDevices ||
-    !navigator.mediaDevices
-      .getUserMedia
+    !navigator.mediaDevices.getUserMedia
   ){
-
     setStatus(
-      t("error") +
-      ": Microphone unavailable."
+      "Microphone non disponible."
     );
-
     return;
   }
 
   try{
-
     const stream =
       await navigator.mediaDevices
-        .getUserMedia(
-          {
-            audio:true
-          }
-        );
+        .getUserMedia({
+          audio:true
+        });
 
-    audioChunks =
-      [];
+    audioChunks = [];
 
     mediaRecorder =
-      new MediaRecorder(
-        stream
-      );
+      new MediaRecorder(stream);
 
-    mediaRecorder
-      .ondataavailable =
-      function(event){
-
-        if(
-          event.data &&
-          event.data.size
-        ){
-
+    mediaRecorder.ondataavailable =
+      event => {
+        if(event.data.size > 0){
           audioChunks.push(
             event.data
           );
@@ -4302,20 +3567,16 @@ async function toggleMic(){
       };
 
     mediaRecorder.onstop =
-      async function(){
-
-        recording =
-          false;
-
-        applyLanguage();
-
+      async () => {
         stream
           .getTracks()
-          .forEach(
-            function(track){
-              track.stop();
-            }
+          .forEach(track =>
+            track.stop()
           );
+
+        recording = false;
+        microBtn.textContent =
+          t("microphone");
 
         const blob =
           new Blob(
@@ -4327,428 +3588,404 @@ async function toggleMic(){
             }
           );
 
-        try{
-
-          setStatus(
-            t("searching")
-          );
-
-          const reader =
-            new FileReader();
-
-          reader.onload =
-            async function(){
-
-              try{
-
-                const data =
-                  await postJSON(
-                    "/api/audio",
-                    {
-                      audio:
-                        String(
-                          reader.result ||
-                          ""
-                        ),
-
-                      language:
-                        currentLanguage()
-                    }
-                  );
-
-                const text =
-                  data.text ||
-                  "";
-
-                const q =
-                  document.getElementById(
-                    "question"
-                  );
-
-                q.value =
-                  q.value.trim()
-                    ? q.value +
-                      "\\n\\n" +
-                      text
-                    : text;
-
-                setStatus(
-                  t("ready")
-                );
-
-              }catch(error){
-
-                setStatus(
-                  t("error") +
-                  ": " +
-                  (
-                    error &&
-                    error.message
-                      ? error.message
-                      : "Unknown error"
-                  )
-                );
-              }
-            };
-
-          reader.readAsDataURL(
-            blob
-          );
-
-        }catch(e){
-
-          setStatus(
-            t("error")
-          );
-        }
+        await sendAudio(blob);
       };
 
     mediaRecorder.start();
 
-    recording =
-      true;
+    recording = true;
 
-    applyLanguage();
+    microBtn.textContent =
+      t("stop");
 
     setStatus(
-      t("microphone")
+      "Enregistrement..."
     );
-
-  }catch(e){
+  }catch(error){
+    console.error(error);
 
     setStatus(
-      t("error") +
-      ": Microphone permission denied or unavailable."
+      "Impossible d'utiliser le microphone."
     );
   }
 }
 
-async function connectAccount(){
+async function sendAudio(blob){
+  if(
+    blob.size >
+    12000000
+  ){
+    setStatus(
+      "Audio trop volumineux."
+    );
+    return;
+  }
 
-  window.location.href =
-    "/oauth/connect";
+  setStatus(
+    "Transcription..."
+  );
+
+  try{
+    const base64 =
+      await new Promise(
+        (resolve,reject) => {
+          const reader =
+            new FileReader();
+
+          reader.onload =
+            () => resolve(
+              reader.result
+            );
+
+          reader.onerror =
+            reject;
+
+          reader.readAsDataURL(blob);
+        }
+      );
+
+    const response =
+      await fetch(
+        "/api/audio",
+        {
+          method:"POST",
+          headers:{
+            "Content-Type":
+              "application/json"
+          },
+          body:JSON.stringify({
+            audio:base64,
+            language:
+              languageEl.value
+          })
+        }
+      );
+
+    const data =
+      await response.json();
+
+    if(!response.ok){
+      throw new Error(
+        data.error ||
+        "AUDIO_ERROR"
+      );
+    }
+
+    if(data.text){
+      questionEl.value =
+        data.text;
+    }
+
+    setStatus(
+      "Transcription terminée."
+    );
+  }catch(error){
+    console.error(error);
+
+    setStatus(
+      "Impossible de transcrire l'audio."
+    );
+  }
 }
 
-document
-  .getElementById(
-    "language"
-  )
-  .addEventListener(
-    "change",
-    applyLanguage
-  );
+analyzeBtn.addEventListener(
+  "click",
+  analyze
+);
 
-document
-  .getElementById(
-    "analyze"
-  )
-  .addEventListener(
-    "click",
-    analyze
-  );
+imageBtn.addEventListener(
+  "click",
+  () => imageInput.click()
+);
 
-document
-  .getElementById(
-    "imageBtn"
-  )
-  .addEventListener(
-    "click",
-    function(){
-      document
-        .getElementById(
-          "imageInput"
-        )
-        .click();
+imageInput.addEventListener(
+  "change",
+  event => {
+    const file =
+      event.target.files?.[0];
+
+    analyzeImageFile(file);
+  }
+);
+
+microBtn.addEventListener(
+  "click",
+  startMicrophone
+);
+
+connectBtn.addEventListener(
+  "click",
+  () => {
+    window.location.href =
+      "/oauth/connect";
+  }
+);
+
+questionEl.addEventListener(
+  "keydown",
+  event => {
+    if(
+      event.key === "Enter" &&
+      (event.ctrlKey ||
+       event.metaKey)
+    ){
+      event.preventDefault();
+      analyze();
     }
-  );
-
-document
-  .getElementById(
-    "imageInput"
-  )
-  .addEventListener(
-    "change",
-    chooseImage
-  );
-
-document
-  .getElementById(
-    "micBtn"
-  )
-  .addEventListener(
-    "click",
-    toggleMic
-  );
-
-document
-  .getElementById(
-    "connectBtn"
-  )
-  .addEventListener(
-    "click",
-    connectAccount
-  );
-
-applyLanguage();
-
+  }
+);
 </script>
-
 </body>
 </html>`;
 }
 
-/* =========================
-   ROUTER
-   ========================= */
+async function handleAnalyze(request, env) {
+  const payload =
+    await readJSON(request);
 
-async function handleRequest(
-  request,
-  env
-) {
-  const url =
-    new URL(
-      request.url
-    );
-
-  const method =
-    request.method.toUpperCase();
-
-  if(
-    method ===
-    "OPTIONS"
-  ){
-
-    return new Response(
-      null,
-      {
-        status:204,
-
-        headers:
-          securityHeaders()
-      }
-    );
+  if (!isPlainObject(payload)) {
+    throw new Error("INVALID_PAYLOAD");
   }
 
-  if(
-    !rateLimit(
-      request
-    )
-  ){
-
-    return jsonResponse(
-      {
-        ok:false,
-
-        version:
-          VERSION,
-
-        error:
-          "Too many requests. Please try again later."
-      },
-
-      429,
-
-      {
-        "Retry-After":
-          "60"
-      }
-    );
+  if (
+    payload.question &&
+    String(payload.question).length >
+    LIMITS.question
+  ) {
+    throw new Error("QUESTION_TOO_LONG");
   }
 
-  if(
-    method === "GET" &&
-    url.pathname === "/"
-  ){
-
-    return htmlResponse(
-      renderHTML()
-    );
+  if (
+    payload.history &&
+    !Array.isArray(payload.history)
+  ) {
+    throw new Error("INVALID_HISTORY");
   }
 
-  if(
-    method === "GET" &&
-    url.pathname === "/health"
-  ){
-
-    return jsonResponse(
-      {
-        ok:true,
-
-        version:
-          VERSION,
-
-        service:
-          "Go Rare AI"
-      }
-    );
+  if (
+    payload.info &&
+    !isPlainObject(payload.info)
+  ) {
+    throw new Error("INVALID_INFO");
   }
 
-  if(
-    method === "GET" &&
-    url.pathname ===
-      "/api/billing/status"
-  ){
-
-    return jsonResponse(
-      billingStatus(
-        request,
-        env
-      )
-    );
-  }
-
-  if(
-    method === "GET" &&
-    url.pathname ===
-      "/oauth/connect"
-  ){
-
-    return billingConnect(
-      request,
+  const result =
+    await analyserQuestion(
+      payload,
       env
     );
-  }
-
-  if(
-    method === "GET" &&
-    url.pathname ===
-      "/oauth/callback"
-  ){
-
-    return billingCallback(
-      request,
-      env
-    );
-  }
-
-  if(
-    method !== "POST"
-  ){
-
-    return jsonResponse(
-      {
-        ok:false,
-
-        version:
-          VERSION,
-
-        error:
-          "Method not allowed."
-      },
-
-      405,
-
-      {
-        Allow:
-          "GET, POST, OPTIONS"
-      }
-    );
-  }
-
-  if(
-    url.pathname ===
-    "/api/analyze"
-  ){
-
-    const payload =
-      await readJSON(
-        request
-      );
-
-    return jsonResponse(
-      await analyserQuestion(
-        payload,
-        env
-      )
-    );
-  }
-
-  if(
-    url.pathname ===
-    "/api/image"
-  ){
-
-    const payload =
-      await readJSON(
-        request
-      );
-
-    return jsonResponse(
-      await analyserImage(
-        payload,
-        env
-      )
-    );
-  }
-
-  if(
-    url.pathname ===
-    "/api/audio"
-  ){
-
-    const payload =
-      await readJSON(
-        request
-      );
-
-    return jsonResponse(
-      await transcrireAudio(
-        payload,
-        env
-      )
-    );
-  }
 
   return jsonResponse(
-    {
-      ok:false,
-
-      version:
-        VERSION,
-
-      error:
-        "Not found."
-    },
-
-    404
+    result,
+    200
   );
 }
 
-/* =========================
-   WORKER EXPORT
-   ========================= */
+async function handleImage(request, env) {
+  const payload =
+    await readJSON(request);
+
+  const result =
+    await analyzeImage(
+      env,
+      payload
+    );
+
+  return jsonResponse(
+    result,
+    200
+  );
+}
+
+async function handleAudio(request, env) {
+  const payload =
+    await readJSON(request);
+
+  const result =
+    await transcribeAudio(
+      env,
+      payload
+    );
+
+  return jsonResponse(
+    result,
+    200
+  );
+}
 
 export default {
-
-  async fetch(
-    request,
-    env,
-    ctx
-  ) {
-
+  async fetch(request, env) {
     try {
+      if (
+        request.method === "OPTIONS"
+      ) {
+        return withSecurity(
+          new Response(null, {
+            status:204
+          })
+        );
+      }
 
-      return await handleRequest(
-        request,
-        env,
-        ctx
+      if (
+        !checkRateLimit(request)
+      ) {
+        return withSecurity(
+          errorResponse(
+            "RATE_LIMITED",
+            429
+          )
+        );
+      }
+
+      const url =
+        new URL(request.url);
+
+      if (
+        request.method === "GET" &&
+        url.pathname === "/"
+      ) {
+        return withSecurity(
+          new Response(
+            renderHTML(),
+            {
+              status:200,
+              headers:{
+                "Content-Type":
+                  "text/html; charset=utf-8",
+                "Cache-Control":
+                  "no-store"
+              }
+            }
+          )
+        );
+      }
+
+      if (
+        request.method === "GET" &&
+        url.pathname === "/health"
+      ) {
+        return withSecurity(
+          jsonResponse({
+            ok:true,
+            service:"Go Rare AI",
+            version:VERSION,
+            decisionVersion:
+              DECISION_VERSION,
+            timestamp:
+              new Date().toISOString()
+          })
+        );
+      }
+
+      if (
+        request.method === "GET" &&
+        url.pathname ===
+          "/api/billing/status"
+      ) {
+        return withSecurity(
+          jsonResponse(
+            billingStatus(request)
+          )
+        );
+      }
+
+      if (
+        request.method === "GET" &&
+        url.pathname ===
+          "/oauth/connect"
+      ) {
+        return handleOAuthConnect(
+          request,
+          env
+        );
+      }
+
+      if (
+        request.method === "GET" &&
+        url.pathname ===
+          "/oauth/callback"
+      ) {
+        return handleOAuthCallback(
+          request,
+          env
+        );
+      }
+
+      if (
+        request.method === "POST" &&
+        url.pathname ===
+          "/api/analyze"
+      ) {
+        return withSecurity(
+          await handleAnalyze(
+            request,
+            env
+          )
+        );
+      }
+
+      if (
+        request.method === "POST" &&
+        url.pathname ===
+          "/api/image"
+      ) {
+        return withSecurity(
+          await handleImage(
+            request,
+            env
+          )
+        );
+      }
+
+      if (
+        request.method === "POST" &&
+        url.pathname ===
+          "/api/audio"
+      ) {
+        return withSecurity(
+          await handleAudio(
+            request,
+            env
+          )
+        );
+      }
+
+      return withSecurity(
+        errorResponse(
+          "NOT_FOUND",
+          404
+        )
+      );
+    } catch (error) {
+      console.error(
+        "Go Rare AI error:",
+        error
       );
 
-    } catch (error) {
+      const message =
+        error?.message ||
+        "INTERNAL_ERROR";
 
-      return jsonResponse(
-        {
-          ok:false,
+      const status =
+        message ===
+          "BODY_TOO_LARGE" ||
+        message ===
+          "QUESTION_TOO_LONG" ||
+        message ===
+          "IMAGE_TOO_LARGE" ||
+        message ===
+          "AUDIO_TOO_LARGE"
+          ? 413
+          : message ===
+              "QUESTION_REQUIRED"
+            ? 400
+            : 500;
 
-          version:
-            VERSION,
-
-          error:
-            error?.message ||
-            "Internal server error."
-        },
-
-        500
+      return withSecurity(
+        errorResponse(
+          message,
+          status
+        )
       );
     }
   }
