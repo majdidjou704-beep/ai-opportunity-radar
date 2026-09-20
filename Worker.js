@@ -579,19 +579,42 @@ function extraireInformations(text) {
   }
 
   if (
-    containsAny(t, [
-      "peu importe les horaires",
-      "horaires flexibles",
-      "flexible",
-      "n'importe quel horaire",
-      "any hours",
-      "flexible hours",
-      "أوقات مرنة"
-    ])
-  ) {
-    info.horaires = "Flexible";
-  }
-
+  containsAny(t, [
+    "peu importe les horaires",
+    "peu importe l'horaire",
+    "peu importe les heures",
+    "tous les horaires",
+    "tous les horaires me conviennent",
+    "tous les horaires conviennent",
+    "n'importe quels horaires",
+    "n'importe quel horaire",
+    "n'importe quelle heure",
+    "horaires flexibles",
+    "horaires flexible",
+    "horaire flexible",
+    "heures flexibles",
+    "je suis flexible",
+    "je suis disponible à tout moment",
+    "disponible à tout moment",
+    "tout me convient",
+    "ça me convient",
+    "flexible",
+    "any hours",
+    "any schedule",
+    "any time",
+    "flexible hours",
+    "all hours",
+    "all schedules",
+    "أوقات مرنة",
+    "كل الأوقات",
+    "أي وقت",
+    "أي أوقات",
+    "كل الأوقات تناسبني",
+    "يمكنني العمل في أي وقت"
+  ])
+) {
+  info.horaires = "Flexible";
+}
   if (
     containsAny(t, [
       "salarié",
