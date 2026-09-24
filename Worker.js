@@ -475,8 +475,21 @@ function extraireMobilite(text) {
 }
 
 function extraireInformations(text) {
-  const t = String(text || "").toLowerCase();
+  const t = cleanText(text, LIMITS.question).toLowerCase();
   const info = {};
+
+  if (!t) return info;
+
+  /*
+   * PATCH V10.5.1
+   * Only extract information when the user's wording gives
+   * reasonably explicit evidence.
+   * Do not convert a simple keyword into a confirmed fact.
+   */
+
+  // ---------------------------------------------------------
+  // Diploma
+  // ---------------------------------------------------------
 
   if (
     containsAny(t, [
@@ -486,14 +499,20 @@ function extraireInformations(text) {
       "pas de diplome",
       "aucun diplôme",
       "aucun diplome",
-      "no diploma",
-      "without diploma",
+      "ما عنديش شهادة",
+      "ليس لدي شهادة",
       "بدون شهادة",
-      "بدون دبلوم"
+      "بدون دبلوم",
+      "no diploma",
+      "without diploma"
     ])
   ) {
     info.diplome = "Sans diplôme";
   }
+
+  // ---------------------------------------------------------
+  // Experience
+  // ---------------------------------------------------------
 
   if (
     containsAny(t, [
@@ -503,162 +522,348 @@ function extraireInformations(text) {
       "pas d'experience",
       "aucune expérience",
       "aucune experience",
+      "ما عنديش خبرة",
+      "ليس لدي خبرة",
+      "بدون خبرة",
+      "بدون تجربة",
       "no experience",
-      "without experience",
-      "بدون خبرة"
+      "without experience"
     ])
   ) {
     info.experience = "Sans expérience";
   }
 
+  // ---------------------------------------------------------
+  // Any sector / any job
+  // ---------------------------------------------------------
+
   if (
     containsAny(t, [
-      "peu importe le secteur",
+      "peu importe",
+      "n'importe quel travail",
+      "n'importe quel emploi",
       "tous secteurs",
+      "tout secteur",
       "tous les secteurs",
-      "n'importe quel secteur",
+      "tout travail",
+      "tout emploi",
+      "quelque travail que ce soit",
+      "أي عمل",
+      "أي شغل",
+      "أي وظيفة",
+      "كل القطاعات",
+      "لا يهم",
+      "any job",
+      "any work",
       "any sector",
-      "all sectors",
-      "أي قطاع",
-      "كل القطاعات"
+      "doesn't matter"
     ])
   ) {
     info.secteurs = "Tous secteurs";
     info.typeEmploi = "Peu importe";
   }
 
-  if (
+  // ---------------------------------------------------------
+  // Presence in France
+  // ---------------------------------------------------------
+
+  const negFrance =
     containsAny(t, [
-      "france",
-      "en france",
+      "je ne suis pas en france",
+      "je suis pas en france",
+      "je ne suis plus en france",
+      "je n'habite pas en france",
+      "je n'habite plus en france",
+      "je vis hors de france",
+      "hors de france",
+      "pas en france",
+      "خارج فرنسا",
+      "لست في فرنسا",
+      "أنا لست في فرنسا",
+      "لست بفرنسا",
+      "not in france",
+      "outside france"
+    ]);
+
+  const posFrance =
+    !negFrance &&
+    containsAny(t, [
+      "je suis en france",
+      "j'habite en france",
+      "je vis en france",
+      "je travaille en france",
+      "actuellement en france",
+      "en france actuellement",
+      "أنا في فرنسا",
+      "أعيش في فرنسا",
+      "أقيم في فرنسا",
+      "في فرنسا",
       "in france",
-      "فرنسا"
-    ])
-  ) {
-    info.pays = "France";
+      "living in france",
+      "currently in france"
+    ]);
+
+  if (negFrance) {
+    info.presenceFrance = "Non";
+  } else if (posFrance) {
     info.presenceFrance = "Oui";
   }
 
-  const lieu = normaliserLieu(t);
+  // ---------------------------------------------------------
+  // Location
+  // ---------------------------------------------------------
+
+  const lieu = normaliserLieu(text);
+
   if (lieu) {
     info.zoneRecherche = lieu;
   }
 
+  // ---------------------------------------------------------
+  // Mobility
+  // ---------------------------------------------------------
+
   const mobilite = extraireMobilite(text);
+
   if (mobilite) {
     info.mobilite = mobilite;
   }
 
-  const jobs = [
-    ["facteur", "Facteur / Distribution"],
-    ["distribution", "Facteur / Distribution"],
-    ["livraison", "Livraison"],
-    ["livreur", "Livraison"],
-    ["nettoyage", "Nettoyage"],
-    ["nettoyeur", "Nettoyage"],
-    ["entretien", "Entretien"],
-    ["manutention", "Manutention"],
-    ["logistique", "Logistique"],
-    ["restauration", "Restauration"],
-    ["cuisine", "Cuisine"],
-    ["magasin", "Magasin"],
-    ["vente", "Vente"],
-    ["bâtiment", "Bâtiment"],
-    ["batiment", "Bâtiment"],
-    ["chauffeur", "Chauffeur / Conduite"],
-    ["conduite", "Chauffeur / Conduite"],
-    ["préparateur de commande", "Préparateur de commande"],
-    ["preparateur de commande", "Préparateur de commande"]
+  // ---------------------------------------------------------
+  // Employment type
+  // ---------------------------------------------------------
+
+  const emploiPatterns = [
+    {
+      value: "Facteur / distribution",
+      terms: [
+        "facteur",
+        "factrice",
+        "distribution courrier",
+        "distribution du courrier",
+        "ساعي بريد",
+        "عامل بريد",
+        "postal delivery"
+      ]
+    },
+    {
+      value: "Livraison / livreur",
+      terms: [
+        "livreur",
+        "livraison",
+        "chauffeur livreur",
+        "delivery",
+        "توصيل",
+        "عامل توصيل"
+      ]
+    },
+    {
+      value: "Nettoyage / entretien",
+      terms: [
+        "nettoyage",
+        "nettoyeur",
+        "nettoyeuse",
+        "ménage",
+        "entretien",
+        "agent d'entretien",
+        "تنظيف",
+        "نظافة"
+      ]
+    },
+    {
+      value: "Manutention",
+      terms: [
+        "manutention",
+        "manutentionnaire",
+        "عامل مناولة"
+      ]
+    },
+    {
+      value: "Logistique",
+      terms: [
+        "logistique",
+        "logisticien",
+        "لوجستيك",
+        "اللوجستيك"
+      ]
+    },
+    {
+      value: "Restauration / cuisine",
+      terms: [
+        "restauration",
+        "restaurant",
+        "cuisine",
+        "cuisinier",
+        "cuisinière",
+        "serveur",
+        "مطعم",
+        "طبخ"
+      ]
+    },
+    {
+      value: "Magasin / vente",
+      terms: [
+        "magasin",
+        "vente",
+        "vendeur",
+        "vendeuse",
+        "commerce",
+        "متجر",
+        "بيع"
+      ]
+    },
+    {
+      value: "Bâtiment",
+      terms: [
+        "bâtiment",
+        "construction",
+        "chantier",
+        "maçon",
+        "بناء",
+        "ورش"
+      ]
+    },
+    {
+      value: "Chauffeur / conduite",
+      terms: [
+        "chauffeur",
+        "conducteur",
+        "conduite",
+        "conductrice",
+        "سائق",
+        "قيادة"
+      ]
+    },
+    {
+      value: "Préparateur de commande",
+      terms: [
+        "préparateur de commande",
+        "préparation de commande",
+        "préparatrice de commande",
+        "تحضير الطلبات"
+      ]
+    }
   ];
 
-  for (const [keyword, value] of jobs) {
-    if (t.includes(keyword)) {
-      info.typeEmploi = value;
+  for (const pattern of emploiPatterns) {
+    if (containsAny(t, pattern.terms)) {
+      info.typeEmploi = pattern.value;
       break;
     }
   }
 
-  if (
-  containsAny(t, [
-    "peu importe les horaires",
-    "peu importe l'horaire",
-    "peu importe les heures",
-    "tous les horaires",
-    "tous les horaires me conviennent",
-    "tous les horaires conviennent",
-    "n'importe quels horaires",
-    "n'importe quel horaire",
-    "n'importe quelle heure",
-    "horaires flexibles",
-    "horaires flexible",
-    "horaire flexible",
-    "heures flexibles",
-    "je suis flexible",
-    "je suis disponible à tout moment",
-    "disponible à tout moment",
-    "tout me convient",
-    "ça me convient",
-    "flexible",
-    "any hours",
-    "any schedule",
-    "any time",
-    "flexible hours",
-    "all hours",
-    "all schedules",
-    "أوقات مرنة",
-    "كل الأوقات",
-    "أي وقت",
-    "أي أوقات",
-    "كل الأوقات تناسبني",
-    "يمكنني العمل في أي وقت"
-  ])
-) {
-  info.horaires = "Flexible";
-}
+  // ---------------------------------------------------------
+  // Flexible hours
+  // ---------------------------------------------------------
+
   if (
     containsAny(t, [
-      "salarié",
-      "salarie",
-      "titre de séjour",
-      "titre de sejour",
-      "carte de séjour",
-      "carte de sejour",
-      "residence permit",
-      "residence status",
-      "إقامة",
-      "تصريح إقامة"
+      "horaires flexibles",
+      "horaire flexible",
+      "peu importe les horaires",
+      "n'importe quels horaires",
+      "tous les horaires",
+      "disponible à toute heure",
+      "disponible tous les jours",
+      "je suis flexible",
+      "je peux travailler à n'importe quelle heure",
+      "أي وقت",
+      "الأوقات كلها مناسبة",
+      "لا يهم الوقت",
+      "متاح في أي وقت",
+      "flexible hours",
+      "any hours",
+      "available anytime"
     ])
   ) {
+    info.horaires = "Flexible";
+  }
+
+  // ---------------------------------------------------------
+  // Residence / immigration
+  // ---------------------------------------------------------
+
+  const residenceTerms = [
+    "titre de séjour",
+    "titre de sejour",
+    "carte de séjour",
+    "carte de sejour",
+    "salarié",
+    "salarie",
+    "résident",
+    "resident",
+    "récépissé",
+    "recepisse",
+    "visa",
+    "visa long séjour",
+    "visa long sejour",
+    "carte de résident",
+    "carte de resident",
+    "residence permit",
+    "residence card",
+    "permit",
+    "إقامة",
+    "بطاقة إقامة",
+    "تصريح إقامة",
+    "فيزا",
+    "تأشيرة"
+  ];
+
+  if (containsAny(t, residenceTerms)) {
     info.statutSejour = "À vérifier précisément";
     info.contexteImmigration = true;
   }
+
+  // ---------------------------------------------------------
+  // Documents uncertain / absent
+  // ---------------------------------------------------------
 
   if (
     containsAny(t, [
       "sans papiers",
       "sans papier",
+      "je n'ai pas de papiers",
+      "pas de papiers",
+      "documents manquants",
+      "sans documents",
+      "pas de documents",
+      "je n'ai aucun document",
+      "sans titre de séjour",
+      "sans titre de sejour",
+      "بدون أوراق",
+      "بدون وثائق",
+      "ليس لدي وثائق",
+      "لا أملك أوراق",
       "no papers",
-      "undocumented",
-      "بدون أوراق"
+      "without documents",
+      "no documents"
     ])
   ) {
     info.documents = "Documents à préciser";
     info.contexteImmigration = true;
   }
 
+  // ---------------------------------------------------------
+  // Business / project
+  // ---------------------------------------------------------
+
   if (
     containsAny(t, [
-      "créer une entreprise",
-      "creer une entreprise",
       "créer mon entreprise",
       "creer mon entreprise",
-      "entreprise",
-      "société",
-      "societe",
+      "créer une entreprise",
+      "creer une entreprise",
+      "lancer mon entreprise",
+      "projet d'entreprise",
+      "projet entreprise",
+      "entrepreneur",
+      "micro-entreprise",
+      "micro entreprise",
       "business",
-      "company",
-      "شركة",
-      "مشروع"
+      "إنشاء شركة",
+      "مشروعي",
+      "مشروع",
+      "entreprise"
     ])
   ) {
     info.entreprise = "Projet ou entreprise à préciser";
@@ -666,7 +871,6 @@ function extraireInformations(text) {
 
   return info;
 }
-
 function detectContext(text, info = {}, profile = "particulier", situation = "") {
   const t = `${text || ""} ${situation || ""}`.toLowerCase();
 
