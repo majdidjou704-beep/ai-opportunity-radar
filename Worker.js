@@ -3405,6 +3405,33 @@ function renderResult(data){
       )
     );
 
+  /*
+   * V10.5.1 — Evidence state
+   *
+   * Keep user-declared, inferred and verified
+   * information separated in the UI.
+   */
+
+  const declaredInfo =
+    Array.isArray(data.confirmed)
+      ? data.confirmed
+      : [];
+
+  const inferredInfo =
+    Array.isArray(data.inferred)
+      ? data.inferred
+      : [];
+
+  const verifyInfo =
+    Array.isArray(data.verify)
+      ? data.verify
+      : [];
+
+  const officialInfo =
+    Array.isArray(data.official)
+      ? data.official
+      : [];
+
   if(data.journey){
     renderJourney(
       data.journey.stage
@@ -3425,31 +3452,36 @@ function renderResult(data){
       "</div>";
   }
 
-  html += "</div>";
+  html 
+  
+if(
+  data.confirmed &&
+  data.confirmed.length
+){
+  html +=
+    '<div class="card">' +
+    "<h2>" +
+    escapeHTML(
+      lang === "ar"
+        ? "المعلومات التي صرّح بها المستخدم"
+        : lang === "en"
+          ? "Information provided by the user"
+          : "Informations déclarées par l'utilisateur"
+    ) +
+    "</h2>" +
+    '<div class="info-grid">';
 
-  if(
-    data.confirmed &&
-    data.confirmed.length
-  ){
+  data.confirmed.forEach(item => {
     html +=
-      '<div class="card">' +
-      "<h2>" +
-      escapeHTML(t("confirmed")) +
-      "</h2>" +
-      '<div class="info-grid">';
-
-    data.confirmed.forEach(item => {
-      html +=
-        '<div class="info">' +
-        '<div class="info-key">' +
-        escapeHTML(item.label) +
-        "</div>" +
-        '<div class="info-value">' +
-        escapeHTML(item.value) +
-        "</div>" +
-        "</div>";
-    });
-
+      '<div class="info">' +
+      '<div class="info-key">' +
+      escapeHTML(item.label) +
+      "</div>" +
+      '<div class="info-value">' +
+      escapeHTML(item.value) +
+      "</div>" +
+      "</div>";
+  });
     html +=
       "</div></div>";
   }
@@ -3474,7 +3506,206 @@ function renderResult(data){
     html +=
       "</ul></div>";
   }
+}
 
+  if(
+    data.actions &&
+    data.actions.length
+  ){
+    html +=
+      '<div class="card">' +
+      "<h2>" +
+      escapeHTML(t("actions")) +
+      "</h2><ol>";
+
+    data.actions.forEach(item => {
+      html +=
+        "<li>" +
+        escapeHTML(item) +
+        "</li>";
+    });
+
+    html +=
+      "</ol></div>";
+  }
+
+  if(
+    data.recommendations &&
+    data.recommendations.length
+  ){
+    html +=
+      '<div class="card">' +
+      "<h2>" +
+      escapeHTML(t("recommendations")) +
+      "</h2><ul>";
+
+    data.recommendations.forEach(item => {
+      html +=
+        "<li>" +
+        escapeHTML(item) +
+        "</li>";
+    });
+
+    html +=
+      "</ul></div>";
+  }
+
+  if(
+    data.opportunities &&
+    data.opportunities.offers &&
+    data.opportunities.offers.length
+  ){
+    html +=
+      '<div class="card">' +
+      "<h2>" +
+      escapeHTML(t("opportunities")) +
+      "</h2>";
+
+    data.opportunities.offers.forEach(offer => {
+      html +=
+        '<div class="offer-card">' +
+        "<h3>" +
+        escapeHTML(offer.title || "") +
+        "</h3>";
+
+      if(offer.company){
+        html +=
+          '<div class="info">' +
+          escapeHTML(offer.company) +
+          "</div>";
+      }
+
+      if(offer.location){
+        html +=
+          '<div class="info">' +
+          escapeHTML(offer.location) +
+          "</div>";
+      }
+
+      if(offer.contract){
+        html +=
+          '<div class="info">' +
+          escapeHTML(offer.contract) +
+          "</div>";
+      }
+
+      if(
+        offer.compatibility &&
+        offer.compatibility.status
+      ){
+        const status =
+          offer.compatibility.status;
+
+        const label =
+          status === "compatible"
+            ? t("compatible")
+            : status === "lessCompatible"
+              ? t("lessCompatible")
+              : t("toVerify");
+
+        html +=
+          '<div class="info">' +
+          "<strong>" +
+          escapeHTML(
+            t("compatibility")
+          ) +
+          ":</strong> " +
+          escapeHTML(label) +
+          "</div>";
+      }
+
+      if(
+        offer.compatibility &&
+        offer.compatibility.evidence &&
+        offer.compatibility.evidence.length
+      ){
+        html += "<ul>";
+
+        offer.compatibility.evidence.forEach(
+          evidence => {
+            html +=
+              "<li>" +
+              escapeHTML(evidence) +
+              "</li>";
+          }
+        );
+
+        html += "</ul>";
+      }
+
+      if(offer.url){
+        html +=
+          '<a href="' +
+          escapeHTML(offer.url) +
+          '" target="_blank" rel="noopener noreferrer">' +
+          escapeHTML(
+            lang === "ar"
+              ? "عرض العرض الرسمي"
+              : lang === "en"
+                ? "View official offer"
+                : "Voir l'offre officielle"
+          ) +
+          "</a>";
+      }
+
+      html += "</div>";
+    });
+
+    html += "</div>";
+  }
+
+  if(
+    data.sources &&
+    data.sources.length
+  ){
+    html +=
+      '<div class="card">' +
+      "<h2>" +
+      escapeHTML(t("sources")) +
+      "</h2><ul>";
+
+    data.sources.forEach(source => {
+      if(!source || !source.url){
+        return;
+      }
+
+      html +=
+        "<li>" +
+        '<a href="' +
+        escapeHTML(source.url) +
+        '" target="_blank" rel="noopener noreferrer">' +
+        escapeHTML(source.name || source.url) +
+        "</a>" +
+        "</li>";
+    });
+
+    html += "</ul></div>";
+  }
+
+  if(data.ai){
+    html +=
+      '<div class="card">' +
+      "<h2>Go Rare AI</h2>" +
+      '<div class="info">' +
+      escapeHTML(data.ai) +
+      "</div>" +
+      "</div>";
+  }
+
+  if(data.protection){
+    html +=
+      '<div class="card">' +
+      "<h2>" +
+      escapeHTML(t("secure")) +
+      "</h2>" +
+      '<div class="info">' +
+      escapeHTML(data.protection) +
+      "</div>" +
+      "</div>";
+  }
+
+  resultsEl.innerHTML = html;
+}
   if(
     data.missing &&
     data.missing.length
