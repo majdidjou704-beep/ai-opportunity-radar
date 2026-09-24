@@ -998,57 +998,99 @@ function buildConfirmed(info, language) {
 
   const labels = {
     fr: {
-      zoneRecherche: "zoneRecherche",
-      typeEmploi: "typeEmploi",
-      secteurs: "secteurs",
-      diplome: "diplome",
-      experience: "experience",
-      mobilite: "mobilite",
-      horaires: "horaires",
-      pays: "pays",
-      presenceFrance: "presenceFrance",
-      statutSejour: "statutSejour"
+      zoneRecherche: "Zone de recherche",
+      typeEmploi: "Type d'emploi",
+      diplome: "Diplôme",
+      experience: "Expérience",
+      mobilite: "Mobilité",
+      horaires: "Horaires",
+      presenceFrance: "Présence en France",
+      statutSejour: "Statut de séjour",
+      documents: "Documents",
+      entreprise: "Projet / entreprise"
     },
     ar: {
       zoneRecherche: "منطقة البحث",
       typeEmploi: "نوع العمل",
-      secteurs: "القطاعات",
       diplome: "الشهادة",
       experience: "الخبرة",
       mobilite: "التنقل",
-      horaires: "أوقات العمل",
-      pays: "البلد",
+      horaires: "الأوقات",
       presenceFrance: "الوجود في فرنسا",
-      statutSejour: "وضع الإقامة"
+      statutSejour: "وضع الإقامة",
+      documents: "الوثائق",
+      entreprise: "المشروع / المؤسسة"
     },
     en: {
-      zoneRecherche: "search area",
-      typeEmploi: "job type",
-      secteurs: "sectors",
-      diplome: "diploma",
-      experience: "experience",
-      mobilite: "mobility",
-      horaires: "working hours",
-      pays: "country",
-      presenceFrance: "presence in France",
-      statutSejour: "residence status"
+      zoneRecherche: "Search area",
+      typeEmploi: "Job type",
+      diplome: "Diploma",
+      experience: "Experience",
+      mobilite: "Mobility",
+      horaires: "Availability",
+      presenceFrance: "Presence in France",
+      statutSejour: "Residence status",
+      documents: "Documents",
+      entreprise: "Project / business"
     }
   };
 
   const l = labels[language] || labels.fr;
 
-  for (const key of Object.keys(l)) {
+  const add = (key, value, status = "declared") => {
     if (
-      info[key] !== undefined &&
-      info[key] !== null &&
-      String(info[key]).trim() !== ""
+      value === undefined ||
+      value === null ||
+      String(value).trim() === ""
     ) {
-      result.push({
-        key,
-        label: l[key],
-        value: cleanText(info[key], 500)
-      });
+      return;
     }
+
+    result.push({
+      key,
+      label: l[key] || key,
+      value: cleanText(value, 1000),
+      status
+    });
+  };
+
+  /*
+   * Important:
+   * We do NOT call inferred information "confirmed".
+   * Anything coming from the user's message is declared,
+   * unless the value itself clearly requires verification.
+   */
+
+  add("zoneRecherche", info.zoneRecherche, "declared");
+  add("typeEmploi", info.typeEmploi, "declared");
+  add("diplome", info.diplome, "declared");
+  add("experience", info.experience, "declared");
+  add("mobilite", info.mobilite, "declared");
+  add("horaires", info.horaires, "declared");
+  add("presenceFrance", info.presenceFrance, "declared");
+
+  if (info.statutSejour) {
+    add(
+      "statutSejour",
+      info.statutSejour,
+      "toVerify"
+    );
+  }
+
+  if (info.documents) {
+    add(
+      "documents",
+      info.documents,
+      "toVerify"
+    );
+  }
+
+  if (info.entreprise) {
+    add(
+      "entreprise",
+      info.entreprise,
+      "declared"
+    );
   }
 
   return result;
