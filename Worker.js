@@ -1,4 +1,4 @@
-uconst MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
+const MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
 const MODEL_VISION = "@cf/meta/llama-3.2-11b-vision-instruct";
 const MODEL_AUDIO = "@cf/openai/whisper-large-v3-turbo";
 
