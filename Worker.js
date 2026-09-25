@@ -4235,14 +4235,79 @@ function renderEvidence(
     typeof item ===
     "string"
   ) {
-    return `
-      <div class="item">
-        <div class="item-value">
-          ${escapeHTML(item)}
-        </div>
-      </div>
-    `;
+    return (
+      '<div class="item">' +
+        '<div class="item-value">' +
+          escapeHTML(item) +
+        "</div>" +
+      "</div>"
+    );
   }
+
+  if (
+    !item ||
+    typeof item !==
+    "object"
+  ) {
+    return "";
+  }
+
+  const source =
+    safeURL(
+      item.source
+    );
+
+  const label =
+    escapeHTML(
+      item.label ||
+      item.key ||
+      ""
+    );
+
+  const statusBadge =
+    badge(
+      item.status ||
+      fallback
+    );
+
+  const value =
+    escapeHTML(
+      item.value ||
+      item.message ||
+      ""
+    );
+
+  const sourceHTML =
+    source
+      ? (
+          '<div style="margin-top:7px">' +
+            '<a href="' +
+              escapeHTML(source) +
+              '" target="_blank" rel="noopener noreferrer">' +
+              escapeHTML(
+                t("sources")
+              ) +
+            "</a>" +
+          "</div>"
+        )
+      : "";
+
+  return (
+    '<div class="item">' +
+      '<div class="item-label">' +
+        label +
+        statusBadge +
+      "</div>" +
+
+      '<div class="item-value">' +
+        value +
+      "</div>" +
+
+      sourceHTML +
+
+    "</div>"
+  );
+}
 
   if (
     !item ||
