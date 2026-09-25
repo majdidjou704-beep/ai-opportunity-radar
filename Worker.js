@@ -4353,44 +4353,53 @@ function renderSources(
   }
 
   const rows =
-    sources.map(
-      source => {
-        const url =
-          safeURL(
-            source?.url
+    sources
+      .map(
+        source => {
+          const url =
+            safeURL(
+              source?.url
+            );
+
+          if (!url) {
+            return "";
+          }
+
+          return (
+            '<div class="source">' +
+              '<span>' +
+                escapeHTML(
+                  source.name ||
+                  "Source"
+                ) +
+              "</span>" +
+
+              '<a href="' +
+                escapeHTML(url) +
+                '" target="_blank" rel="noopener noreferrer">' +
+                "Ouvrir" +
+              "</a>" +
+
+            "</div>"
           );
+        }
+      )
+      .join("");
 
-        if (!url) return "";
+  if (!rows) {
+    return "";
+  }
 
-        return `
-          <div class="source">
-            <span>
-              ${escapeHTML(
-                source.name ||
-                "Source"
-              )}
-            </span>
-
-            <a
-              href="${escapeHTML(url)}"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Ouvrir
-            </a>
-          </div>
-        `;
-      }
-    ).join("");
-
-  if (!rows) return "";
-
-  return `
-    <div class="card">
-      <h3>${escapeHTML(t("sources"))}</h3>
-      ${rows}
-    </div>
-  `;
+  return (
+    '<div class="card">' +
+      '<h3>' +
+        escapeHTML(
+          t("sources")
+        ) +
+      "</h3>" +
+      rows +
+    "</div>"
+  );
 }
 
 function renderPaths(
