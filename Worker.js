@@ -4321,21 +4321,25 @@ function evidenceSection(
     return "";
   }
 
-  return `
-    <div class="card">
-      <h3>
-        ${escapeHTML(title)}
-      </h3>
-
-      ${items.map(
+  const content =
+    items
+      .map(
         item =>
           renderEvidence(
             item,
             fallback
           )
-      ).join("")}
-    </div>
-  `;
+      )
+      .join("");
+
+  return (
+    '<div class="card">' +
+      '<h3>' +
+        escapeHTML(title) +
+      "</h3>" +
+      content +
+    "</div>"
+  );
 }
 
 function renderSources(
