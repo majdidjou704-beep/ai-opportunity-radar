@@ -4470,7 +4470,6 @@ function renderPaths(
     "</div>"
   );
 }
-
 function renderTransformations(
   items
 ) {
@@ -4481,32 +4480,40 @@ function renderTransformations(
     return "";
   }
 
-  return `
-    <div class="card">
-      <h3>
-        ${escapeHTML(
+  const rows =
+    items
+      .map(
+        item =>
+          '<div class="transform">' +
+
+            '<strong>' +
+              escapeHTML(
+                item?.title || ""
+              ) +
+            "</strong>" +
+
+            '<div class="path-description">' +
+              escapeHTML(
+                item?.description || ""
+              ) +
+            "</div>" +
+
+          "</div>"
+      )
+      .join("");
+
+  return (
+    '<div class="card">' +
+      '<h3>' +
+        escapeHTML(
           t("transformation")
-        )}
-      </h3>
-
-      ${items.map(item => `
-        <div class="transform">
-          <strong>
-            ${escapeHTML(
-              item.title || ""
-            )}
-          </strong>
-
-          <div class="path-description">
-            ${escapeHTML(
-              item.description || ""
-            )}
-          </div>
-        </div>
-      `).join("")}
-    </div>
-  `;
+        ) +
+      "</h3>" +
+      rows +
+    "</div>"
+  );
 }
+
 
 function renderOpportunities(
   data
@@ -4672,16 +4679,16 @@ function renderOpportunities(
         ) {
           html +=
             "<ul>" +
-            compatibility.evidence
-              .map(
-                item =>
-                  "<li>" +
-                  escapeHTML(
-                    item
-                  ) +
-                  "</li>"
-              )
-              .join("") +
+              compatibility.evidence
+                .map(
+                  item =>
+                    "<li>" +
+                      escapeHTML(
+                        item
+                      ) +
+                    "</li>"
+                )
+                .join("") +
             "</ul>";
         }
 
@@ -4710,6 +4717,115 @@ function renderOpportunities(
   return html;
 }
 
+
+function renderWatch(
+  watch
+) {
+  if (
+    !watch ||
+    !watch.available
+  ) {
+    return "";
+  }
+
+  return (
+    '<div class="card">' +
+
+      '<h3>' +
+        escapeHTML(
+          t("watch")
+        ) +
+      "</h3>" +
+
+      '<div class="warning">' +
+        escapeHTML(
+          watch.reason || ""
+        ) +
+      "</div>" +
+
+      '<div class="empty" style="margin-top:8px">' +
+        escapeHTML(
+          watch.note || ""
+        ) +
+      "</div>" +
+
+    "</div>"
+  );
+}
+
+
+function renderEvidenceTrail(
+  items
+) {
+  if (
+    !Array.isArray(items) ||
+    !items.length
+  ) {
+    return "";
+  }
+
+  const rows =
+    items
+      .map(
+        item => {
+          const source =
+            safeURL(
+              item?.source
+            );
+
+          const sourceHTML =
+            source
+              ? (
+                  '<div style="margin-top:7px">' +
+                    '<a href="' +
+                      escapeHTML(source) +
+                      '" target="_blank" rel="noopener noreferrer">' +
+                      escapeHTML(
+                        t("sources")
+                      ) +
+                    "</a>" +
+                  "</div>"
+                )
+              : "";
+
+          return (
+            '<div class="item">' +
+
+              '<div class="item-label">' +
+                escapeHTML(
+                  item?.status ||
+                  "toVerify"
+                ) +
+              "</div>" +
+
+              '<div class="item-value">' +
+                escapeHTML(
+                  item?.claim || ""
+                ) +
+              "</div>" +
+
+              sourceHTML +
+
+            "</div>"
+          );
+        }
+      )
+      .join("");
+
+  return (
+    '<div class="card">' +
+
+      '<h3>' +
+        escapeHTML(
+          t("evidenceTrail")
+        ) +
+      "</h3>" +
+
+      rows +
+
+    "</div>"
+  );
+}
 function renderWatch(
   watch
 ) {
@@ -4753,54 +4869,67 @@ function renderEvidenceTrail(
     return "";
   }
 
-  return `
-    <div class="card">
-      <h3>
-        ${escapeHTML(
-          t("evidenceTrail")
-        )}
-      </h3>
+  const rows =
+    items
+      .map(
+        item => {
+          const source =
+            safeURL(
+              item?.source
+            );
 
-      ${items.map(
-        item => `
-          <div class="item">
-            <div class="item-label">
-              ${escapeHTML(
-                item.status ||
-                "toVerify"
-              )}
-            </div>
-
-            <div class="item-value">
-              ${escapeHTML(
-                item.claim || ""
-              )}
-            </div>
-
-            ${
-              safeURL(item.source)
-                ? `
-                  <div style="margin-top:7px">
-                    <a
-                      href="${escapeHTML(
-                        safeURL(item.source)
-                      )}"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      ${escapeHTML(
+          const sourceHTML =
+            source
+              ? (
+                  '<div style="margin-top:7px">' +
+                    '<a href="' +
+                      escapeHTML(source) +
+                      '" target="_blank" rel="noopener noreferrer">' +
+                      escapeHTML(
                         t("sources")
-                      )}
-                    </a>
-                  </div>
-                `
-                : ""
-            }
-          </div>
-        `
-      ).join("")}
-    </div>
-  `;
+                      ) +
+                    "</a>" +
+                  "</div>"
+                )
+              : "";
+
+          return (
+            '<div class="item">' +
+
+              '<div class="item-label">' +
+                escapeHTML(
+                  item?.status ||
+                  "toVerify"
+                ) +
+              "</div>" +
+
+              '<div class="item-value">' +
+                escapeHTML(
+                  item?.claim || ""
+                ) +
+              "</div>" +
+
+              sourceHTML +
+
+            "</div>"
+          );
+        }
+      )
+      .join("");
+
+  return (
+    '<div class="card">' +
+
+      '<h3>' +
+        escapeHTML(
+          t("evidenceTrail")
+        ) +
+      "</h3>" +
+
+      rows +
+
+    "</div>"
+  );
 }
 
 function renderResult(
@@ -4828,20 +4957,21 @@ function renderResult(
   if (
     data.domain
   ) {
-    html += `
-      <div class="card">
-        <h3>
-          ${escapeHTML(
+    html +=
+      '<div class="card">' +
+        '<h3>' +
+          escapeHTML(
             t("domain")
-          )}
-        </h3>
-        <div class="item-value">
-          ${escapeHTML(
+          ) +
+        "</h3>" +
+
+        '<div class="item-value">' +
+          escapeHTML(
             data.domain
-          )}
-        </div>
-      </div>
-    `;
+          ) +
+        "</div>" +
+
+      "</div>";
   }
 
   html += evidenceSection(
@@ -4878,48 +5008,50 @@ function renderResult(
     ) &&
     data.missing.length
   ) {
-    html += `
-      <div class="card">
-        <h3>
-          ${escapeHTML(
-            t("missing")
-          )}
-        </h3>
-
-        ${data.missing.map(
-          item => `
-            <div class="item">
-              <div class="item-value">
-                ${escapeHTML(
-                  item.question ||
+    const missingRows =
+      data.missing
+        .map(
+          item =>
+            '<div class="item">' +
+              '<div class="item-value">' +
+                escapeHTML(
+                  item?.question ||
                   ""
-                )}
-              </div>
-            </div>
-          `
-        ).join("")}
-      </div>
-    `;
+                ) +
+              "</div>" +
+            "</div>"
+        )
+        .join("");
+
+    html +=
+      '<div class="card">' +
+        '<h3>' +
+          escapeHTML(
+            t("missing")
+          ) +
+        "</h3>" +
+        missingRows +
+      "</div>";
   }
 
   if (
     data.nextAction
   ) {
-    html += `
-      <div class="card">
-        <h3>
-          ${escapeHTML(
+    html +=
+      '<div class="card">' +
+        '<h3>' +
+          escapeHTML(
             t("nextAction")
-          )}
-        </h3>
+          ) +
+        "</h3>" +
 
-        <div class="item-value">
-          ${escapeHTML(
+        '<div class="item-value">' +
+          escapeHTML(
             data.nextAction
-          )}
-        </div>
-      </div>
-    `;
+          ) +
+        "</div>" +
+
+      "</div>";
   }
 
   if (
@@ -4928,19 +5060,17 @@ function renderResult(
     ) &&
     data.actions.length
   ) {
-    html += `
-      <div class="card">
-        <h3>
-          ${escapeHTML(
+    html +=
+      '<div class="card">' +
+        '<h3>' +
+          escapeHTML(
             t("actions")
-          )}
-        </h3>
-
-        ${renderList(
+          ) +
+        "</h3>" +
+        renderList(
           data.actions
-        )}
-      </div>
-    `;
+        ) +
+      "</div>";
   }
 
   if (
@@ -4949,19 +5079,17 @@ function renderResult(
     ) &&
     data.recommendations.length
   ) {
-    html += `
-      <div class="card">
-        <h3>
-          ${escapeHTML(
+    html +=
+      '<div class="card">' +
+        '<h3>' +
+          escapeHTML(
             t("recommendations")
-          )}
-        </h3>
-
-        ${renderList(
+          ) +
+        "</h3>" +
+        renderList(
           data.recommendations
-        )}
-      </div>
-    `;
+        ) +
+      "</div>";
   }
 
   html += renderTransformations(
@@ -4987,36 +5115,37 @@ function renderResult(
   if (
     data.ai
   ) {
-    html += `
-      <div class="card">
-        <h3>Go Rare AI</h3>
-        <div class="ai">
-          ${escapeHTML(
+    html +=
+      '<div class="card">' +
+        "<h3>Go Rare AI</h3>" +
+
+        '<div class="ai">' +
+          escapeHTML(
             data.ai
-          )}
-        </div>
-      </div>
-    `;
+          ) +
+        "</div>" +
+
+      "</div>";
   }
 
   if (
     data.protection
   ) {
-    html += `
-      <div class="card">
-        <h3>
-          ${escapeHTML(
+    html +=
+      '<div class="card">' +
+        '<h3>' +
+          escapeHTML(
             t("secure")
-          )}
-        </h3>
+          ) +
+        "</h3>" +
 
-        <div class="warning">
-          ${escapeHTML(
+        '<div class="warning">' +
+          escapeHTML(
             data.protection
-          )}
-        </div>
-      </div>
-    `;
+          ) +
+        "</div>" +
+
+      "</div>";
   }
 
   html += renderSources(
@@ -5026,6 +5155,7 @@ function renderResult(
   resultEl.innerHTML =
     html;
 }
+
 
 function updateTexts() {
   const ui =
@@ -5092,6 +5222,7 @@ function updateTexts() {
     ui.followup;
 }
 
+
 async function analyze() {
   const question =
     questionEl.value.trim();
@@ -5122,17 +5253,23 @@ async function analyze() {
         {
           method:
             "POST",
+
           headers: {
             "Content-Type":
               "application/json"
           },
+
           body:
             JSON.stringify({
-              question,
+              question:
+                question,
+
               language:
                 currentLanguage(),
+
               profile:
                 "particulier",
+
               history:
                 conversationHistory
             })
@@ -5312,79 +5449,7 @@ async function toggleRecording() {
     mediaRecorder.stop();
     return;
   }
-
-  if (
-    !navigator.mediaDevices ||
-    !navigator.mediaDevices
-      .getUserMedia
-  ) {
-    setStatus(
-      "Microphone non disponible."
-    );
-    return;
-  }
-
-  try {
-    const stream =
-      await navigator
-        .mediaDevices
-        .getUserMedia({
-          audio:
-            true
-        });
-
-    audioChunks = [];
-
-    mediaRecorder =
-      new MediaRecorder(
-        stream
-      );
-
-    mediaRecorder
-      .ondataavailable =
-      event => {
-        if (
-          event.data &&
-          event.data.size >
-            0
-        ) {
-          audioChunks.push(
-            event.data
-          );
-        }
-      };
-
-    mediaRecorder.onstop =
-      async () => {
-        recording =
-          false;
-
-        microBtn.classList
-          .remove(
-            "recording"
-          );
-
-        updateTexts();
-
-        stream
-          .getTracks()
-          .forEach(
-            track =>
-              track.stop()
-          );
-
-        const blob =
-          new Blob(
-            audioChunks,
-            {
-              type:
-                mediaRecorder.mimeType ||
-                "audio/webm"
-            }
-          );
-
-        if (
-          blob.size >
+  blob.size >
           12000000
         ) {
           setStatus(
