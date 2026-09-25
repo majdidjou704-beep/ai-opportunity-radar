@@ -4513,32 +4513,28 @@ function renderOpportunities(
 ) {
   if (
     !data ||
-    !Array.isArray(
-      data.offers
-    )
+    !Array.isArray(data.offers)
   ) {
     return "";
   }
 
-  let html = `
-    <div class="card">
-      <h3>
-        ${escapeHTML(
+  let html =
+    '<div class="card">' +
+      '<h3>' +
+        escapeHTML(
           t("opportunities")
-        )}
-      </h3>
-  `;
+        ) +
+      "</h3>";
 
   if (
     data.message
   ) {
-    html += `
-      <div class="offer-meta">
-        ${escapeHTML(
+    html +=
+      '<div class="offer-meta">' +
+        escapeHTML(
           data.message
-        )}
-      </div>
-    `;
+        ) +
+      "</div>";
   }
 
   if (
@@ -4549,28 +4545,24 @@ function renderOpportunities(
         data.searchURL
       );
 
-    html += `
-      <div class="empty">
-        ${escapeHTML(
+    html +=
+      '<div class="empty">' +
+        escapeHTML(
           t("noOffers")
-        )}
-      </div>
-    `;
+        ) +
+      "</div>";
 
     if (url) {
-      html += `
-        <div style="margin-top:10px">
-          <a
-            href="${escapeHTML(url)}"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            ${escapeHTML(
+      html +=
+        '<div style="margin-top:10px">' +
+          '<a href="' +
+            escapeHTML(url) +
+            '" target="_blank" rel="noopener noreferrer">' +
+            escapeHTML(
               t("officialReady")
-            )}
-          </a>
-        </div>
-      `;
+            ) +
+          "</a>" +
+        "</div>";
     }
 
     return (
@@ -4580,16 +4572,16 @@ function renderOpportunities(
   }
 
   data.offers
-    .slice(0,20)
+    .slice(0, 20)
     .forEach(
       offer => {
         const url =
           safeURL(
-            offer.url
+            offer?.url
           );
 
         const compatibility =
-          offer.compatibility ||
+          offer?.compatibility ||
           {};
 
         const label =
@@ -4601,115 +4593,119 @@ function renderOpportunities(
             ? t("lessCompatible")
             : t("toVerify");
 
-        html += `
-          <div class="offer">
+        html +=
+          '<div class="offer">' +
 
-            <div class="offer-title">
-              ${escapeHTML(
-                offer.title ||
+            '<div class="offer-title">' +
+              escapeHTML(
+                offer?.title ||
                 "Offre"
-              )}
-            </div>
+              ) +
+            "</div>" +
 
-            <div class="offer-meta">
-              ${
-                offer.company
+            '<div class="offer-meta">' +
+              (
+                offer?.company
                   ? escapeHTML(
                       offer.company
                     )
                   : ""
-              }
+              ) +
 
-              ${
-                offer.location
+              (
+                offer?.location
                   ? " · " +
                     escapeHTML(
                       offer.location
                     )
                   : ""
-              }
+              ) +
 
-              ${
-                offer.contract
+              (
+                offer?.contract
                   ? " · " +
                     escapeHTML(
                       offer.contract
                     )
                   : ""
-              }
-            </div>
+              ) +
 
-            ${
-              offer.experience
-                ? `
-                  <div class="offer-meta">
-                    ${escapeHTML(
-                      offer.experience
-                    )}
-                  </div>
-                `
-                : ""
-            }
+            "</div>";
 
-            ${
-              offer.description
-                ? `
-                  <div class="offer-description">
-                    ${escapeHTML(
-                      offer.description
-                    )}
-                  </div>
-                `
-                : ""
-            }
+        if (
+          offer?.experience
+        ) {
+          html +=
+            '<div class="offer-meta">' +
+              escapeHTML(
+                offer.experience
+              ) +
+            "</div>";
+        }
 
-            <div class="compatibility">
-              ${escapeHTML(
-                t("compatibility")
-              )}:
-              ${escapeHTML(label)}
+        if (
+          offer?.description
+        ) {
+          html +=
+            '<div class="offer-description">' +
+              escapeHTML(
+                offer.description
+              ) +
+            "</div>";
+        }
 
-              ${
-                Array.isArray(
-                  compatibility.evidence
-                ) &&
-                compatibility.evidence.length
-                  ? `
-                    <ul>
-                      ${compatibility.evidence.map(
-                        item =>
-                          "<li>" +
-                          escapeHTML(item) +
-                          "</li>"
-                      ).join("")}
-                    </ul>
-                  `
-                  : ""
-              }
-            </div>
+        html +=
+          '<div class="compatibility">' +
+            escapeHTML(
+              t("compatibility")
+            ) +
+            ": " +
+            escapeHTML(
+              label
+            );
 
-            ${
-              url
-                ? `
-                  <div style="margin-top:9px">
-                    <a
-                      href="${escapeHTML(url)}"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      Voir l'offre
-                    </a>
-                  </div>
-                `
-                : ""
-            }
+        if (
+          Array.isArray(
+            compatibility.evidence
+          ) &&
+          compatibility.evidence.length
+        ) {
+          html +=
+            "<ul>" +
+            compatibility.evidence
+              .map(
+                item =>
+                  "<li>" +
+                  escapeHTML(
+                    item
+                  ) +
+                  "</li>"
+              )
+              .join("") +
+            "</ul>";
+        }
 
-          </div>
-        `;
+        html +=
+          "</div>";
+
+        if (url) {
+          html +=
+            '<div style="margin-top:9px">' +
+              '<a href="' +
+                escapeHTML(url) +
+                '" target="_blank" rel="noopener noreferrer">' +
+                "Voir l'offre" +
+              "</a>" +
+            "</div>";
+        }
+
+        html +=
+          "</div>";
       }
     );
 
-  html += "</div>";
+  html +=
+    "</div>";
 
   return html;
 }
