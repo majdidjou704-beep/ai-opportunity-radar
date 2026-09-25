@@ -4401,7 +4401,6 @@ function renderSources(
     "</div>"
   );
 }
-
 function renderPaths(
   paths
 ) {
@@ -4412,42 +4411,64 @@ function renderPaths(
     return "";
   }
 
-  return `
-    <div class="card">
-      <h3>${escapeHTML(t("paths"))}</h3>
+  const rows =
+    paths
+      .map(
+        path => {
+          const title =
+            escapeHTML(
+              path?.title || ""
+            );
 
-      ${paths.map(path => `
-        <div class="path">
-          <div class="path-title">
-            ${escapeHTML(
-              path.title || ""
-            )}
-          </div>
+          const description =
+            escapeHTML(
+              path?.description || ""
+            );
 
-          <div class="path-description">
-            ${escapeHTML(
-              path.description || ""
-            )}
-          </div>
+          const nextAction =
+            path?.nextAction
+              ? (
+                  '<div class="path-action">' +
+                    escapeHTML(
+                      t("nextAction")
+                    ) +
+                    ": " +
+                    escapeHTML(
+                      path.nextAction
+                    ) +
+                  "</div>"
+                )
+              : "";
 
-          ${
-            path.nextAction
-              ? `
-                <div class="path-action">
-                  ${escapeHTML(
-                    t("nextAction")
-                  )}:
-                  ${escapeHTML(
-                    path.nextAction
-                  )}
-                </div>
-              `
-              : ""
-          }
-        </div>
-      `).join("")}
-    </div>
-  `;
+          return (
+            '<div class="path">' +
+
+              '<div class="path-title">' +
+                title +
+              "</div>" +
+
+              '<div class="path-description">' +
+                description +
+              "</div>" +
+
+              nextAction +
+
+            "</div>"
+          );
+        }
+      )
+      .join("");
+
+  return (
+    '<div class="card">' +
+      '<h3>' +
+        escapeHTML(
+          t("paths")
+        ) +
+      "</h3>" +
+      rows +
+    "</div>"
+  );
 }
 
 function renderTransformations(
