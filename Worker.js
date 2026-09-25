@@ -4309,62 +4309,6 @@ function renderEvidence(
   );
 }
 
-  if (
-    !item ||
-    typeof item !==
-    "object"
-  ) {
-    return "";
-  }
-
-  const source =
-    safeURL(
-      item.source
-    );
-
-  return `
-    <div class="item">
-      <div class="item-label">
-        ${escapeHTML(
-          item.label ||
-          item.key ||
-          ""
-        )}
-        ${badge(
-          item.status ||
-          fallback
-        )}
-      </div>
-
-      <div class="item-value">
-        ${escapeHTML(
-          item.value ||
-          item.message ||
-          ""
-        )}
-      </div>
-
-      ${
-        source
-          ? `
-            <div style="margin-top:7px">
-              <a
-                href="${escapeHTML(source)}"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                ${escapeHTML(
-                  t("sources")
-                )}
-              </a>
-            </div>
-          `
-          : ""
-      }
-    </div>
-  `;
-}
-
 function evidenceSection(
   title,
   items,
