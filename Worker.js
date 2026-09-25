@@ -4752,80 +4752,6 @@ function renderWatch(
     "</div>"
   );
 }
-
-
-function renderEvidenceTrail(
-  items
-) {
-  if (
-    !Array.isArray(items) ||
-    !items.length
-  ) {
-    return "";
-  }
-
-  const rows =
-    items
-      .map(
-        item => {
-          const source =
-            safeURL(
-              item?.source
-            );
-
-          const sourceHTML =
-            source
-              ? (
-                  '<div style="margin-top:7px">' +
-                    '<a href="' +
-                      escapeHTML(source) +
-                      '" target="_blank" rel="noopener noreferrer">' +
-                      escapeHTML(
-                        t("sources")
-                      ) +
-                    "</a>" +
-                  "</div>"
-                )
-              : "";
-
-          return (
-            '<div class="item">' +
-
-              '<div class="item-label">' +
-                escapeHTML(
-                  item?.status ||
-                  "toVerify"
-                ) +
-              "</div>" +
-
-              '<div class="item-value">' +
-                escapeHTML(
-                  item?.claim || ""
-                ) +
-              "</div>" +
-
-              sourceHTML +
-
-            "</div>"
-          );
-        }
-      )
-      .join("");
-
-  return (
-    '<div class="card">' +
-
-      '<h3>' +
-        escapeHTML(
-          t("evidenceTrail")
-        ) +
-      "</h3>" +
-
-      rows +
-
-    "</div>"
-  );
-}
 function renderWatch(
   watch
 ) {
@@ -4836,28 +4762,31 @@ function renderWatch(
     return "";
   }
 
-  return `
-    <div class="card">
-      <h3>
-        ${escapeHTML(
+  return (
+    '<div class="card">' +
+
+      '<h3>' +
+        escapeHTML(
           t("watch")
-        )}
-      </h3>
+        ) +
+      "</h3>" +
 
-      <div class="warning">
-        ${escapeHTML(
+      '<div class="warning">' +
+        escapeHTML(
           watch.reason || ""
-        )}
-      </div>
+        ) +
+      "</div>" +
 
-      <div class="empty" style="margin-top:8px">
-        ${escapeHTML(
+      '<div class="empty" style="margin-top:8px">' +
+        escapeHTML(
           watch.note || ""
-        )}
-      </div>
-    </div>
-  `;
+        ) +
+      "</div>" +
+
+    "</div>"
+  );
 }
+
 
 function renderEvidenceTrail(
   items
